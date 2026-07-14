@@ -1,0 +1,17 @@
+citHeader("To cite DOEpro in publications, please use:")
+
+bibentry(
+  bibtype  = "Manual",
+  title    = "DOEpro: Analysis of Designed Agricultural Experiments",
+  author   = c(person("Immad A.", "Shah"),
+               person("Uzair Javid", "Khan"),
+               person("M. Iqbal", "Jeelani")),
+  year     = "2026",
+  note     = "R package version 2.0.0",
+  url      = "https://github.com/Uzairkhan11w/DOEpro",
+  doi      = "10.5281/zenodo.XXXXXXX",
+  textVersion = paste(
+    "Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026).",
+    "DOEpro: Analysis of Designed Agricultural Experiments.",
+    "R package version 2.0.0. doi:10.5281/zenodo.XXXXXXX")
+)

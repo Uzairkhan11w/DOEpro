@@ -1,0 +1,30 @@
+Package: DOEpro
+Title: Analysis of Designed Agricultural Experiments
+Version: 2.0.0
+Authors@R: c(
+    person("Immad A.", "Shah", email = "immad11w@skuastkashmir.ac.in",
+           role = "aut", comment = c(ORCID = "0000-0003-2761-5112")),
+    person("Uzair Javid", "Khan", email = "uzairkhan11w@gmail.com",
+           role = c("aut", "cre"), comment = c(ORCID = "0009-0001-6368-0977")),
+    person("M. Iqbal", "Jeelani", role = "aut",
+           comment = c(ORCID = "0000-0002-2974-2871")))
+Description: A Shiny application and supporting functions for the analysis of
+    designed agricultural experiments. Handles completely randomised, randomised
+    complete block, Latin square, factorial (up to four factors), split-plot and
+    strip-plot designs, and pooled (combined) analysis over environments including
+    factorial treatments; analyses several response variables simultaneously;
+    recommends and applies variance-stabilising transformations; reports standard
+    errors and critical differences for every legitimate comparison, including the
+    four distinct comparisons of a split plot with a Satterthwaite-weighted t for
+    the mixed ones; and produces publication-format tables of means, diagnostic
+    plots and a written interpretation.
+License: GPL (>= 3)
+Encoding: UTF-8
+Depends: R (>= 4.0)
+Imports: shiny, DT, ggplot2, stats, utils, grDevices
+Suggests: pagedown, testthat (>= 3.0.0), knitr, rmarkdown
+Config/testthat/edition: 3
+URL: https://github.com/Uzairkhan11w/DOEpro, https://uzairkhan11w.github.io/DOEpro/
+BugReports: https://github.com/Uzairkhan11w/DOEpro/issues
+RoxygenNote: 7.3.2
+VignetteBuilder: knitr

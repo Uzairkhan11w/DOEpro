@@ -1,0 +1,43 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DOEpro: analysis of designed experiments in R"
+abstract: >-
+  A free and open Shiny application for the analysis of designed agricultural
+  experiments. Supports CRD, RCBD, Latin square, factorial CRD/RCBD up to four
+  factors, split-plot and strip-plot designs; analyses several response variables
+  at once; advises on data transformation; computes SEm, SEd and critical
+  differences for every comparison, including the four distinct comparisons of a
+  split plot; and produces publication-format tables of means, plots and a
+  written interpretation.
+type: software
+version: 2.0.0
+date-released: "2026-07-10"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/Uzairkhan11w/DOEpro"
+url: "https://uzairkhan11w.github.io/DOEpro/"
+keywords:
+  - analysis of variance
+  - design of experiments
+  - split plot
+  - agricultural statistics
+  - R
+  - shiny
+authors:
+  - family-names: Shah
+    given-names: "Immad A."
+    email: immad11w@skuastkashmir.ac.in
+    affiliation: "Division of Agricultural Statistics, SKUAST-Kashmir, Shalimar, India"
+    orcid: "https://orcid.org/0000-0003-2761-5112"
+  - family-names: Khan
+    given-names: "Uzair Javid"
+    email: uzairkhan11w@gmail.com
+    affiliation: "AAAMDC Bemina, Cluster University Srinagar, India"
+    orcid: "https://orcid.org/0009-0001-6368-0977"
+  - family-names: Jeelani
+    given-names: "M. Iqbal"
+    affiliation: "Division of Agricultural Statistics, SKUAST-Kashmir, Shalimar, India"
+    orcid: "https://orcid.org/0000-0002-2974-2871"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.XXXXXXX"
+    description: "Concept DOI: always resolves to the latest release"
