@@ -2656,7 +2656,12 @@ server <- function(input, output, session) {
 
   output$dl_html <- downloadHandler(
     filename = function() paste0("DOEpro_report_", Sys.Date(), ".html"),
-    content = function(f) writeLines(report(), f, useBytes = TRUE))
+    content = function(f) {
+      ## writeBin on raw bytes is reliable in every environment, including the
+      ## browser (webR) build where writeLines() can produce an empty file.
+      writeBin(charToRaw(enc2utf8(paste0(report(), "\n"))), f)
+    },
+    contentType = "text/html")
 
   output$dl_pdf <- downloadHandler(
     filename = function() paste0("DOEpro_report_", Sys.Date(), ".pdf"),
