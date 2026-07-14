@@ -830,6 +830,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
     res$homogeneity <- hom
     res$pooled <- TRUE
   }
+  res$resid  <- stats::residuals(res$lm)
   res$fitted <- stats::fitted(res$lm)
   res$X      <- stats::model.matrix(res$lm)   # for the Box-Cox profile
   res
