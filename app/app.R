@@ -2206,8 +2206,22 @@ ui <- navbarPage(
 ##  SERVER
 ###############################################################################
 
+## Are we running inside the browser (webR / WebAssembly)? There is no Chrome or
+## external process there, so server-side PDF rendering cannot work.
+is_wasm <- function() {
+  grepl("emscripten|wasm", tolower(R.version$os)) ||
+  grepl("wasm", tolower(R.version$arch)) ||
+  "webr" %in% loadedNamespaces()
+}
+
+## Which server-side PDF engine is genuinely usable, if any. pagedown counts only
+## when a Chrome/Chromium binary can actually be found; otherwise fall back to
+## weasyprint or wkhtmltopdf. In the browser build, none apply.
 pdf_engine <- function() {
-  if (requireNamespace("pagedown", quietly = TRUE)) return("pagedown")
+  if (is_wasm()) return(NA_character_)
+  chrome_ok <- requireNamespace("pagedown", quietly = TRUE) &&
+    !is.null(tryCatch(pagedown::find_chrome(), error = function(e) NULL))
+  if (isTRUE(chrome_ok)) return("pagedown")
   for (b in c("weasyprint", "wkhtmltopdf")) if (nzchar(Sys.which(b))) return(b)
   NA_character_
 }
@@ -2574,11 +2588,17 @@ server <- function(input, output, session) {
     if (!is.na(eng))
       downloadButton("dl_pdf", sprintf("Download report (PDF, via %s)", eng),
                      class = "btn-primary")
+    else if (is_wasm())
+      div(class = "box", HTML(paste0(
+        "<b>To save the report as a PDF:</b> click <b>Download report (HTML)</b> on the left, ",
+        "open the downloaded file in your browser, then print it (<b>Ctrl&nbsp;+&nbsp;P</b> ",
+        "&rarr; <b>Save as PDF</b>). The page footer carries the citation line. ",
+        "<span class='note'>Direct PDF export is only available in the desktop R version of DOEpro.</span>")))
     else div(class = "warn", HTML(paste0(
       "<b>PDF export is not available on this machine.</b> Install one of ",
-      "<code>install.packages(\"pagedown\")</code> (needs Chrome or Chromium), ",
-      "<code>weasyprint</code>, or <code>wkhtmltopdf</code>. Until then, download the ",
-      "HTML report and print it to PDF from your browser (Ctrl+P &rarr; Save as PDF).")))
+      "<code>pagedown</code> (needs Chrome or Chromium), <code>weasyprint</code>, or ",
+      "<code>wkhtmltopdf</code>. Until then, download the HTML report and print it to PDF ",
+      "from your browser (Ctrl+P &rarr; Save as PDF).")))
   })
 
   ## -------------------------------------------------------------- downloads --
