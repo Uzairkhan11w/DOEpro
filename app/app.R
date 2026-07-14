@@ -2074,7 +2074,18 @@ TRANS_CHOICES <- stats::setNames(names(TRANS), vapply(TRANS, `[[`, character(1),
 ui <- navbarPage(
   title = paste0(APP_NAME, " v", APP_VERSION),
   id = "nav", collapsible = TRUE,
-  header = tagList(tags$head(tags$style(HTML(paste0(APP_CSS, MEANS_CSS)))),
+  header = tagList(tags$head(tags$style(HTML(paste0(APP_CSS, MEANS_CSS))),
+                   tags$script(HTML(
+                     "Shiny.addCustomMessageHandler('doepro_save', function(m){",
+                     " try {",
+                     "  var blob = new Blob([m.content], {type: m.mime || 'text/html'});",
+                     "  var url = URL.createObjectURL(blob);",
+                     "  var a = document.createElement('a');",
+                     "  a.href = url; a.download = m.filename;",
+                     "  document.body.appendChild(a); a.click();",
+                     "  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);",
+                     " } catch(e){ alert('Download failed: ' + e.message); }",
+                     "});"))),
                    tags$div(class = "doe-logo-chip",
                             tags$img(src = LOGO_URI, alt = "DOEpro", height = "34")),
                    tags$div(class = "appfoot", CREDIT_SHORT)),
@@ -2134,7 +2145,7 @@ ui <- navbarPage(
         tags$hr(),
         actionButton("run", "Run analysis", class = "btn-primary btn-lg"),
         tags$br(), tags$br(),
-        downloadButton("dl_anova", "ANOVA (CSV)")),
+        actionButton("dl_anova", "ANOVA (CSV)", icon = icon("download"))),
       mainPanel(width = 8,
         uiOutput("runNote"),
         uiOutput("anovaOut"))
@@ -2146,7 +2157,7 @@ ui <- navbarPage(
       column(3, checkboxInput("letters", "Show grouping letters", TRUE)),
       column(3, checkboxInput("detailed", "Show detailed tables", FALSE)),
       column(3, numericInput("digits", "Decimal places", 2, 0, 5, 1)),
-      column(3, downloadButton("dl_means", "Means (CSV)"))),
+      column(3, actionButton("dl_means", "Means (CSV)", icon = icon("download")))),
     tags$hr(),
     uiOutput("meansOut")),
 
@@ -2166,7 +2177,7 @@ ui <- navbarPage(
       sidebarPanel(width = 3,
         uiOutput("aRespUI2"), uiOutput("phEffectUI"),
         selectInput("phMethod", "Test", PH_METHODS),
-        downloadButton("dl_ph", "Groups (CSV)")),
+        actionButton("dl_ph", "Groups (CSV)", icon = icon("download"))),
       mainPanel(width = 9,
         uiOutput("phNote"),
         h4("Treatment groups"), DTOutput("phTab"),
@@ -2190,7 +2201,8 @@ ui <- navbarPage(
   ## -------------------------------------------------------------- interpret --
   tabPanel("7. Interpretation & Report",
     fluidRow(
-      column(4, downloadButton("dl_html", "Download report (HTML)", class = "btn-primary")),
+      column(4, actionButton("dl_html", "Download report (HTML)",
+                             icon = icon("download"), class = "btn-primary")),
       column(6, uiOutput("pdfBtn"))),
     tags$hr(),
     uiOutput("interpOut")),
@@ -2224,6 +2236,14 @@ pdf_engine <- function() {
   if (isTRUE(chrome_ok)) return("pagedown")
   for (b in c("weasyprint", "wkhtmltopdf")) if (nzchar(Sys.which(b))) return(b)
   NA_character_
+}
+
+## build a CSV as a single string (so it can be handed to the browser downloader)
+csv_string <- function(df) {
+  tc <- textConnection("csv_out", "w", local = TRUE)
+  on.exit(close(tc))
+  utils::write.csv(df, tc, row.names = FALSE)
+  paste(csv_out, collapse = "\n")
 }
 
 server <- function(input, output, session) {
@@ -2602,66 +2622,65 @@ server <- function(input, output, session) {
   })
 
   ## -------------------------------------------------------------- downloads --
-  output$dl_anova <- downloadHandler(
-    filename = function() paste0("anova_", Sys.Date(), ".csv"),
-    content = function(f) {
-      r <- ok()
-      out <- do.call(rbind, lapply(names(r$fits), function(nm) {
-        a <- r$fits[[nm]]$final$anova
-        data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p),
-                   row.names = NULL, check.names = FALSE)
-      }))
-      utils::write.csv(out, f, row.names = FALSE)
-    })
+  save_browser <- function(filename, content, mime)
+    session$sendCustomMessage("doepro_save",
+      list(filename = filename, content = content, mime = mime))
 
-  output$dl_means <- downloadHandler(
-    filename = function() paste0("means_", Sys.Date(), ".csv"),
-    content = function(f) {
-      r <- ok()
-      lt <- c("Letter", "Letter_within_MP", "Letter_within_SP",
-              "Letter_within_A", "Letter_within_B", "Letter_within_env")
-      out <- do.call(rbind, lapply(names(r$fits), function(nm) {
-        fit <- r$fits[[nm]]
-        do.call(rbind, lapply(names(fit$final$effects), function(en) {
-          e <- fit$final$effects[[en]]; m <- gate_letters(e)
-          g <- intersect(lt, names(m))
-          data.frame(
-            Response = nm, Transformation = TRANS[[fit$trans]]$lab, Effect = e$label,
-            Level = apply(m[e$vars], 1, paste, collapse = " x "),
-            Mean = m$Mean,
-            Back_transformed = if ("Mean_bt" %in% names(m)) m$Mean_bt else NA_real_,
-            N = m$N, SD = m$SD, SEm = e$sem, SEd = e$sed,
-            CD5 = e$cd5, CD1 = e$cd1, p_value = e$p,
-            Group  = if (length(g) >= 1) m[[g[1]]] else NA_character_,
-            Group2 = if (length(g) >= 2) m[[g[2]]] else NA_character_,
-            row.names = NULL, check.names = FALSE)
-        }))
-      }))
-      utils::write.csv(out, f, row.names = FALSE)
-    })
+  observeEvent(input$dl_anova, {
+    r <- ok()
+    out <- do.call(rbind, lapply(names(r$fits), function(nm) {
+      a <- r$fits[[nm]]$final$anova
+      data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p),
+                 row.names = NULL, check.names = FALSE)
+    }))
+    save_browser(paste0("DOEpro_anova_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
 
-  output$dl_ph <- downloadHandler(
-    filename = function() paste0("posthoc_", Sys.Date(), ".csv"),
-    content = function(f) {
-      x <- ph(); req(is.null(x$err))
-      utils::write.csv(x$groups, f, row.names = FALSE)
-    })
+  observeEvent(input$dl_means, {
+    r <- ok()
+    lt <- c("Letter", "Letter_within_MP", "Letter_within_SP",
+            "Letter_within_A", "Letter_within_B", "Letter_within_env")
+    out <- do.call(rbind, lapply(names(r$fits), function(nm) {
+      fit <- r$fits[[nm]]
+      do.call(rbind, lapply(names(fit$final$effects), function(en) {
+        e <- fit$final$effects[[en]]; m <- gate_letters(e)
+        g <- intersect(lt, names(m))
+        data.frame(
+          Response = nm, Transformation = TRANS[[fit$trans]]$lab, Effect = e$label,
+          Level = apply(m[e$vars], 1, paste, collapse = " x "),
+          Mean = m$Mean,
+          Back_transformed = if ("Mean_bt" %in% names(m)) m$Mean_bt else NA_real_,
+          N = m$N, SD = m$SD, SEm = e$sem, SEd = e$sed,
+          CD5 = e$cd5, CD1 = e$cd1, p_value = e$p,
+          Group  = if (length(g) >= 1) m[[g[1]]] else NA_character_,
+          Group2 = if (length(g) >= 2) m[[g[2]]] else NA_character_,
+          row.names = NULL, check.names = FALSE)
+      }))
+    }))
+    save_browser(paste0("DOEpro_means_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+
+  observeEvent(input$dl_ph, {
+    x <- ph(); req(is.null(x$err))
+    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(x$groups), "text/csv")
+  })
 
   output$dl_plot <- downloadHandler(
-    filename = function() paste0("plot_", Sys.Date(), ".png"),
+    filename = function() paste0("DOEpro_plot_", Sys.Date(), ".png"),
     content = function(f) ggsave(f, mp(), width = 9, height = 6, dpi = 300))
 
   report <- reactive(build_report(ok(), letters_on = isTRUE(input$letters),
                                   detailed = isTRUE(input$detailed)))
 
-  output$dl_html <- downloadHandler(
-    filename = function() paste0("DOEpro_report_", Sys.Date(), ".html"),
-    content = function(f) {
-      ## writeBin on raw bytes is reliable in every environment, including the
-      ## browser (webR) build where writeLines() can produce an empty file.
-      writeBin(charToRaw(enc2utf8(paste0(report(), "\n"))), f)
-    },
-    contentType = "text/html")
+  ## The report download is done in the browser (a JavaScript Blob), not through
+  ## downloadHandler. This behaves identically on a real Shiny server and in the
+  ## browser (shinylive/webR) build, where downloadHandler's shim is unreliable.
+  observeEvent(input$dl_html, {
+    session$sendCustomMessage("doepro_save", list(
+      filename = paste0("DOEpro_report_", Sys.Date(), ".html"),
+      content  = report(),
+      mime     = "text/html"))
+  })
 
   output$dl_pdf <- downloadHandler(
     filename = function() paste0("DOEpro_report_", Sys.Date(), ".pdf"),
