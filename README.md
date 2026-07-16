@@ -1,5 +1,11 @@
 # DOEpro
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21399570.svg)](https://doi.org/10.5281/zenodo.21399570)
+[![Licence: GPL-3](https://img.shields.io/badge/licence-GPL--3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Launch app](https://img.shields.io/badge/launch-doepro.pages.dev-brightgreen.svg)](https://doepro.pages.dev)
+
+**Try it now — no installation:** <https://doepro.pages.dev>
+
 A free, open, single-file R Shiny application for the analysis of designed agricultural
 experiments. It brings the standard analyses used in field and horticultural research —
 ANOVA for the common designs, mean comparisons, data transformations and clear reporting —
@@ -199,6 +205,28 @@ look.
 - Grouping letters assume equal replication. With unbalanced data the app warns you and the
   letters become approximate.
 - Blocks and replications are treated as fixed effects.
+
+## How to cite
+
+If DOEpro contributes to work you publish, please cite it:
+
+> Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026). *DOEpro: analysis of designed
+> agricultural experiments*. Version 2.0.0. Zenodo. doi:10.5281/zenodo.21399570
+
+```bibtex
+@software{doepro2026,
+  author  = {Shah, Immad A. and Khan, Uzair Javid and Jeelani, M. Iqbal},
+  title   = {DOEpro: Analysis of Designed Agricultural Experiments},
+  year    = {2026},
+  version = {2.0.0},
+  doi     = {10.5281/zenodo.21399570},
+  url     = {https://github.com/Uzairkhan11w/DOEpro}
+}
+```
+
+The DOI above is the *concept* DOI: it always resolves to the most recent release.
+GitHub's **Cite this repository** button reads `CITATION.cff` and produces the same
+reference.
 
 ## Licence
 

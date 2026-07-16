@@ -8,7 +8,7 @@ Reference notes for maintainers of **DOEpro**. Two goals, handled separately:
   paper.
 
 Throughout, `Uzairkhan11w` stands for the GitHub owner (user or organisation) the repository lives
-under, and `10.5281/zenodo.XXXXXXX` for the Zenodo concept DOI once it is minted.
+under, The Zenodo concept DOI is `10.5281/zenodo.21399570`.
 
 ---
 
@@ -161,7 +161,7 @@ Zenodo mints DOIs for GitHub releases, free and permanently.
 3. Zenodo archives the release and issues two DOIs: a **version DOI** for `v2.0.0`, and a
    **concept DOI** that always resolves to the newest version. Publications cite the
    concept DOI.
-4. The concept DOI replaces the `10.5281/zenodo.XXXXXXX` placeholder in `CITATION.cff`,
+4. The concept DOI is recorded in `CITATION.cff`,
    `inst/CITATION` and the README badge.
 
 Zenodo reads author and title metadata from `CITATION.cff`.
@@ -182,7 +182,7 @@ Zenodo reads author and title metadata from `CITATION.cff`.
 Once the DOI is minted:
 
 > Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026). *DOEpro: Analysis of Designed
-> Agricultural Experiments*. R package version 2.0.0. doi:10.5281/zenodo.XXXXXXX
+> Agricultural Experiments*. R package version 2.0.0. doi:10.5281/zenodo.21399570
 
 The app's **About** tab, the HTML report and every page of the PDF carry the credit line,
 so attribution travels with the output.

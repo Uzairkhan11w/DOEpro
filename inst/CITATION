@@ -9,9 +9,9 @@ bibentry(
   year     = "2026",
   note     = "R package version 2.0.0",
   url      = "https://github.com/Uzairkhan11w/DOEpro",
-  doi      = "10.5281/zenodo.XXXXXXX",
+  doi      = "10.5281/zenodo.21399570",
   textVersion = paste(
     "Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026).",
     "DOEpro: Analysis of Designed Agricultural Experiments.",
-    "R package version 2.0.0. doi:10.5281/zenodo.XXXXXXX")
+    "R package version 2.0.0. doi:10.5281/zenodo.21399570")
 )

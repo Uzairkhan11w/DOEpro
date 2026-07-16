@@ -39,6 +39,8 @@ AUTHORS <- list(
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
        email = NA_character_,
        orcid = "0000-0002-2974-2871"))
+APP_DOI     <- "10.5281/zenodo.21399570"   # concept DOI: always the latest release
+APP_URL     <- "https://doepro.pages.dev"
 CREDIT_SHORT <- "DOEpro \u00b7 Shah, Khan & Jeelani"
 CREDIT_LONG  <- paste0(
   "Generated with ", APP_NAME, " v", APP_VERSION,
@@ -1750,6 +1752,10 @@ authors_html <- function(with_contact = FALSE) paste0(
 
 credit_block <- function() paste0(
   "<div class='creditblock'>", CREDIT_LONG, "<br>",
+  "Please cite: Shah, I. A., Khan, U. J. &amp; Jeelani, M. I. (",
+  format(Sys.Date(), "%Y"), "). ", APP_NAME,
+  ": analysis of designed agricultural experiments. Version ", APP_VERSION,
+  ". Zenodo. doi:<a href='https://doi.org/", APP_DOI, "'>", APP_DOI, "</a><br>",
   format(Sys.time(), "%d %B %Y, %H:%M"), "</div>")
 
 build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE) {
@@ -2834,11 +2840,15 @@ carry out in tools such as OPSTAT.</p>
 
 <h3>How to cite</h3>
 <div class='box'>Shah, I. A., Khan, U. J. and Jeelani, M. I. (%s).
-<i>%s: analysis of designed experiments in R.</i> Version %s.</div>
+<i>%s: analysis of designed agricultural experiments.</i> Version %s. Zenodo.
+doi:<a href='https://doi.org/%s' target='_blank'>%s</a></div>
+<p class='note'>This is the concept DOI: it always resolves to the most recent release.</p>
 
 <h3>Licence and source</h3>
-<p>Released under the GPL-3 licence. The source code, issue tracker and citation file live
-in the project repository; every release is archived and carries a DOI.</p>
+<p>Released under the GPL-3 licence. Source code and issue tracker:
+<a href='https://github.com/Uzairkhan11w/DOEpro' target='_blank'>github.com/Uzairkhan11w/DOEpro</a>.
+Run it in your browser at <a href='%s' target='_blank'>%s</a>.
+Every release is archived on Zenodo and carries a DOI.</p>
 
 <h3>Statistical methods</h3>
 <p>The analysis of variance is fitted with <code>stats::aov</code>, using
@@ -2848,7 +2858,8 @@ procedures are implemented directly in the app, so it depends only on <b>shiny</
 <b>DT</b> and <b>ggplot2</b>.</p>
 <p class='note'>%s</p>",
       APP_NAME, APP_VERSION, author_li,
-      format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, CREDIT_LONG))
+      format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
+      APP_URL, APP_URL, CREDIT_LONG))
   })
 }
 

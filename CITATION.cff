@@ -37,7 +37,11 @@ authors:
     given-names: "M. Iqbal"
     affiliation: "Division of Agricultural Statistics, SKUAST-Kashmir, Shalimar, India"
     orcid: "https://orcid.org/0000-0002-2974-2871"
+doi: "10.5281/zenodo.21399570"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.XXXXXXX"
+    value: "10.5281/zenodo.21399570"
     description: "Concept DOI: always resolves to the latest release"
+  - type: doi
+    value: "10.5281/zenodo.21399571"
+    description: "Version DOI for v2.0.0"
