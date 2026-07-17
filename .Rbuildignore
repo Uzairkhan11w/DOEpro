@@ -1,0 +1,10 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^docs$
+^app$
+^\.github$
+^DEPLOYMENT\.md$
+^CITATION\.cff$
+^build_app\.R$
+^\.git$
+^README_BUILD\.md$

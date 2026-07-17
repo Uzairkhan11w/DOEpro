@@ -1,5 +1,6 @@
 # DOEpro
 
+[![R-CMD-check](https://github.com/Uzairkhan11w/DOEpro/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Uzairkhan11w/DOEpro/actions/workflows/R-CMD-check.yaml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21399570.svg)](https://doi.org/10.5281/zenodo.21399570)
 [![Licence: GPL-3](https://img.shields.io/badge/licence-GPL--3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Launch app](https://img.shields.io/badge/launch-doepro.pages.dev-brightgreen.svg)](https://doepro.pages.dev)

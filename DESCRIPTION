@@ -21,10 +21,9 @@ Description: A Shiny application and supporting functions for the analysis of
 License: GPL (>= 3)
 Encoding: UTF-8
 Depends: R (>= 4.0)
-Imports: shiny, DT, ggplot2, stats, utils, grDevices
-Suggests: pagedown, testthat (>= 3.0.0), knitr, rmarkdown
+Imports: shiny, DT, ggplot2, rlang, stats, utils, graphics, grDevices
+Suggests: pagedown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
-URL: https://github.com/Uzairkhan11w/DOEpro, https://uzairkhan11w.github.io/DOEpro/
+URL: https://github.com/Uzairkhan11w/DOEpro, https://doepro.pages.dev
 BugReports: https://github.com/Uzairkhan11w/DOEpro/issues
-RoxygenNote: 7.3.2
-VignetteBuilder: knitr
+Config/roxygen2/version: 8.0.0
