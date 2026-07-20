@@ -7,5 +7,5 @@
 ^CITATION\.cff$
 ^build_app\.R$
 ^\.git$
-^README_BUILD\.md$
 ^cran-comments\.md$
+^CRAN-SUBMISSION$
