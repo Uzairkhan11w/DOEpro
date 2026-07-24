@@ -137,7 +137,11 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
   per <- 62L
   pages <- split(L, ceiling(seq_along(L) / per))
   grDevices::pdf(file, width = 8.27, height = 11.69)
-  on.exit(grDevices::dev.off(), add = TRUE)
+  oldpar <- graphics::par(no.readonly = TRUE)
+  on.exit({
+    graphics::par(oldpar)
+    grDevices::dev.off()
+  }, add = TRUE)
   graphics::par(mar = c(2, 1, 1, 1), family = "mono")
   for (pg in pages) {
     graphics::plot.new()

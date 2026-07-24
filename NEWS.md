@@ -1,3 +1,16 @@
+# DOEpro 2.0.1
+
+Changes made in response to the CRAN review of version 2.0.0.
+
+* Software names are quoted and the methods are referenced with their DOIs in
+  the package description.
+* `\value` is documented for the exported `DESIGNS` and `TRANS` objects.
+* `demo_data()` no longer sets a random seed. The example datasets are now built
+  from a stored vector of deviates, so they are identical on every machine and
+  the user's random number stream is left untouched.
+* The plain-text report saves and restores the user's graphical parameters with
+  an immediate `on.exit()`.
+
 # DOEpro 2.0.0
 
 First public release.

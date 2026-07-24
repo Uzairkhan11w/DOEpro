@@ -151,6 +151,12 @@ suggest_transform <- function(res, asm, dtype = "auto") {
 #'   \code{"arcsine"}, \code{"arcsine01"}, \code{"reciprocal"} and
 #'   \code{"boxcox"}.
 #'
+#' @return A named list of length 9. Each element is itself a list with
+#'   \code{lab}, the label shown in the application; \code{f}, a function
+#'   applying the transformation; and \code{b}, a function applying its
+#'   inverse, which is what allows means to be reported on the original scale
+#'   of measurement.
+#'
 #' @examples
 #' names(TRANS)
 #' vapply(TRANS, `[[`, character(1), "lab")

@@ -13,6 +13,13 @@ A named list of length 9. The names are the keys used in the
 \usage{
 TRANS
 }
+\value{
+A named list of length 9. Each element is itself a list with
+  \code{lab}, the label shown in the application; \code{f}, a function
+  applying the transformation; and \code{b}, a function applying its
+  inverse, which is what allows means to be reported on the original scale
+  of measurement.
+}
 \description{
 A named list of the variance-stabilising transformations. Each entry holds a
 label (\code{lab}), the transformation (\code{f}) and its inverse

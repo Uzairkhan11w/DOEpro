@@ -9,6 +9,12 @@ A named character vector of length 11.
 \usage{
 DESIGNS
 }
+\value{
+A named character vector of length 11. Each element is the design
+  code passed to the \code{design} argument of \code{\link{analyze}} or
+  \code{\link{run_all}}; the corresponding name is the label shown in the
+  application.
+}
 \description{
 A named character vector: the names are the labels shown in the application
 and the values are the design codes passed to \code{\link{analyze}}.

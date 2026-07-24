@@ -1,6 +1,6 @@
 Package: DOEpro
 Title: Analysis of Designed Agricultural Experiments
-Version: 2.0.0
+Version: 2.0.1
 Authors@R: c(
     person("Immad A.", "Shah", email = "immad11w@skuastkashmir.ac.in",
            role = "aut", comment = c(ORCID = "0000-0003-2761-5112")),
@@ -8,16 +8,21 @@ Authors@R: c(
            role = c("aut", "cre"), comment = c(ORCID = "0009-0001-6368-0977")),
     person("M. Iqbal", "Jeelani", role = "aut",
            comment = c(ORCID = "0000-0002-2974-2871")))
-Description: A Shiny application and supporting functions for the analysis of
-    designed agricultural experiments. Handles completely randomised, randomised
-    complete block, Latin square, factorial (up to four factors), split-plot and
-    strip-plot designs, and pooled (combined) analysis over environments including
-    factorial treatments; analyses several response variables simultaneously;
-    recommends and applies variance-stabilising transformations; reports standard
-    errors and critical differences for every legitimate comparison, including the
-    four distinct comparisons of a split plot with a Satterthwaite-weighted t for
-    the mixed ones; and produces publication-format tables of means, diagnostic
-    plots and a written interpretation.
+Description: A 'shiny' application and supporting functions for the analysis of
+    designed agricultural experiments, following the procedures set out by Gomez
+    and Gomez (1984, ISBN:9780471870920). Handles completely randomised,
+    randomised complete block, Latin square, factorial (up to four factors),
+    split-plot and strip-plot designs, and pooled (combined) analysis over
+    environments including factorial treatments, after Yates and Cochran (1938)
+    <doi:10.1017/S0021859600050978>; analyses several response variables
+    simultaneously; recommends and applies variance-stabilising transformations
+    using the profile likelihood of Box and Cox (1964)
+    <doi:10.1111/j.2517-6161.1964.tb00553.x>; reports standard errors and
+    critical differences for every legitimate comparison, including the four
+    distinct comparisons of a split plot, the mixed ones using the approximation
+    of Satterthwaite (1946) <doi:10.2307/3002019>; and produces
+    publication-format tables of means, diagnostic plots and a written
+    interpretation.
 License: GPL (>= 3)
 Encoding: UTF-8
 Depends: R (>= 4.0)

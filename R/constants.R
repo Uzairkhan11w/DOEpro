@@ -23,7 +23,7 @@
 #' @importFrom stats aov as.formula lm residuals fitted model.matrix setNames
 #' @importFrom stats pf pt qt ptukey qtukey qf pchisq median sd var na.omit
 #' @importFrom stats shapiro.test complete.cases terms coef df.residual anova
-#' @importFrom stats aggregate ave qqnorm quantile bartlett.test approx rnorm
+#' @importFrom stats aggregate ave qqnorm quantile bartlett.test approx
 #' @importFrom utils combn head tail write.csv read.csv capture.output modifyList
 #' @importFrom graphics par plot.new text mtext
 #' @importFrom grDevices png dev.off
@@ -72,6 +72,11 @@ LOGO_URI <- "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKYAAACgCAYAAACG0RdqA
 #' and the values are the design codes passed to \code{\link{analyze}}.
 #'
 #' @format A named character vector of length 11.
+#'
+#' @return A named character vector of length 11. Each element is the design
+#'   code passed to the \code{design} argument of \code{\link{analyze}} or
+#'   \code{\link{run_all}}; the corresponding name is the label shown in the
+#'   application.
 #'
 #' @examples
 #' DESIGNS
@@ -199,6 +204,23 @@ anova_display <- function(an) {
 }
 
 ## ------------------------------------------------------------- demo datasets
+## Deterministic stand-in for stats::demo_noise(), used only to build the example
+## datasets returned by demo_data(). A stored vector of standardised deviates is
+## recycled instead of drawing random numbers, so the examples are identical on
+## every machine and the user's random number stream is left untouched. The
+## vector has prime length, so recycling cannot line up with the block, plot or
+## treatment structure of any of the example designs.
+demo_noise <- function(n, mean = 0, sd = 1) {
+  z <- c(
+    1.148, 0.655, 0.101, 0.001, 1.317, 1.446, 0.718,
+    0.083, -0.971, -0.872, -1.400, 0.655, 1.004, 0.486,
+    -2.939, 0.063, -0.688, 0.641, -1.337, -1.727, 1.300,
+    0.508, 1.206, 0.001, 0.586, -1.277, 0.092, 0.863,
+    -1.769, 0.100, -1.178, -0.107, -0.280, 1.361, -0.274,
+    0.579, 0.529, -0.265, -0.343, 0.616, -0.633)
+  mean + sd * rep_len(z, n)
+}
+
 #' Example datasets for each design
 #'
 #' Generates a small, balanced example dataset for a design, so you can try
@@ -219,16 +241,15 @@ anova_display <- function(an) {
 #'
 #' @export
 demo_data <- function(which) {
-  set.seed(42)
   switch(which,
     "CRD" = {
       d <- expand.grid(Rep = 1:4, Treatment = paste0("T", 1:5))
-      d$Yield <- round(rnorm(nrow(d), rep(c(28, 31, 35, 30, 40), each = 4), 2.2), 2)
+      d$Yield <- round(demo_noise(nrow(d), rep(c(28, 31, 35, 30, 40), each = 4), 2.2), 2)
       d[, c("Treatment", "Rep", "Yield")]
     },
     "RCBD" = {
       d <- expand.grid(Block = paste0("B", 1:4), Variety = paste0("V", 1:6))
-      d$Yield <- round(rnorm(nrow(d), rep(c(42, 47, 39, 55, 50, 44), each = 4) +
+      d$Yield <- round(demo_noise(nrow(d), rep(c(42, 47, 39, 55, 50, 44), each = 4) +
                                rep(c(-1.5, 0, 1, 0.5), 6), 2.0), 2)
       d[, c("Block", "Variety", "Yield")]
     },
@@ -236,7 +257,7 @@ demo_data <- function(which) {
       d <- expand.grid(Row = paste0("R", 1:4), Column = paste0("C", 1:4))
       d$Treatment <- c("A","B","C","D","B","C","D","A",
                        "C","D","A","B","D","A","B","C")
-      d$Yield <- round(rnorm(16, c(20, 24, 27, 22)[
+      d$Yield <- round(demo_noise(16, c(20, 24, 27, 22)[
         match(d$Treatment, c("A","B","C","D"))], 1.4), 2)
       d[, c("Row", "Column", "Treatment", "Yield")]
     },
@@ -247,7 +268,7 @@ demo_data <- function(which) {
       mu <- 30 + c(0, 6, 9)[as.integer(d$Nitrogen)] +
             c(0, 4)[as.integer(d$Variety)] +
             ifelse(d$Variety == "V2" & d$Nitrogen == "N120", 5, 0)
-      d$Yield <- round(rnorm(nrow(d), mu, 1.8), 2)
+      d$Yield <- round(demo_noise(nrow(d), mu, 1.8), 2)
       d[, c("Block", "Nitrogen", "Variety", "Yield")]
     },
     "SPLIT" = {
@@ -257,8 +278,8 @@ demo_data <- function(which) {
       mu <- 40 + c(0, 5, 8)[as.integer(d$Irrigation)] +
             c(0, 3, 6, 2)[as.integer(d$Variety)] +
             ifelse(d$Irrigation == "I3" & d$Variety == "V3", 4, 0)
-      wp <- rnorm(12, 0, 2.0)[as.integer(interaction(d$Rep, d$Irrigation))]
-      d$Yield <- round(mu + wp + rnorm(nrow(d), 0, 1.3), 2)
+      wp <- demo_noise(12, 0, 2.0)[as.integer(interaction(d$Rep, d$Irrigation))]
+      d$Yield <- round(mu + wp + demo_noise(nrow(d), 0, 1.3), 2)
       d[, c("Rep", "Irrigation", "Variety", "Yield")]
     },
     "STRIP" = {
@@ -268,9 +289,9 @@ demo_data <- function(which) {
       mu <- 25 + c(0, 2, -3)[as.integer(d$Tillage)] +
             c(0, 3, 5, 6)[as.integer(d$Mulch)] +
             ifelse(d$Tillage == "Zero" & d$Mulch %in% c("M2", "M3"), 2.5, 0)
-      ea <- rnorm(12, 0, 1.0)[as.integer(interaction(d$Rep, d$Tillage))]
-      eb <- rnorm(16, 0, 0.8)[as.integer(interaction(d$Rep, d$Mulch))]
-      d$Yield <- round(mu + ea + eb + rnorm(nrow(d), 0, 0.9), 2)
+      ea <- demo_noise(12, 0, 1.0)[as.integer(interaction(d$Rep, d$Tillage))]
+      eb <- demo_noise(16, 0, 0.8)[as.integer(interaction(d$Rep, d$Mulch))]
+      d$Yield <- round(mu + ea + eb + demo_noise(nrow(d), 0, 0.9), 2)
       d[, c("Rep", "Tillage", "Mulch", "Yield")]
     },
     "POOLRCBD" = {
@@ -281,8 +302,8 @@ demo_data <- function(which) {
       var  <- c(0, 3, 6, 4)[as.integer(d$Variety)]       # variety effect
       vxl  <- ifelse(d$Location == "Zampathan" & d$Variety %in% c("V3", "V4"), 3.5, 0) +
               ifelse(d$Location == "Wadura" & d$Variety == "V2", 2.0, 0)  # V x L
-      repe <- rnorm(9, 0, 1.1)[as.integer(interaction(d$Rep, d$Location))]
-      d$Yield <- round(28 + loc + var + vxl + repe + rnorm(nrow(d), 0, 1.0), 2)
+      repe <- demo_noise(9, 0, 1.1)[as.integer(interaction(d$Rep, d$Location))]
+      d$Yield <- round(28 + loc + var + vxl + repe + demo_noise(nrow(d), 0, 1.0), 2)
       d[, c("Location", "Rep", "Variety", "Yield")]
     },
     "POOLCRD" = {
@@ -292,7 +313,7 @@ demo_data <- function(which) {
       sea <- c(0, 5, -4)[as.integer(d$Season)]
       trt <- c(0, 4, 7, 5)[as.integer(d$Treatment)]
       txs <- ifelse(d$Season == "Zaid" & d$Treatment %in% c("T3", "T4"), 3.0, 0)
-      d$Yield <- round(22 + sea + trt + txs + rnorm(nrow(d), 0, 1.3), 2)
+      d$Yield <- round(22 + sea + trt + txs + demo_noise(nrow(d), 0, 1.3), 2)
       d[, c("Season", "Treatment", "Yield")]
     },
     "POOLFACT" = {                                   # 2-factor factorial over locations (RCBD)
@@ -305,9 +326,9 @@ demo_data <- function(which) {
       var <- c(0, 3, 6)[as.integer(d$Variety)]
       nxv <- ifelse(d$Nitrogen == "N1" & d$Variety == "V3", 2.5, 0)           # N x V
       nxl <- ifelse(d$Nitrogen == "N1" & d$Location == "Zampathan", -2.0, 0)  # N x Location
-      rep_e <- rnorm(9, 0, 1.0)[as.integer(interaction(d$Rep, d$Location))]
+      rep_e <- demo_noise(9, 0, 1.0)[as.integer(interaction(d$Rep, d$Location))]
       d$Yield <- round(26 + loc + nit + var + nxv + nxl + rep_e +
-                       rnorm(nrow(d), 0, 1.0), 2)
+                       demo_noise(nrow(d), 0, 1.0), 2)
       d[, c("Location", "Rep", "Nitrogen", "Variety", "Yield")]
     },
     "POOLFACTC" = {                                  # 2-factor factorial over seasons (CRD)
@@ -319,7 +340,7 @@ demo_data <- function(which) {
       sp  <- c(0, 3)[as.integer(d$Spacing)]
       var <- c(0, 4, 7)[as.integer(d$Variety)]
       sxv <- ifelse(d$Spacing == "S2" & d$Variety == "V3", 3.0, 0)
-      d$Yield <- round(24 + sea + sp + var + sxv + rnorm(nrow(d), 0, 1.3), 2)
+      d$Yield <- round(24 + sea + sp + var + sxv + demo_noise(nrow(d), 0, 1.3), 2)
       d[, c("Season", "Spacing", "Variety", "Yield")]
     }
   )
