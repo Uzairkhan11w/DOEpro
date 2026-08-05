@@ -10,7 +10,7 @@ abstract: >-
   split plot; and produces publication-format tables of means, plots and a
   written interpretation.
 type: software
-version: 2.0.0
+version: 2.0.1
 date-released: "2026-07-10"
 license: GPL-3.0-or-later
 repository-code: "https://github.com/Uzairkhan11w/DOEpro"

@@ -1,13 +1,14 @@
 # DOEpro
 
+[![CRAN status](https://www.r-pkg.org/badges/version/DOEpro)](https://CRAN.R-project.org/package=DOEpro)
 [![R-CMD-check](https://github.com/Uzairkhan11w/DOEpro/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/Uzairkhan11w/DOEpro/actions/workflows/R-CMD-check.yaml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21399570.svg)](https://doi.org/10.5281/zenodo.21399570)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21399570-blue.svg)](https://doi.org/10.5281/zenodo.21399570)
 [![Licence: GPL-3](https://img.shields.io/badge/licence-GPL--3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Launch app](https://img.shields.io/badge/launch-doepro.pages.dev-brightgreen.svg)](https://doepro.pages.dev)
 
 **Try it now — no installation:** <https://doepro.pages.dev>
 
-A free, open, single-file R Shiny application for the analysis of designed agricultural
+A free, open R package and Shiny application for the analysis of designed agricultural
 experiments. It brings the standard analyses used in field and horticultural research —
 ANOVA for the common designs, mean comparisons, data transformations and clear reporting —
 together in one accessible interface, and serves as a free, self-contained option for the
@@ -30,15 +31,40 @@ Suggestions and feedback are welcome — write to the maintainer (uzairkhan11w@g
 
 ## Installation
 
+DOEpro is on CRAN:
+
 ```r
-install.packages(c("shiny", "DT", "ggplot2"))   # that is the whole dependency list
-install.packages("pagedown")                    # optional: server-side PDF export
+install.packages("DOEpro")
 ```
+
+Or the development version from GitHub:
+
+```r
+# install.packages("remotes")
+remotes::install_github("Uzairkhan11w/DOEpro")
+```
+
+The only dependencies are **shiny**, **DT** and **ggplot2** (plus **rlang**), which is
+what keeps the browser build possible. **pagedown** is optional and is used only for
+server-side PDF export where a Chrome installation is available.
 
 ## Running
 
 ```r
-shiny::runApp("app.R")
+library(DOEpro)
+run_DOEpro()
+```
+
+Or use it without installing anything at <https://doepro.pages.dev>.
+
+The analysis functions can also be called directly:
+
+```r
+d   <- demo_data("RCBD")
+res <- analyze(d, "RCBD",
+               map = list(response = "Yield", treat = "Variety", block = "Block"))
+res$anova
+res$effects[["Variety"]]$means
 ```
 
 Or open `app.R` in RStudio and press **Run App**.
@@ -212,14 +238,14 @@ look.
 If DOEpro contributes to work you publish, please cite it:
 
 > Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026). *DOEpro: analysis of designed
-> agricultural experiments*. Version 2.0.0. Zenodo. doi:10.5281/zenodo.21399570
+> agricultural experiments*. Version 2.0.1. Zenodo. doi:10.5281/zenodo.21399570
 
 ```bibtex
 @software{doepro2026,
   author  = {Shah, Immad A. and Khan, Uzair Javid and Jeelani, M. Iqbal},
   title   = {DOEpro: Analysis of Designed Agricultural Experiments},
   year    = {2026},
-  version = {2.0.0},
+  version = {2.0.1},
   doi     = {10.5281/zenodo.21399570},
   url     = {https://github.com/Uzairkhan11w/DOEpro}
 }
