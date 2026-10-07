@@ -14,11 +14,31 @@ scale_note <- function(res) {
   paste("Transformed scale:", TRANS[[res$trans]]$lab)
 }
 
+## What the error bars and letters on a plot of means mean, at the chosen level.
+## For a split, strip or pooled interaction both differ: the bars are the SE(m)
+## for comparing means at the same level of the slicing factor, and the letters
+## restart in each of its levels.
+plot_caption <- function(e, bars, lets_on) {
+  sl <- e$slice
+  bars <- if (!bars) NULL
+          else if (is.null(sl)) "Error bars: one standard error either side of each mean."
+          else sprintf("Error bars: SE(m) for comparing means at the same level of %s (SE(d) / sqrt(2)).", sl)
+  lets <- if (!lets_on) NULL
+          else if (!effect_sig(e))
+            sprintf("No letters: the F-test is not significant at the %s%% level.", pct(e$alpha))
+          else if (is.null(sl))
+            sprintf("Means sharing a letter are not significantly different at the %s%% level.", pct(e$alpha))
+          else sprintf(paste0("Letters compare means within the same level of %s only; there, ",
+                              "means sharing a letter are not significantly different at the %s%% level."),
+                       sl, pct(e$alpha))
+  if (is.null(c(bars, lets))) NULL else paste(c(bars, lets), collapse = " ")
+}
+
 plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
   e <- res$effects[[effect]]; d <- res$data; resp <- res$resp
-  m <- e$means
+  m <- gate_letters(e)              # no letters under a non-significant F-test
   v <- e$vars
-  m$.se <- e$sem
+  m$.se <- m$SE                     # each mean's own SE: replication may differ
   lab_y <- max(m$Mean + m$.se) * 1.06
 
   if (length(v) == 1) {
@@ -34,7 +54,8 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
       (if (show_letters && type != "box")
         geom_text(aes(y = Mean + .se, label = Letter), vjust = -0.6, size = 4.5) else NULL) +
       labs(title = paste("Effect of", v, "on", resp), y = resp, x = v,
-           subtitle = scale_note(res)) +
+           subtitle = scale_note(res),
+           caption = plot_caption(e, type != "box", show_letters && type != "box")) +
       theme_doe()
     return(p)
   }
@@ -63,7 +84,9 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
   if (length(v) > 2) p <- p + facet_wrap(stats::as.formula(
     paste("~", paste(v[-(1:2)], collapse = "+"))))
   p <- p + labs(title = paste("Interaction:", e$label), y = resp, x = f1,
-                colour = f2, subtitle = scale_note(res)) + theme_doe()
+                colour = f2, subtitle = scale_note(res),
+                caption = plot_caption(e, type %in% c("bar", "line"),
+                                       show_letters && type == "bar")) + theme_doe()
   if (type == "heat") p + labs(fill = paste("Mean", resp), y = f2) else p + labs(fill = f2)
 }
 
@@ -94,8 +117,8 @@ plot_boxcox <- function(asm) {
     geom_vline(xintercept = bc$ci, colour = "grey55", lty = 3) +
     annotate("text", x = bc$lambda, y = min(df$loglik), vjust = -0.4, hjust = -0.1,
              label = sprintf("lambda = %.2f", bc$lambda), colour = "#C0392B", size = 3.6) +
-    labs(title = sprintf("Box-Cox profile (optimal lambda = %.2f, 95%% CI %.2f to %.2f)",
-                         bc$lambda, bc$ci[1], bc$ci[2]),
+    labs(title = sprintf("Box-Cox profile (optimal lambda = %.2f, %s%% CI %.2f to %.2f)",
+                         bc$lambda, pct(bc$level), bc$ci[1], bc$ci[2]),
          x = "lambda", y = "log-likelihood") + theme_doe()
 }
 

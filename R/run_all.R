@@ -98,6 +98,16 @@ auto_scan <- function(d, design, map, candidates, alpha = 0.05, dtype = "auto") 
 
 CREDIT_ASCII <- "DOEpro | Shah, Khan & Jeelani"
 
+## HTML text as plain text for the monospaced PDF: tags dropped, entities spelt out
+plain_text <- function(x) {
+  x <- gsub("<[^>]*>", " ", x)
+  ent <- c("&lt;" = "<", "&gt;" = ">", "&le;" = "<=", "&plusmn;" = "+/-",
+           "&times;" = "x", "&radic;" = "sqrt", "&nbsp;" = " ", "&mdash;" = "-",
+           "&ndash;" = "-", "&middot;" = ".", "&chi;" = "chi", "&amp;" = "&")
+  for (k in names(ent)) x <- gsub(k, ent[[k]], x, fixed = TRUE)
+  x
+}
+
 ## Plain monospaced PDF, drawn on the base graphics device.  Used when no
 ## HTML-to-PDF renderer is installed, so the PDF button always works.
 pdf_plain <- function(rr, file, letters_on = TRUE) {
@@ -115,22 +125,29 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
   for (nm in names(rr$fits)) {
     f <- rr$fits[[nm]]
     L <- c(L, strrep("-", 92), paste("RESPONSE:", f$header), strrep("-", 92), "",
-           "ANALYSIS OF VARIANCE", txt(anova_display(f$final$anova)), "")
+           "ANALYSIS OF VARIANCE", txt(anova_display(f$final$anova, rr$alpha)),
+           strwrap(plain_text(anova_note(f$final)), width = 90), "")
     for (en in names(f$final$effects)) {
       e <- f$final$effects[[en]]
-      m <- e$means
-      keep <- intersect(c(e$vars, "Mean", "Mean_bt", "N", "Letter"), names(m))
-      L <- c(L, sprintf("MEANS: %s", e$label), txt(m[, keep, drop = FALSE]),
-             sprintf("  SE(m) = %s   SE(d) = %s   C.D.(5%%) = %s   C.D.(1%%) = %s",
-                     fmt(e$sem), fmt(e$sed),
-                     if (!is.na(e$p) && e$p < 0.05) fmt(e$cd5) else "NS",
-                     if (!is.na(e$p) && e$p < 0.01) fmt(e$cd1) else "NS"), "")
+      m <- gate_letters(e)
+      keep <- intersect(c(e$vars, "Mean", "Raw_mean", "Mean_bt", "N",
+                          if (!isTRUE(e$equal_rep)) "SE", LETTER_COLS), names(m))
+      mm <- m[, keep, drop = FALSE]
+      names(mm) <- sub("^Raw_mean$", "Unadjusted_mean", sub("^Mean_bt$", "Back_transformed", names(mm)))
+      within <- if (is.null(e$slice)) "" else sprintf(" (within the same %s)", e$slice)
+      xt <- extra_text(e)
+      L <- c(L, sprintf("MEANS: %s", e$label), txt(mm),
+             sprintf("  SE(m)%s = %s   SE(d) = %s   %s = %s", within,
+                     err_text(e, "sem", 3, html = FALSE), err_text(e, "sed", 3, html = FALSE),
+                     cd_name(e$alpha),
+                     if (effect_sig(e)) err_text(e, "cd", 3, html = FALSE) else "NS"),
+             if (length(xt)) sprintf("  %s = %s", names(xt), xt), "")
     }
     L <- c(L, sprintf("C.V. : %s",
                       paste(sprintf("%s = %s", names(f$final$cv), fmt(f$final$cv, 2)),
                             collapse = "   ")), "",
            "INTERPRETATION",
-           strwrap(gsub("<[^>]*>", " ", interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab)),
+           strwrap(plain_text(interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab)),
                    width = 90), "")
   }
 
@@ -150,70 +167,3 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
   }
   invisible(TRUE)
 }
-
-
-HELP_HTML <- "
-<h3>Quick start</h3>
-<ol>
-<li>Copy your data from Excel in <b>long format</b> (one row per plot) and paste it into tab 1, or load an example.</li>
-<li>Go to tab 2, choose the design, map each column to its role, and press <b>Run analysis</b>.</li>
-<li>Tab 3 gives every table of means with SEm&plusmn;, SEd, CD (5% and 1%) and CV(%).</li>
-<li>Tab 4 tests the ANOVA assumptions and suggests a transformation.</li>
-<li>Tabs 5-6 give post-hoc groupings and publication-ready plots; tab 7 writes the interpretation and exports a report.</li>
-</ol>
-
-<h3>Layout expected for each design</h3>
-<table class='doe'>
-<tr><th>Design</th><th>Columns you must supply</th><th>Error term used for CD</th></tr>
-<tr><td>CRD</td><td>Response, Treatment</td><td>Error</td></tr>
-<tr><td>RCBD</td><td>Response, Treatment, Block</td><td>Error</td></tr>
-<tr><td>Latin square</td><td>Response, Treatment, Row, Column</td><td>Error</td></tr>
-<tr><td>Factorial CRD / RCBD</td><td>Response, 2-4 factors (+ Block for RCBD)</td><td>Error (pooled)</td></tr>
-<tr><td>Split plot</td><td>Response, Replication, Main-plot factor, Sub-plot factor</td><td>Error(a) for main plots, Error(b) for sub plots</td></tr>
-<tr><td>Strip plot</td><td>Response, Replication, Horizontal factor, Vertical factor</td><td>Error(a), Error(b), Error(c)</td></tr>
-</table>
-
-<h3>Standard errors and critical differences</h3>
-<p>For a mean based on <i>n</i> observations, SEm&plusmn; = &radic;(MSE/n), SEd = &radic;(2&middot;MSE/n) and CD = t<sub>&alpha;/2, df</sub> &times; SEd. Two means differ significantly when their difference exceeds the CD. CD is quoted only when the corresponding F-test is significant.</p>
-<p>In a <b>split plot</b> the two factors are tested against different errors, so four different comparisons exist:</p>
-<ul>
-<li>two main-plot means: SEd = &radic;(2&middot;Ea/(r&middot;b))</li>
-<li>two sub-plot means: SEd = &radic;(2&middot;Eb/(r&middot;a))</li>
-<li>two sub-plot means at the same main plot: SEd = &radic;(2&middot;Eb/r)</li>
-<li>two main-plot means at the same sub-plot level: SEd = &radic;(2[(b-1)Eb + Ea]/(r&middot;b)), tested with a Satterthwaite-weighted <i>t</i></li>
-</ul>
-<p>The <b>strip plot</b> uses the analogous formulae with the three error terms Ea, Eb and Ec. The app applies the correct one automatically for whichever effect you select.</p>
-
-<h3>Choosing a transformation</h3>
-<ul>
-<li><b>Square root</b> - counts, variance proportional to the mean (Taylor slope b &asymp; 1). Use &radic;(y+0.5) when zeros are present.</li>
-<li><b>Logarithm</b> - variance proportional to the square of the mean (b &asymp; 2), multiplicative effects. Use log(y+1) when zeros are present.</li>
-<li><b>Angular (arcsine &radic;p)</b> - percentages or proportions bounded at 0-100% or 0-1.</li>
-<li><b>Reciprocal</b> - variance rising faster than the square of the mean; rates and times.</li>
-<li><b>Box-Cox</b> - lets the data choose the exponent; the profile plot shows the optimal &lambda;.</li>
-</ul>
-<p>Always analyse on the transformed scale but present <b>back-transformed means</b> (given in tab 3) with the SEd/CD from the transformed scale.</p>
-
-<h3>Which post-hoc test?</h3>
-<ul>
-<li><b>LSD</b> - only after a significant F (Fisher's protected LSD); most powerful, highest false-positive risk with many treatments.</li>
-<li><b>Duncan's DMRT</b> - widely used in agronomy; intermediate.</li>
-<li><b>SNK</b> - intermediate, controls better than DMRT.</li>
-<li><b>Tukey HSD</b> - controls the family-wise error rate; the safe default for all pairwise comparisons.</li>
-<li><b>Scheffe</b> - the most conservative; suitable for complex contrasts.</li>
-<li><b>Bonferroni</b> - simple and conservative; fine for a small pre-planned set of comparisons.</li>
-</ul>
-<p><b>Interpreting an interaction:</b> when A&times;B is significant, do not read the main-effect means; compare cell means using the appropriate CD and describe how the response to one factor changes across levels of the other.</p>
-
-<h3>Several response variables at once</h3>
-<p>Select as many response columns as you like in <i>Response variable(s)</i>. Every one of them is analysed with the same design and mapping, and the tables of means place them side by side, one column per character, exactly as in a results table for publication. Each response keeps its own transformation, its own assumption checks and its own interpretation.</p>
-
-<h3>The automatic scan</h3>
-<p>As soon as data are loaded and the design columns are mapped, tab 1 reports Shapiro-Wilk, Levene, Taylor's slope, the optimal Box-Cox lambda and the CV for every numeric column, and names the transformation that column wants. A suggestion marked <i>optional</i> means the diagnostics are satisfactory but convention (counts, percentages) would still transform. Nothing is applied until you press <i>Apply all suggested</i> or choose a transformation yourself.</p>
-
-<h3>Reading the mean tables</h3>
-<p>A one-factor table shows <b>mean &plusmn; SE</b> for every treatment and every character, with SE(m), SE(d), C.D. (P&le;0.05) and C.V. (%) beneath it. A two-factor table is a grid of the two factors with marginal means, and the C.D. line quotes the critical difference for factor 1, for factor 2 and for their interaction. Where a response was transformed the back-transformed mean is printed first and the transformed value, on which every statistic was computed, follows in parentheses.</p>
-
-<h3>Reports</h3>
-<p>Tab 7 exports the whole analysis as a self-contained HTML file or as a PDF. The PDF is typeset by a headless browser when the <code>pagedown</code> package (or a <code>weasyprint</code> / <code>wkhtmltopdf</code> binary) is available; otherwise a plain typeset PDF is written. Both carry the credit line in the bottom-right corner of every page.</p>
-"

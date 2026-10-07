@@ -263,18 +263,27 @@ doepro_server <- function(input, output, session) {
         "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %d observations &nbsp;|&nbsp; %s",
         names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits), nrow(f1$data),
         paste(sprintf("%s = %s", names(f1$cv), fmt(f1$cv, 2)), collapse = " | ")))),
-      if (!f1$balanced) div(class = "warn",
-        "The data are unbalanced. The ANOVA uses sequential (Type I) sums of squares and the grouping letters are approximate.") else NULL,
+      if (!f1$balanced) div(class = "warn", HTML(paste0(
+        "<b>The data are unbalanced</b>: ",
+        switch(r$design,
+          CRD = "the treatments have unequal numbers of replications. ",
+          FCRD = "the treatment combinations have unequal numbers of replications. ",
+          LSD = "a plot is missing from the Latin square. ",
+          "a plot is missing from a block, or the treatments are unequally replicated. "),
+        "Each mean is given its own standard error, and each pair of means its own SE(d) and C.D.",
+        if (isTRUE(f1$adjusted_ss))
+          " The means are adjusted (least-squares) means, and each ANOVA term is tested after allowing for every other term (Type III)."
+        else ""))) else NULL,
       if (isTRUE(f1$pooled) && !is.null(f1$homogeneity)) {
         h <- f1$homogeneity
-        homog <- isTRUE(h$p > 0.05)
+        homog <- isTRUE(h$p > r$alpha)
         div(class = if (homog) "sugbox" else "warn", HTML(sprintf(
-          "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, p = %s. %s",
-          fmt(h$chisq, 3), h$df, pval(h$p),
+          "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
+          fmt(h$chisq, 3), h$df, p_eq(h$p),
           if (homog)
-            "The error variances are homogeneous, so the environments may be pooled and the combined ANOVA is valid."
+            sprintf("There is insufficient evidence at the %s%% level that the environments' error variances differ, so pooling the errors is reasonable; a small difference may have gone undetected.", pct(r$alpha))
           else
-            "The error variances are <b>heterogeneous</b>. The pooled F-tests should be read with caution; consider a variance-stabilising transformation (see the Assumptions tab) or analysing the environments separately.")))
+            sprintf("The error variances are <b>heterogeneous</b> at the %s%% level. The pooled F-tests should be read with caution; consider a variance-stabilising transformation (see the Assumptions tab) or analysing the environments separately.", pct(r$alpha)))))
       } else NULL)
   })
 
@@ -286,7 +295,8 @@ doepro_server <- function(input, output, session) {
       tags$hr(),
       HTML(paste(vapply(names(r$fits), function(nm) paste0(
         "<h4>", r$fits[[nm]]$header, "</h4>",
-        df_html(anova_display(r$fits[[nm]]$final$anova))), character(1)), collapse = "")))
+        df_html(anova_display(r$fits[[nm]]$final$anova, r$alpha)),
+        anova_note(r$fits[[nm]]$final)), character(1)), collapse = "")))
   })
 
   ## ------------------------------------------------------------------ means --
@@ -331,10 +341,13 @@ doepro_server <- function(input, output, session) {
   ## ---------------------------------------------------------------- posthoc --
   output$phEffectUI <- renderUI(selectInput("phEff", "Effect", names(pFit()$final$effects)))
 
+  ## the post-hoc tests run at the level the analysis was run at, so the
+  ## letters here and in the tables of means always mean the same thing; and,
+  ## as everywhere, no letters or verdicts are shown under a non-significant F
   ph <- reactive({
     f <- pFit(); req(input$phEff)
     validate(need(input$phEff %in% names(f$final$effects), "Choose an effect."))
-    tryCatch(posthoc(f$final, input$phEff, input$phMethod, as.numeric(input$alpha)),
+    tryCatch(gate_posthoc(posthoc(f$final, input$phEff, input$phMethod, f$final$alpha)),
              error = function(e) list(err = conditionMessage(e)))
   })
 
@@ -344,20 +357,23 @@ doepro_server <- function(input, output, session) {
     e <- pFit()$final$effects[[input$phEff]]
     tagList(
       div(class = "box", HTML(sprintf(
-        "Comparisons use the error term of <b>%s</b>: MSE = %s on %d degrees of freedom.",
-        e$label, fmt(e$mse, 4), e$df))),
-      if (!is.null(x$note)) div(class = "warn", HTML(x$note)) else NULL,
-      if (identical(input$phMethod, "LSD (Fisher's protected)") &&
-          !is.na(e$p) && e$p >= 0.05)
-        div(class = "warn",
-            "The F-test for this effect is not significant, so Fisher's LSD is not protected here. Treat these comparisons with caution.")
-      else NULL)
+        "Comparisons use the error term of <b>%s</b>: MSE = %s on %s degrees of freedom, at the %s%% significance level.",
+        e$label, fmt(e$mse, 4), df_text(e$df), pct(e$alpha)))),
+      if (!is.null(x$note)) div(class = "warn", HTML(paste(x$note, collapse = "<br><br>"))) else NULL)
   })
 
   output$phTab <- renderDT({
     x <- ph(); validate(need(is.null(x$err), x$err))
     formatRound(datatable(x$groups, rownames = FALSE,
-                          options = list(pageLength = 25, dom = "tp")), "Mean", 3)
+                          options = list(pageLength = 25, dom = "tp")),
+                intersect(c("Mean", "Unadjusted mean", "SE"), names(x$groups)), 3)
+  })
+
+  output$phPairs <- renderDT({
+    x <- ph(); validate(need(is.null(x$err), x$err))
+    formatRound(datatable(x$pairs, rownames = FALSE,
+                          options = list(pageLength = 15, dom = "tp", scrollX = TRUE)),
+                c("Difference", "SEd", "Critical value", "Critical difference"), 3)
   })
 
   output$phStats <- renderDT({
@@ -420,39 +436,60 @@ doepro_server <- function(input, output, session) {
     r <- ok()
     out <- do.call(rbind, lapply(names(r$fits), function(nm) {
       a <- r$fits[[nm]]$final$anova
-      data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p),
-                 row.names = NULL, check.names = FALSE)
+      data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p, r$alpha),
+                 alpha = r$alpha, row.names = NULL, check.names = FALSE)
     }))
     save_browser(paste0("DOEpro_anova_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## One row per mean. SEm is that mean's own standard error (for a split,
+  ## strip or pooled interaction, the SE(m) for comparisons within one level of
+  ## its slicing factor). SEd and CD are filled only when one value applies to
+  ## every pair they describe; otherwise they are left empty and the note says
+  ## where the pairwise values are, rather than writing one figure that fits
+  ## only some pairs.
   observeEvent(input$dl_means, {
     r <- ok()
-    lt <- c("Letter", "Letter_within_MP", "Letter_within_SP",
-            "Letter_within_A", "Letter_within_B", "Letter_within_env")
     out <- do.call(rbind, lapply(names(r$fits), function(nm) {
       fit <- r$fits[[nm]]
       do.call(rbind, lapply(names(fit$final$effects), function(en) {
         e <- fit$final$effects[[en]]; m <- gate_letters(e)
-        g <- intersect(lt, names(m))
+        g <- intersect(LETTER_COLS, names(m))
+        xt <- extra_text(e)
+        note <- c(
+          if (is.na(e$sed)) "SEd and CD differ between pairs of means; see the pairwise comparisons on the post-hoc tab."
+          else if (!isTRUE(e$equal_rep)) "SEm differs between means.",
+          if (!is.null(e$slice))
+            sprintf("SEd and CD apply to means at the same level of %s. %s", e$slice,
+                    paste(sprintf("%s = %s", names(xt), xt), collapse = "; ")))
         data.frame(
           Response = nm, Transformation = TRANS[[fit$trans]]$lab, Effect = e$label,
           Level = apply(m[e$vars], 1, paste, collapse = " x "),
           Mean = m$Mean,
+          Unadjusted_mean = if ("Raw_mean" %in% names(m)) m$Raw_mean else NA_real_,
           Back_transformed = if ("Mean_bt" %in% names(m)) m$Mean_bt else NA_real_,
-          N = m$N, SD = m$SD, SEm = e$sem, SEd = e$sed,
-          CD5 = e$cd5, CD1 = e$cd1, p_value = e$p,
+          N = m$N, SD = m$SD, SEm = m$SE, SEd = e$sed,
+          CD = if (effect_sig(e)) e$cd else NA_real_, alpha = e$alpha, p_value = e$p,
           Group  = if (length(g) >= 1) m[[g[1]]] else NA_character_,
           Group2 = if (length(g) >= 2) m[[g[2]]] else NA_character_,
+          Note = paste(note, collapse = " "),
           row.names = NULL, check.names = FALSE)
       }))
     }))
     save_browser(paste0("DOEpro_means_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## the post-hoc exports say which test and level produced them
+  ph_csv <- function(x, tab) cbind(Method = x$method, alpha = x$alpha, x[[tab]])
+
   observeEvent(input$dl_ph, {
     x <- ph(); req(is.null(x$err))
-    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(x$groups), "text/csv")
+    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "groups")), "text/csv")
+  })
+
+  observeEvent(input$dl_ph_pairs, {
+    x <- ph(); req(is.null(x$err))
+    save_browser(paste0("DOEpro_pairwise_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "pairs")), "text/csv")
   })
 
   output$dl_plot <- downloadHandler(
@@ -513,9 +550,10 @@ columns, and stack all environments in one long table.</p>
 <p>The analysis proceeds in three steps:</p>
 <ol>
 <li><b>Homogeneity of error variances.</b> Bartlett's test compares the error variances of
-the separate environments. If they are homogeneous the environments may be pooled; if not,
-the app warns you and a variance-stabilising transformation (or separate analyses) should be
-considered. The verdict is shown above the ANOVA table.</li>
+the separate environments. If the test finds no significant difference at your chosen level,
+the environments may be pooled; if it does, the app warns you and a variance-stabilising
+transformation (or separate analyses) should be considered. The verdict is shown above the
+ANOVA table.</li>
 <li><b>Combined ANOVA</b> with the correct error terms:
   <ul>
   <li><b>RCBD base:</b> Environment is tested against replications-within-environment; the
@@ -552,13 +590,21 @@ stable enough across environments to be declared real.</p>
 
 <h3>Standard errors and critical differences</h3>
 <p>With <i>n</i> observations behind each mean, SE(m) = &radic;(MSE/n),
-SE(d) = &radic;(2&middot;MSE/n) and C.D. = t<sub>&alpha;/2, df</sub> &times; SE(d).</p>
+SE(d) = &radic;(2&middot;MSE/n) and C.D. = t<sub>&alpha;/2, df</sub> &times; SE(d), where
+&alpha; is the significance level you chose.</p>
+<p>When replication is unequal, mean <i>i</i> has SE(m) = &radic;(MSE/n<sub>i</sub>) and
+two means have SE(d) = &radic;(MSE(1/n<sub>i</sub> + 1/n<sub>j</sub>)), so the C.D. depends
+on which two means are compared and the tables show its range. In a blocked design with a
+missing plot, or a factorial with unequal cells, the means are adjusted (least-squares)
+means and their standard errors come from the fitted model. Split plots, strip plots and
+pooled analyses must be complete: with a plot missing the app says what is missing rather
+than give an approximate answer.</p>
 <p>A split plot needs <b>four</b> different SE(d):</p>
 <ul>
 <li>two main-plot means: &radic;(2&middot;Ea / rb)</li>
 <li>two sub-plot means: &radic;(2&middot;Eb / ra)</li>
 <li>two sub-plot means within the same main plot: &radic;(2&middot;Eb / r)</li>
-<li>two main-plot means at the same sub-plot level: &radic;(2[(b-1)Eb + Ea] / rb), with a Satterthwaite-weighted <i>t</i></li>
+<li>two main-plot means at the same sub-plot level: &radic;(2[(b-1)Eb + Ea] / rb), with a weighted <i>t</i></li>
 </ul>
 <p>A strip plot needs three error terms and the analogous mixed comparisons. The app
 prints every one of them under the relevant table of means, so you never have to work
@@ -578,21 +624,27 @@ the back-transformed mean with the transformed value in parentheses.</p>
 
 <h3>Choosing a post-hoc test</h3>
 <ul>
-<li><b>Fisher's protected LSD</b>: only after a significant F-test, and best with few treatments.</li>
-<li><b>Tukey's HSD</b>: controls the error rate over all pairwise comparisons; the safe default.</li>
-<li><b>Duncan's DMRT</b>: less conservative, still standard in agronomy.</li>
-<li><b>Student-Newman-Keuls</b>: sits between Duncan and Tukey.</li>
-<li><b>Scheffe</b>: the most conservative; built for arbitrary contrasts.</li>
-<li><b>Bonferroni</b>: simple and strict.</li>
+<li><b>Least significant difference (LSD), Fisher's protected</b>: only after a significant F-test, and best with few treatments.</li>
+<li><b>Tukey's honestly significant difference (HSD)</b>: controls the error rate over all pairwise comparisons; the safe default.</li>
+<li><b>Duncan's multiple range test (DMRT)</b>: less conservative, still standard in agronomy.</li>
+<li><b>Student-Newman-Keuls (SNK) test</b>: sits between Duncan and Tukey.</li>
+<li><b>Scheffe's test</b>: the most conservative; built for arbitrary contrasts.</li>
+<li><b>Bonferroni-adjusted LSD</b>: simple and strict.</li>
 </ul>
 <p>All six are computed from the error mean square of whichever effect you select, so in a
-split or strip plot they automatically use the right error stratum.</p>
+split or strip plot they automatically use the right error stratum. An interaction in a split
+plot, strip plot or pooled analysis is compared within one level of the main-plot (or strip)
+factor, or one environment, at a time. With unequal replication each pair of means uses its
+own SE(d): Tukey's HSD becomes the Tukey-Kramer procedure, and Duncan's and the
+Student-Newman-Keuls tests use Kramer's adjustment. As everywhere in the app, no letters are
+shown when the effect's F-test is not significant.</p>
 
 <h3>Reporting</h3>
 <p>Present the ANOVA table, then the table of means with SE(m)&plusmn;, SE(d),
-C.D. (P&le;0.05) and C.V. (%) at the foot. Means followed by a common letter do not differ
-significantly. When an interaction is significant, interpret the cell means and the simple
-effects rather than the main effects.</p>
+the C.D. at your chosen significance level and C.V. (%) at the foot. Means followed by a
+common letter are not significantly different at that level. When an interaction is
+significant, interpret the cell means and the simple effects rather than the main
+effects.</p>
 <hr>", authors_html())))
 
   output$about <- renderUI({

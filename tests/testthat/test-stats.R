@@ -49,7 +49,7 @@ test_that("Bartlett's test on mean squares matches stats::bartlett.test", {
 test_that("the Box-Cox profile peaks at the lambda it reports", {
   d <- demo_data("CRD")
   r <- analyze(d, "CRD", list(response = "Yield", treat = "Treatment"))
-  bc <- boxcox_profile(d$Yield, r$X)
+  bc <- boxcox_profile(d$Yield, r$X, level = 0.95)
   expect_false(is.null(bc))
   expect_true(is.finite(bc$lambda))
   expect_true(bc$lambda >= -2 && bc$lambda <= 2)
@@ -63,8 +63,8 @@ test_that("the Box-Cox profile peaks at the lambda it reports", {
 })
 
 test_that("Box-Cox refuses data that is not strictly positive", {
-  expect_null(boxcox_profile(c(1, 2, 0, 4), matrix(1, 4, 1)))
-  expect_null(boxcox_profile(c(1, -2, 3, 4), matrix(1, 4, 1)))
+  expect_null(boxcox_profile(c(1, 2, 0, 4), matrix(1, 4, 1), level = 0.95))
+  expect_null(boxcox_profile(c(1, -2, 3, 4), matrix(1, 4, 1), level = 0.95))
 })
 
 test_that("the critical differences are ordered LSD <= Tukey <= Scheffe", {
@@ -110,10 +110,13 @@ test_that("the coefficient of variation matches its definition", {
 })
 
 test_that("standard errors follow from the error mean square", {
+  # balanced data: one SE(m), one SE(d) and one C.D. apply to every mean
   d <- demo_data("RCBD")
   r <- analyze(d, "RCBD", list(response = "Yield", treat = "Variety", block = "Block"))
   e <- r$effects[["Variety"]]
+  expect_true(e$equal_rep)
   expect_equal(e$sem, sqrt(r$mse / e$n_per_mean), tolerance = 1e-8)
   expect_equal(e$sed, sqrt(2 * r$mse / e$n_per_mean), tolerance = 1e-8)
-  expect_equal(e$cd5, stats::qt(0.975, r$dfe) * e$sed, tolerance = 1e-8)
+  expect_equal(e$cd, stats::qt(1 - r$alpha / 2, r$dfe) * e$sed, tolerance = 1e-8)
+  expect_equal(e$means$SE, rep(e$sem, nrow(e$means)), tolerance = 1e-12)
 })

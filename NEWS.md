@@ -1,3 +1,17 @@
+# DOEpro (development version)
+
+* Unequal replication: every mean now has its own standard error and every pair
+  of means its own SE(d) and C.D. Blocked designs with a missing plot and
+  factorials with unequal cells use adjusted (least-squares) means with
+  Type III tests. Split plots, strip plots and pooled analyses with a missing or
+  repeated plot are refused with a message naming it.
+* The chosen significance level now drives every C.D., letter, F-test verdict,
+  assumption verdict, Box-Cox interval, plot caption and line of text. The
+  `cd5` and `cd1` effect fields are replaced by `cd` at that level.
+* Grouping letters use Piepho's (2004) insert-and-absorb algorithm; SNK and
+  Duncan enforce the step-down rule; Tukey becomes Tukey-Kramer with unequal
+  replication; post-hoc output includes a table of every pairwise comparison.
+
 # DOEpro 2.0.1
 
 Changes made in response to the CRAN review of version 2.0.0.

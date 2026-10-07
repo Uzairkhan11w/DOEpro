@@ -65,7 +65,8 @@ build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE)
     if (!is.null(anv)) anv else "",
     paste(vapply(names(fits), function(nm) paste0(
       "<h4>", fits[[nm]]$header, "</h4>",
-      df_html(anova_display(fits[[nm]]$final$anova))), character(1)), collapse = ""),
+      df_html(anova_display(fits[[nm]]$final$anova, rr$alpha)),
+      anova_note(fits[[nm]]$final)), character(1)), collapse = ""),
     "<h2>2. Tables of means</h2>",
     means_section_html(rr, letters_on = letters_on, detailed = detailed),
     "<h2>3. Assumptions and transformation</h2>",
@@ -122,31 +123,45 @@ save_pdf <- function(html, outfile) {
   FALSE
 }
 
+## What sits under an ANOVA table: the key to the stars at the chosen level, and
+## a warning when the sums of squares are adjusted ones that need not add up.
+anova_note <- function(res) {
+  paste0("<div class='note'>", star_key(res$alpha),
+         if (isTRUE(res$adjusted_ss))
+           paste0(" The data are unbalanced, so each term is tested after allowing for ",
+                  "every other term (Type III sums of squares); these need not add up to ",
+                  "the total.") else "",
+         "</div>")
+}
+
+## The assumption checks, each judged at the analysis's significance level.
 assum_table_html <- function(a) {
   rows <- character(0)
+  ok <- function(p) if (isTRUE(p > a$alpha)) "no significant departure" else "<b>significant departure</b>"
   if (!is.null(a$shapiro)) rows <- c(rows, sprintf(
-    "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>W = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$shapiro$statistic), pval(a$p_norm),
-    if (isTRUE(a$p_norm > 0.05)) "OK" else "violated"))
+    "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>W = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$shapiro$statistic), p_eq(a$p_norm), ok(a$p_norm)))
   if (!is.null(a$levene)) rows <- c(rows, sprintf(
-    "<tr><td>Levene, median-centred (homogeneity)</td><td>F = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$levene$F), pval(a$p_hov), if (isTRUE(a$p_hov > 0.05)) "OK" else "violated"))
+    "<tr><td>Levene, median-centred (homogeneity)</td><td>F = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$levene$F), p_eq(a$p_hov), ok(a$p_hov)))
   if (!is.null(a$bartlett)) rows <- c(rows, sprintf(
-    "<tr><td>Bartlett (homogeneity)</td><td>K2 = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$bartlett$statistic), pval(a$bartlett$p.value),
-    if (isTRUE(a$bartlett$p.value > 0.05)) "OK" else "violated"))
+    "<tr><td>Bartlett (homogeneity)</td><td>K2 = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$bartlett$statistic), p_eq(a$bartlett$p.value), ok(a$bartlett$p.value)))
   rows <- c(rows, sprintf(
     "<tr><td>Taylor's power-law slope b</td><td colspan='2'>%s</td><td>%s</td></tr>",
     fmt(a$slope, 2), if (is.na(a$slope)) "-" else if (abs(a$slope) < 0.5)
-      "variance independent of mean" else "variance depends on mean"))
+      "little sign that the variance changes with the mean"
+      else if (a$slope > 0) "the variance appears to rise with the mean"
+      else "the variance appears to fall as the mean rises"))
   rows <- c(rows, sprintf(
     "<tr><td>Optimal Box-Cox lambda</td><td colspan='2'>%s</td><td>%s</td></tr>",
     fmt(a$lambda, 2),
     if (is.null(a$bc)) "not estimable (response must be &gt; 0)"
-    else sprintf("95%% CI %.2f to %.2f", a$bc$ci[1], a$bc$ci[2])))
+    else sprintf("%s%% CI %.2f to %.2f", pct(a$bc$level), a$bc$ci[1], a$bc$ci[2])))
   rows <- c(rows, sprintf(
     "<tr><td>Possible outliers (|std resid| &gt; 3)</td><td colspan='2'>%s</td><td></td></tr>",
     if (length(a$outliers)) paste(a$outliers, collapse = ", ") else "none"))
   paste0("<table class='doe'><thead><tr><th>Test</th><th>Statistic</th><th>p</th>",
-         "<th>Verdict</th></tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>")
+         "<th>Verdict</th></tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>",
+         sprintf("<div class='note'>Verdicts are at the %s%% significance level.</div>", pct(a$alpha)))
 }

@@ -21,7 +21,15 @@ TRANS_NOTE <- paste0("<div class='note'>Figures in parentheses are transformed v
   "SE(m), SE(d), C.D. and C.V. refer to the transformed scale; the leading figure ",
   "is the back-transformed mean.</div>")
 
-cd_or_ns <- function(e, digits = 2) if (!is.na(e$p) && e$p < 0.05) fmt(e$cd5, digits) else "NS"
+cd_or_ns <- function(e, digits = 2) if (effect_sig(e)) err_text(e, "cd", digits) else "NS"
+
+## the heading of a C.D. row, at the level the user chose
+cd_head <- function(alpha) sprintf("C.D. (P&le;%s)", p_lab(alpha))
+
+## does any effect in the analysis have unequal replication?
+any_unequal <- function(rr)
+  any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e)
+    !isTRUE(e$equal_rep), logical(1))), logical(1)))
 
 ## A raw HTML table: `head` is a character vector of <th> labels, `body` a list
 ## of character vectors (one per row), `foot` a list of character vectors.
@@ -46,7 +54,7 @@ raw_table <- function(head, body, foot = NULL, caption = NULL, cls = "doe") {
 ##      ...
 ##      SE(m)+/-  |  ...
 ##      SE(d)+/-  |  ...
-##      C.D. (P<=0.05)  <effect name>: ...
+##      C.D. (P<=alpha)  <effect name>: ...
 ##      CV (%)    |  ...
 ## ---------------------------------------------------------------------------
 sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
@@ -56,6 +64,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
   resps <- names(fits)
 
   lv <- as.character(fits[[1]]$final$effects[[fac]]$means[[fac]])
+  alpha <- fits[[1]]$final$alpha
   any_tr <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
   cells <- lapply(fits, function(f) {
     e <- f$final$effects[[fac]]
@@ -63,7 +72,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
     idx <- match(lv, as.character(m[[fac]]))
     lets <- if ("Letter" %in% names(m)) m$Letter[idx] else rep("", length(lv))
     bt <- if (!identical(f$trans, "none") && "Mean_bt" %in% names(m)) m$Mean_bt[idx] else NULL
-    ms_cell(m$Mean[idx], e$sem, lets, digits, letters_on, mu_bt = bt)
+    ms_cell(m$Mean[idx], m$SE[idx], lets, digits, letters_on, mu_bt = bt)
   })
 
   body <- lapply(seq_along(lv), function(i)
@@ -71,16 +80,18 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
 
   ef <- lapply(fits, function(f) f$final$effects[[fac]])
   foot <- list(
-    c("SE(m) &plusmn;",   vapply(ef, function(e) fmt(e$sem, digits), character(1))),
-    c("SE(d) &plusmn;",   vapply(ef, function(e) fmt(e$sed, digits), character(1))),
-    c(sprintf("C.D. (P&le;0.05) &nbsp; <b>%s</b>", fac),
+    c("SE(m) &plusmn;",   vapply(ef, function(e) err_text(e, "sem", digits), character(1))),
+    c("SE(d) &plusmn;",   vapply(ef, function(e) err_text(e, "sed", digits), character(1))),
+    c(sprintf("%s &nbsp; <b>%s</b>", cd_head(alpha), fac),
                           vapply(ef, function(e) cd_or_ns(e, digits), character(1))),
     c("C.V. (%)",         vapply(fits, function(f) fmt(f$final$cv[length(f$final$cv)], 2),
                                  character(1))))
 
   hdr <- c(toupper(fac), vapply(fits, function(f) f$header, character(1)))
   paste0(raw_table(hdr, body, foot,
-           caption = sprintf("Effect of <b>%s</b> (mean &plusmn; SE)", fac)),
+           caption = sprintf("Effect of <b>%s</b> (%s)", fac,
+             if (any_tr) "mean &plusmn; SE; transformed responses show the back-transformed mean with the transformed value in parentheses"
+             else "mean &plusmn; SE")),
          if (any_tr) TRANS_NOTE else "")
 }
 
@@ -91,7 +102,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
 ##      Factor 1  T1            ..    ..    ..   |  ..
 ##                T2
 ##                Mean          ..    ..    ..   |  ..
-##      C.D. (P<=0.05)  Factor 1: .. ; Factor 2: .. ; Factor 1 x Factor 2: ..
+##      C.D. (P<=alpha)  Factor 1: .. ; Factor 2: .. ; Factor 1 x Factor 2: ..
 ## ---------------------------------------------------------------------------
 sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
   r  <- fit$final
@@ -120,6 +131,12 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
 
   graw <- matrix(NA_real_, length(l1), length(l2), dimnames = list(l1, l2))
   graw[cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))] <- m$Mean
+  ## margins and corner are shown like the cells: back-transformed, with the
+  ## transformed value in parentheses. The corner is the average of the cell
+  ## means, which is what the (adjusted) margins average to.
+  btf <- function(z) TRANS[[fit$trans]]$b(z, fit$lambda)
+  marg <- function(z) if (tr_on) paste0(fmt(btf(z), digits), " (", fmt(z, digits), ")")
+                      else fmt(z, digits)
   body <- lapply(seq_along(l1), function(i)
     c(l1[i],
       vapply(seq_along(l2), function(j)
@@ -127,25 +144,38 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
                if (tr_on) paste0(" (", fmt(graw[i, j], digits), ")") else "",
                if (!is.null(lets)) sup(lets[i, j]) else ""),
         character(1)),
-      fmt(bt(e1)[i], digits)))
-  body[[length(body) + 1L]] <- c("<b>Mean</b>", fmt(bt(e2), digits), fmt(r$grand, digits))
+      marg(e1$means$Mean[i])))
+  body[[length(body) + 1L]] <- c("<b>Mean</b>", vapply(e2$means$Mean, marg, character(1)),
+                                 marg(mean(graw, na.rm = TRUE)))
 
   ncol <- length(l2) + 2L
   span <- function(txt) sprintf("<tr><td colspan='%d' class='cdrow'>%s</td></tr>", ncol, txt)
-  trio <- function(f) sprintf("%s / %s / %s", fmt(f(e1), digits), fmt(f(e2), digits), fmt(f(eI), digits))
+  trio <- function(what) sprintf("%s / %s / %s", err_text(e1, what, digits),
+                                 err_text(e2, what, digits), err_text(eI, what, digits))
+  ## in a split, strip or pooled design the interaction's single SE(d) and C.D.
+  ## hold only within one level of its slicing factor; the others are listed
+  within <- if (is.null(eI$slice)) "" else
+    sprintf(" (%s within the same %s)", paste(setdiff(eI$vars, eI$slice), collapse = " &times; "),
+            eI$slice)
+  xt <- extra_text(eI, digits)
   foot <- list(
-    span(sprintf("SE(m) &plusmn; &nbsp; %s", trio(function(e) e$sem))),
-    span(sprintf("SE(d) &plusmn; &nbsp; %s", trio(function(e) e$sed))),
-    span(sprintf("<b>C.D. (P&le;0.05)</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s: <b>%s</b>",
-                 f1, cd_or_ns(e1, digits), f2, cd_or_ns(e2, digits),
-                 f1, f2, cd_or_ns(eI, digits))),
+    span(sprintf("SE(m) &plusmn; &nbsp; %s", trio("sem"))),
+    span(sprintf("SE(d) &plusmn; &nbsp; %s", trio("sed"))),
+    span(sprintf("<b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s%s: <b>%s</b>",
+                 cd_head(r$alpha), f1, cd_or_ns(e1, digits), f2, cd_or_ns(e2, digits),
+                 f1, f2, within, cd_or_ns(eI, digits))),
+    if (length(xt)) span(paste(sprintf("%s: <b>%s</b>", names(xt), xt), collapse = " &nbsp;&middot;&nbsp; ")),
     span(sprintf("C.V. (%%) &nbsp; %s", paste(fmt(r$cv, 2), collapse = " / "))))
+  foot <- Filter(Negate(is.null), foot)
 
   hdr <- c(sprintf("%s \\ %s", f1, f2), l2, "Mean")
   tbl <- raw_table(hdr, body, foot,
     caption = sprintf("<b>%s</b> &mdash; %s &times; %s", fit$header, f1, f2))
   paste0(tbl, "<div class='note'>SE(m), SE(d) are given as ", f1, " / ", f2, " / ",
-         f1, " &times; ", f2, ".</div>", if (tr_on) TRANS_NOTE else "")
+         f1, " &times; ", f2, if (nzchar(within)) paste0(within, ", the conventional SE(m) for those comparisons being SE(d) / &radic;2") else "",
+         ".</div>",
+         if (!is.null(lets) && effect_sig(eI)) slice_note(eI) else "",
+         if (tr_on) TRANS_NOTE else "")
 }
 
 ## A compact summary card: design, observations, and grand mean + C.V. per response.
@@ -154,7 +184,8 @@ means_summary_card <- function(rr, digits = 2) {
   f1 <- fits[[1]]$final
   chips <- vapply(names(fits), function(nm) {
     f <- fits[[nm]]; fin <- f$final
-    cv <- paste(sprintf("%s = %s", names(fin$cv), fmt(fin$cv, 2)), collapse = " &middot; ")
+    cv <- if (length(fin$cv) == 1) fmt(fin$cv, 2)
+          else paste(sprintf("%s = %s", names(fin$cv), fmt(fin$cv, 2)), collapse = " &middot; ")
     sprintf(paste0("<div class='ms-chip'><div class='ms-chip-name'>%s</div>",
                    "<div class='ms-chip-row'><span>Grand mean</span><b>%s</b></div>",
                    "<div class='ms-chip-row'><span>%s</span><b>%s</b></div></div>"),
@@ -166,17 +197,24 @@ means_summary_card <- function(rr, digits = 2) {
                  "%s</div><div class='ms-chip-wrap'>%s</div></div>"),
           names(DESIGNS)[match(rr$design, DESIGNS)], nrow(f1$data),
           if (f1$balanced) sprintf(" &middot; %d replication(s), balanced", f1$reps)
-          else " &middot; unbalanced",
+          else if (length(f1$n_range) == 2L && f1$n_range[1] != f1$n_range[2])
+            sprintf(" &middot; unequal replication (%d to %d per treatment)",
+                    f1$n_range[1], f1$n_range[2])
+          else " &middot; unbalanced (the treatments do not appear equally often in every block)",
           paste(chips, collapse = ""))
 }
 
 ## A key to the notation, shown once at the foot of the section.
-means_legend <- function(any_letters, any_trans) {
+means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE) {
   items <- c(
     "<b>mean &plusmn; SE</b> &mdash; treatment mean with its standard error",
-    if (any_letters) "<b><sup>a b c</sup></b> &mdash; means sharing a letter do not differ at P &le; 0.05" else NULL,
+    if (any_letters) sprintf("<b><sup>a b c</sup></b> &mdash; means sharing a letter are not significantly different at the %s%% level", pct(alpha)) else NULL,
     "<b>SE(m)</b> standard error of a mean &nbsp; <b>SE(d)</b> standard error of a difference",
-    "<b>C.D. (P&le;0.05)</b> critical difference; <b>NS</b> when the F-test is not significant",
+    sprintf("<b>%s</b> critical difference at the %s%% level; <b>NS</b> when the F-test is not significant at that level",
+            cd_head(alpha), pct(alpha)),
+    if (unequal) paste0("<b>0.96&ndash;1.13</b> (a range of two numbers) &mdash; the data are unbalanced, ",
+                        "so SE(d) and C.D. depend on which two means are compared; the range is shown, ",
+                        "and each mean carries its own SE") else NULL,
     "<b>C.V.</b> coefficient of variation (%)",
     if (any_trans) "figures <b>in parentheses</b> are transformed values; the leading figure is the back-transformed mean" else NULL)
   paste0("<div class='ms-legend'><b>How to read these tables</b><ul><li>",
@@ -231,7 +269,7 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
       det, "</div>")
   }
 
-  out <- c(out, means_legend(letters_on, any_trans), "</div>")
+  out <- c(out, means_legend(letters_on, any_trans, rr$alpha, any_unequal(rr)), "</div>")
   paste(out, collapse = "\n")
 }
 
@@ -247,11 +285,12 @@ combined_anova_html <- function(rr) {
       vapply(fits, function(f) {
         an <- f$final$anova
         if (is.na(an$MS[i])) "-" else
-          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i]), "</span>")
+          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i], rr$alpha), "</span>")
       }, character(1))))
-  raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
-            body, caption = "Analysis of variance &mdash; mean squares",
-            cls = "doe")
+  paste0(raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
+                   body, caption = "Analysis of variance &mdash; mean squares",
+                   cls = "doe"),
+         "<div class='note'>", star_key(rr$alpha), "</div>")
 }
 
 

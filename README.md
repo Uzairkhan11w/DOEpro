@@ -15,8 +15,8 @@ together in one accessible interface, and serves as a free, self-contained optio
 kind of analysis researchers carry out in tools such as OPSTAT.
 
 Paste your data straight out of Excel, choose the design, press **Run analysis**. You get
-the ANOVA, publication-format tables of means with SE(m)±, SE(d), C.D. (P≤0.05) and C.V.
-at the foot, automatic advice on data transformation, post-hoc comparisons, plots, a
+the ANOVA, publication-format tables of means with SE(m)±, SE(d), C.D. at your chosen
+significance level and C.V. at the foot, automatic advice on data transformation, post-hoc comparisons, plots, a
 plain-English interpretation, and a report you can download as HTML or PDF.
 
 **Developed by**
@@ -119,9 +119,15 @@ spelled out underneath:
 > C.V. (%) 5.49
 
 C.D. is printed only when the F-test for that source is significant; otherwise the cell
-reads `NS`. When a response has been transformed, each cell shows the **back-transformed
+reads `NS`. Every C.D., grouping letter and verdict is at the significance level you choose
+(5% or 1%), and the labels say which. When a response has been transformed, each cell shows the **back-transformed
 mean with the transformed value in parentheses**, and SE, C.D. and C.V. refer to the
 transformed scale — because that is the scale on which the tests were done.
+
+With **unequal replication** each mean carries its own SE, each pair of means its own SE(d)
+and C.D., and the footer gives their range rather than one figure that fits only some of
+the means. In a blocked design with a missing plot, or a factorial with unequal cells, the
+means are adjusted (least-squares) means and each term is tested adjusted for the others.
 
 ---
 
@@ -206,7 +212,7 @@ each. Checked by hand or against a reference implementation:
 
 - Degrees of freedom and sums of squares for every stratum of the split and strip plots.
 - All four split-plot SE(d) and both strip-plot mixed comparisons, including the
-  Satterthwaite-weighted *t*.
+  weighted *t*.
 - The Box-Cox profile against the textbook log-likelihood with the explicit Jacobian term
   `−n/2·log(RSS/n) + (λ−1)·Σ log y` — identical to the last decimal on six test cases.
 - Levene's test against its definition (one-way ANOVA on absolute deviations from cell
@@ -229,8 +235,10 @@ look.
 - Fisher's LSD is valid only after a significant F-test; the app warns you when the F-test
   for the selected effect is not significant.
 - When an interaction is significant, interpret the cell means, not the main-effect means.
-- Grouping letters assume equal replication. With unbalanced data the app warns you and the
-  letters become approximate.
+- Unequal replication is handled exactly in the designs with one error term (CRD, RCBD,
+  Latin square and the factorials). Split plots, strip plots and pooled analyses must be
+  complete: with a plot missing the app names the missing combination and stops, because
+  an exact analysis would need a mixed model that base R does not provide.
 - Blocks and replications are treated as fixed effects.
 
 ## How to cite

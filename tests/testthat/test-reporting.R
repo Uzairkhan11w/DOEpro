@@ -35,7 +35,7 @@ test_that("grouping letters are shown only when the F-test is significant", {
     cols <- intersect(LETTER_COLS, names(m))
     if (!length(cols)) next
     any_letter <- any(nzchar(unlist(m[cols])))
-    if (!is.na(e$p) && e$p < 0.05) {
+    if (!is.na(e$p) && e$p < e$alpha) {
       expect_true(any_letter, info = paste(e$label, "is significant; letters expected"))
     } else {
       expect_false(any_letter, info = paste(e$label, "is NS; letters must be suppressed"))

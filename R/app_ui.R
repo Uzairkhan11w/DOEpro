@@ -150,13 +150,20 @@ doepro_ui <- function() navbarPage(
     sidebarLayout(
       sidebarPanel(width = 3,
         uiOutput("aRespUI2"), uiOutput("phEffectUI"),
-        selectInput("phMethod", "Test", PH_METHODS),
-        actionButton("dl_ph", "Groups (CSV)", icon = icon("download"))),
+        selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
+        actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
+        tags$br(), tags$br(),
+        actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
       mainPanel(width = 9,
         uiOutput("phNote"),
         h4("Treatment groups"), DTOutput("phTab"),
         h4("Test parameters"), DTOutput("phStats"),
-        uiOutput("phRangesUI"))
+        uiOutput("phRangesUI"),
+        h4("Pairwise comparisons"),
+        div(class = "note", paste(
+          "Every pair of means: their difference, the standard error of that difference,",
+          "the critical value and critical difference it is judged against, and the verdict.")),
+        DTOutput("phPairs"))
     )),
 
   ## ----------------------------------------------------------------- plots --

@@ -103,33 +103,66 @@ fmt <- function(x, d = 3) {
   ifelse(is.na(x), "-", formatC(as.numeric(x), digits = d, format = "f"))
 }
 
-pval <- function(p) gsub("<", "&lt;", format.pval(p, digits = 3, eps = 1e-4), fixed = TRUE)
-
-star <- function(p) {
-  ifelse(is.na(p), "", ifelse(p < 0.01, "**", ifelse(p < 0.05, "*", "NS")))
+## An effect's SE(m), SE(d) or C.D. for display (`what` is "sem", "sed" or "cd"):
+## the single value when one applies to every mean and pair, otherwise its
+## range, so a figure that fits only some of the means is never printed as if
+## it fitted them all.
+err_text <- function(e, what, digits = 2, html = TRUE) {
+  v <- e[[what]]
+  if (length(v) == 1L && !is.na(v)) return(fmt(v, digits))
+  rg <- e[[c(sem = "se_range", sed = "sed_range", cd = "cd_range")[[what]]]]
+  if (length(rg) != 2L || anyNA(rg)) return("-")
+  ## a range whose ends round to the same figure reads as nonsense, so show
+  ## enough decimals to tell them apart
+  dg <- digits
+  while (dg < digits + 3 && fmt(rg[1], dg) == fmt(rg[2], dg)) dg <- dg + 1
+  paste0(fmt(rg[1], dg), if (html) "&ndash;" else " to ", fmt(rg[2], dg))
 }
 
-## Significance-letter algorithm (constant critical difference, balanced data).
-## Means sorted descending; a treatment joins every group whose members are all
-## within CD of it, otherwise it seeds a new group. Redundant groups dropped.
-## `cd` is either a constant critical difference, or a function of p = the number
-## of means spanned by the comparison (needed by Duncan's DMRT and SNK).
+## a p-value for reading: never in scientific notation, never "= <0.0001"
+p_text <- function(p) ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
+                             trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
+pval <- function(p) gsub("<", "&lt;", p_text(p), fixed = TRUE)
+
+## "p = 0.0373" or "p &lt; 0.0001", for running text
+p_eq <- function(p) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p)))
+
+## Significance marks at the level the user chose: one star at alpha, two at
+## alpha / 5. At alpha = 0.05 that is the familiar 5% and 1% pair; at any other
+## level the marks follow the choice instead of staying at 5% and 1%.
+star <- function(p, alpha) {
+  ifelse(is.na(p), "", ifelse(p < alpha / 5, "**", ifelse(p < alpha, "*", "NS")))
+}
+
+## a probability as it is written in labels: 0.05, 0.01, 0.002
+p_lab <- function(a) format(a, digits = 6, drop0trailing = TRUE, trim = TRUE, scientific = FALSE)
+
+## a probability as a percentage, for "the 5% level"
+pct <- function(a) format(100 * a, digits = 6, drop0trailing = TRUE, trim = TRUE, scientific = FALSE)
+
+## the key printed under an ANOVA table, so the stars mean what they say
+star_key <- function(alpha)
+  sprintf("** significant at p &lt; %s; * significant at p &lt; %s; NS not significant at the %s%% level.",
+          p_lab(alpha / 5), p_lab(alpha), pct(alpha))
+
+## Letters from critical differences. `cd` is one number that applies to every
+## pair, or a square matrix holding one critical difference per pair (unequal
+## replication). Any missing value means no letters can be given.
 cld_lsd <- function(mu, cd) {
   n <- length(mu)
   if (n < 2) return(rep("a", n))
-  if (!is.function(cd) && (is.na(cd) || !is.finite(cd))) return(rep("", n))
-  rk <- rank(-mu, ties.method = "first")
-  pm <- abs(outer(rk, rk, "-")) + 1L          # number of means spanned
-  crit <- if (is.function(cd))
-    matrix(vapply(as.vector(pm), function(p) if (p < 2L) Inf else cd(p), numeric(1)), n, n)
-  else matrix(cd, n, n)
+  if (!length(cd) || anyNA(cd) || any(!is.finite(cd))) return(rep("", n))
+  crit <- if (is.matrix(cd)) cd else matrix(cd, n, n)
   sig <- abs(outer(mu, mu, "-")) > crit
   diag(sig) <- FALSE
-  cld_from_sig(mu, sig)
+  off <- crit[row(crit) != col(crit)]
+  if (diff(range(off)) <= 1e-12 * max(abs(off))) cld_sweep(mu, sig) else cld_from_sig(mu, sig)
 }
 
-## letters from a logical "significantly different" matrix
-cld_from_sig <- function(mu, sig) {
+## Letters when one critical difference applies to every pair: a single sweep
+## down the sorted means. Exact in that case and instant for hundreds of means,
+## where the general algorithm below is slow; both give identical letters.
+cld_sweep <- function(mu, sig) {
   n <- length(mu)
   ord <- order(mu, decreasing = TRUE)
   groups <- list(); done <- integer(0)
@@ -140,26 +173,69 @@ cld_from_sig <- function(mu, sig) {
         groups[[k]] <- c(groups[[k]], i); joined <- TRUE
       }
     }
-    if (!joined) {
-      cand <- done[!sig[i, done]]
-      groups[[length(groups) + 1L]] <- c(cand, i)
-    }
+    if (!joined) groups[[length(groups) + 1L]] <- c(done[!sig[i, done]], i)
     done <- c(done, i)
   }
   keep <- rep(TRUE, length(groups))
   for (i in seq_along(groups)) for (j in seq_along(groups)) {
-    if (i != j && keep[i] && keep[j] &&
-        all(groups[[i]] %in% groups[[j]]) &&
+    if (i != j && keep[i] && keep[j] && all(groups[[i]] %in% groups[[j]]) &&
         length(groups[[i]]) < length(groups[[j]])) keep[i] <- FALSE
   }
   groups <- groups[keep]
   groups <- groups[!duplicated(vapply(groups, function(g)
     paste(sort(g), collapse = "-"), character(1)))]
-  lets <- c(letters, paste0(letters, letters))[seq_along(groups)]
+  lets <- letter_seq(length(groups))
   out <- character(n)
   for (k in seq_along(groups)) out[groups[[k]]] <- paste0(out[groups[[k]]], lets[k])
   out
 }
+
+## Compact letter display from a symmetric logical matrix `sig` (TRUE where two
+## means differ significantly), by the insert and absorb steps of Piepho's
+## (2004, Journal of Computational and Graphical Statistics 13, 456-466)
+## algorithm. Two means share a letter exactly when they do not differ
+## significantly, whatever produced `sig`. The sweep above only guarantees that
+## when one critical difference applies to every pair, which unequal
+## replication and the step-down range tests both break.
+cld_from_sig <- function(mu, sig) {
+  n <- length(mu)
+  if (n < 2) return(rep("a", n))
+  G <- matrix(TRUE, n, 1L)                      # one column per letter
+  pairs <- which(upper.tri(sig) & sig, arr.ind = TRUE)
+  for (r in seq_len(nrow(pairs))) {
+    i <- pairs[r, 1]; j <- pairs[r, 2]
+    both <- which(G[i, ] & G[j, ])
+    if (!length(both)) next
+    ## insert: split every letter holding both members of a significant pair
+    ## into one copy without i and one without j
+    add <- G[, both, drop = FALSE]
+    add[j, ] <- FALSE
+    G[i, both] <- FALSE
+    G <- absorb_letters(cbind(G, add))
+  }
+  ## letter "a" goes to the group holding the highest mean, and so on down
+  rk <- integer(n); rk[order(mu, decreasing = TRUE)] <- seq_len(n)
+  key <- apply(G, 2, function(g) paste(sprintf("%06d", sort(rk[g])), collapse = "-"))
+  G <- G[, order(key), drop = FALSE]
+  lets <- letter_seq(ncol(G))
+  vapply(seq_len(n), function(i) paste(lets[G[i, ]], collapse = ""), character(1))
+}
+
+## absorb: drop any letter whose members all carry another letter too, and any
+## repeat of an identical letter. sub[a, b] is TRUE when letter a lies inside
+## letter b; done as one matrix product because this runs after every insert.
+absorb_letters <- function(G) {
+  if (ncol(G) < 2L) return(G)
+  sub <- crossprod(G, !G) == 0
+  diag(sub) <- FALSE
+  same <- sub & t(sub)
+  drop <- rowSums(sub & !t(sub)) > 0 | rowSums(same & row(same) > col(same)) > 0
+  G[, !drop, drop = FALSE]
+}
+
+## a, b, ..., z, then aa, bb, ..., then aaa, ...
+letter_seq <- function(k)
+  unlist(lapply(seq_len(ceiling(k / 26)), function(r) strrep(letters, r)))[seq_len(k)]
 
 ## read data pasted straight out of Excel
 read_pasted <- function(txt, sep = "\t", header = TRUE) {
@@ -195,12 +271,12 @@ df_html <- function(df, caption = NULL, foot = NULL, digits = 3) {
     "</table>")
 }
 
-anova_display <- function(an) {
+anova_display <- function(an, alpha) {
   data.frame(Source = an$Source, Df = an$Df,
              `Sum of squares` = an$SS, `Mean square` = an$MS,
              `F value` = an$F,
-             `p value` = ifelse(is.na(an$p), "-", format.pval(an$p, digits = 3, eps = 1e-4)),
-             Signif = star(an$p), check.names = FALSE)
+             `p value` = p_text(an$p),
+             Signif = star(an$p, alpha), check.names = FALSE)
 }
 
 ## ------------------------------------------------------------- demo datasets
@@ -399,16 +475,151 @@ eff_means <- function(d, resp, vars) {
   agg[do.call(order, agg[vars]), , drop = FALSE]
 }
 
-new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL) {
-  m  <- eff_means(d, resp, vars)
-  ni <- nrow(d) / nrow(m)
-  sem <- sqrt(mse / ni)
-  sed <- sqrt(2 * mse / ni)
-  cd5 <- stats::qt(0.975, df) * sed
-  cd1 <- stats::qt(0.995, df) * sed
-  m$Letter <- cld_lsd(m$Mean, cd5)
-  list(label = label %||% paste(vars, collapse = " x "), vars = vars,
-       means = m, n_per_mean = ni, mse = mse, df = df, sem = sem, sed = sed,
-       cd5 = cd5, cd1 = cd1, p = p, F = Fv, notes = character(0))
+## one label per row of a table of means, naming its level(s), as shown to the
+## user and used for the dimnames of an effect's SE(d) and C.D. matrices
+level_key <- function(df, vars)
+  do.call(paste, c(lapply(df[vars], as.character), sep = " : "))
+
+## the same, joined by a character that cannot appear in data, for matching
+## cells internally: two cells whose level names contain " : " could otherwise
+## share a label and be merged
+cell_key <- function(df, vars)
+  do.call(paste, c(lapply(df[vars], as.character), sep = "\u001f"))
+
+## Least-squares (adjusted) means of `vars` from a fitted linear model, with
+## their covariance matrix, in the order of `keys`. Each mean averages the
+## model's predictions over every level of the other factors with equal weight,
+## so a treatment that lost a plot is not pulled up or down by the block that
+## plot was in, and a marginal mean is not weighted by unequal cell sizes. With
+## complete, balanced data these are the plain averages with variance MSE / n.
+## Base R only: the model matrix of a reference grid, coef() and vcov().
+ls_means <- function(fit, vars, keys) {
+  xl <- fit$xlevels
+  grid <- expand.grid(xl, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  for (v in names(xl)) grid[[v]] <- factor(grid[[v]], levels = xl[[v]])
+  X <- stats::model.matrix(stats::delete.response(stats::terms(fit)), grid,
+                           contrasts.arg = fit$contrasts)
+  g <- cell_key(grid, vars)
+  L <- rowsum(X, g, reorder = FALSE) / as.vector(table(g)[unique(g)])
+  L <- L[match(keys, rownames(L)), , drop = FALSE]
+  ## a mean is estimable only if its row of L lies in the row space of the
+  ## data's model matrix; otherwise the data cannot separate it from the blocks
+  Xd <- stats::model.matrix(fit)
+  off <- qr.resid(qr(t(Xd)), t(L))
+  if (any(abs(off) > 1e-8 * max(1, abs(L))))
+    stop("Some means cannot be estimated: the treatments that are present never ",
+         "appear together in a block, so their differences cannot be separated ",
+         "from the block differences.", call. = FALSE)
+  b <- stats::coef(fit); ok <- !is.na(b)
+  Lk <- L[, ok, drop = FALSE]
+  V <- Lk %*% stats::vcov(fit)[ok, ok, drop = FALSE] %*% t(Lk)
+  list(est = drop(Lk %*% b[ok]), V = V)
+}
+
+## One effect's table of means, with the standard errors and critical
+## differences for every comparison. Every standard error comes from V, the
+## covariance matrix of the means: SE(m)_i = sqrt(V_ii) and
+## SE(d)_ij = sqrt(V_ii + V_jj - 2 V_ij). Without a fitted model the means are
+## plain averages with V = diag(MSE / n_i), so with unequal replication each
+## mean and each pair still gets its own value. Given `fit`, the means are
+## least-squares means and V comes from the model, which is what blocked
+## designs with a missing plot and factorials with unequal cells need.
+new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL, fit = NULL) {
+  m <- eff_means(d, resp, vars)
+  key <- level_key(m, vars)
+  notes <- character(0)
+  if (is.null(fit)) {
+    V <- diag(mse / m$N, nrow(m))
+  } else {
+    ls <- ls_means(fit, vars, cell_key(m, vars))
+    V <- ls$V
+    if (any(abs(ls$est - m$Mean) > 1e-8 * max(1, abs(m$Mean)))) {
+      m$Raw_mean <- m$Mean
+      m$Mean <- unname(ls$est)
+      notes <- paste0("The data are unbalanced, so these are adjusted (least-squares) ",
+        "means: each is estimated as if every level had appeared in every block and ",
+        "alongside every level of the other factors. The plain average of the data ",
+        "is shown as the unadjusted mean.")
+    }
+  }
+  dv <- diag(V)
+  S <- sqrt(pmax(outer(dv, dv, "+") - 2 * V, 0))
+  diag(S) <- 0
+  dimnames(S) <- list(key, key)
+  tq <- stats::qt(1 - alpha / 2, df)
+  C <- tq * S
+  m$SE <- sqrt(dv)
+  m$Letter <- cld_lsd(m$Mean, C)
+  e <- list(label = label %||% paste(vars, collapse = " x "), vars = vars,
+            means = m, mse = mse, df = df, alpha = alpha, tcrit = tq,
+            p = p, F = Fv, notes = notes)
+  set_errors(e, m$SE, S, C)
+}
+
+## Attach the standard errors to an effect: the per-mean SE (already a column
+## of the means), the SE(d) and C.D. matrices, and single values sem, sed and cd
+## only when one number genuinely applies to every mean and every pair. When it
+## does not they are NA, the range is kept for display, and equal_rep is FALSE,
+## so no table can print one SE that fits some means and not others.
+set_errors <- function(e, se, S, C) {
+  off <- row(S) != col(S)
+  sd_ <- S[off]; sd_ <- sd_[!is.na(sd_)]
+  cd_ <- C[off]; cd_ <- cd_[!is.na(cd_)]
+  same <- function(x) length(x) > 0 && diff(range(x)) <= 1e-9 * max(abs(x))
+  one <- function(x) if (same(x)) x[1] else NA_real_
+  n <- e$means$N
+  e$sem <- one(se); e$sed <- one(sd_); e$cd <- one(cd_)
+  e$se_range <- range(se)
+  e$sed_range <- if (length(sd_)) range(sd_) else c(NA_real_, NA_real_)
+  e$cd_range <- if (length(cd_)) range(cd_) else c(NA_real_, NA_real_)
+  e$equal_rep <- same(se) && same(sd_)
+  e$n_per_mean <- if (length(unique(n)) == 1L) n[1] else NA_real_
+  e$sed_mat <- S; e$cd_mat <- C
+  e
+}
+
+## An interaction effect from a design with several error strata (split plot,
+## strip plot, pooled analysis). Only comparisons inside one level of `slice`
+## share a single standard error, so the SE(d) and C.D. matrices are filled for
+## those pairs and left NA across slices; letters and post-hoc tests then work
+## one slice at a time. These designs are analysed only when complete, so every
+## within-slice comparison has the same SE(d). The SE column here is the
+## conventional SE(m) for those comparisons, SE(d) / sqrt(2), not the standard
+## error of a cell mean on its own, which would also carry the main-plot (or
+## environment) variation; plots and tables say so. `extra` holds the SE(d) and
+## C.D. of the other comparisons, and `extra_p` the p-value that gates each
+## C.D. (NA for an SE(d), which is always shown).
+slice_effect <- function(m, vars, slice, label, se, sed, tcrit, mse, df, alpha,
+                         p, Fv, extra, notes, ...) {
+  key <- level_key(m, vars)
+  k <- nrow(m)
+  inside <- outer(as.character(m[[slice]]), as.character(m[[slice]]), "==")
+  S <- matrix(NA_real_, k, k, dimnames = list(key, key))
+  S[inside] <- sed
+  diag(S) <- 0
+  m$SE <- rep(se, k)
+  e <- c(list(label = label, vars = vars, means = m, mse = mse, df = df,
+              alpha = alpha, tcrit = tcrit, p = p, F = Fv, slice = slice,
+              extra = extra, notes = notes), list(...))
+  set_errors(e, m$SE, S, tcrit * S)
+}
+
+## An effect's further comparisons (e$extra) as label and display text, each
+## C.D. replaced by "NS" when the F-test it belongs to is not significant.
+extra_text <- function(e, digits = 3) {
+  if (is.null(e$extra)) return(NULL)
+  v <- unlist(e$extra)
+  p <- if (is.null(e$extra_p)) rep(NA_real_, length(v)) else e$extra_p
+  txt <- ifelse(!is.na(p) & !(p < e$alpha), "NS", fmt(v, digits))
+  stats::setNames(txt, names(e$extra))
+}
+
+## Two-sided critical t for an effect at level alpha: plain t on the effect's
+## error df, or, for a comparison whose standard error mixes two error terms,
+## the weighted t of Gomez & Gomez (1984) stored in t_mix.
+t_crit <- function(e, alpha) {
+  if (is.null(e$t_mix)) return(stats::qt(1 - alpha / 2, e$df))
+  w <- e$t_mix$w
+  sum(w * stats::qt(1 - alpha / 2, e$t_mix$df)) / sum(w)
 }
 `%||%` <- function(a, b) if (is.null(a)) b else a

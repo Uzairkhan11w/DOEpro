@@ -15,7 +15,8 @@ levene_test <- function(y, g) {
 ##   z(lambda) = (y^lambda - 1) / (lambda * gm^(lambda-1)),   z(0) = gm * log(y)
 ## with gm the geometric mean of y, and  l(lambda) = -n/2 * log(RSS(z)/n).
 ## Computed directly, so it never depends on re-evaluating a stored model call.
-boxcox_profile <- function(y, X, lambda = seq(-2, 2, 0.02)) {
+## The confidence interval is at `level`, which the analysis sets to 1 - alpha.
+boxcox_profile <- function(y, X, level, lambda = seq(-2, 2, 0.02)) {
   if (any(!is.finite(y)) || any(y <= 0) || is.null(X)) return(NULL)
   n <- length(y); gm <- exp(mean(log(y))); qrx <- qr(X)
   ll <- vapply(lambda, function(l) {
@@ -26,12 +27,16 @@ boxcox_profile <- function(y, X, lambda = seq(-2, 2, 0.02)) {
   }, numeric(1))
   if (all(is.na(ll))) return(NULL)
   best <- lambda[which.max(ll)]
-  ## 95% CI: lambda values within qchisq(.95,1)/2 of the maximum log-likelihood
-  inside <- lambda[!is.na(ll) & ll > max(ll, na.rm = TRUE) - 0.5 * stats::qchisq(0.95, 1)]
-  list(x = lambda, y = ll, lambda = best, ci = range(inside))
+  ## confidence interval: lambda values within qchisq(level, 1) / 2 of the
+  ## maximum log-likelihood
+  inside <- lambda[!is.na(ll) & ll > max(ll, na.rm = TRUE) - 0.5 * stats::qchisq(level, 1)]
+  list(x = lambda, y = ll, lambda = best, ci = range(inside), level = level)
 }
 
+## The assumption tests are judged at the analysis's own significance level, so
+## a user who chose 1% is not told about departures at 5%.
 check_assumptions <- function(res) {
+  alpha <- res$alpha
   r <- res$resid
   d <- res$data; resp <- res$resp
   cells <- interaction(d[res$facs], drop = TRUE)
@@ -47,12 +52,13 @@ check_assumptions <- function(res) {
   slope <- if (nrow(mv) >= 3)
     unname(stats::coef(stats::lm(log(v) ~ log(m), data = mv))[2]) else NA_real_
 
-  bc <- tryCatch(boxcox_profile(d[[resp]], res$X), error = function(e) NULL)
+  bc <- tryCatch(boxcox_profile(d[[resp]], res$X, level = 1 - alpha),
+                 error = function(e) NULL)
 
   std <- r / stats::sd(r)
   outliers <- which(abs(std) > 3)
 
-  list(shapiro = sw, levene = lev, bartlett = bart, slope = slope,
+  list(alpha = alpha, shapiro = sw, levene = lev, bartlett = bart, slope = slope,
        bc = bc, lambda = if (is.null(bc)) NA_real_ else bc$lambda,
        mv = mv, outliers = outliers,
        p_norm = if (is.null(sw))  NA_real_ else sw$p.value,
@@ -76,24 +82,26 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   looks_pct   <- in_pct_range && pct_name
   count_slope <- !is.na(b) && b >= 0.5 && b < 1.5
 
-  ok <- (is.na(pn) || pn > 0.05) && (is.na(ph) || ph > 0.05)
+  ok <- (is.na(pn) || pn > res$alpha) && (is.na(ph) || ph > res$alpha)
 
   ## When the diagnostics are satisfactory we still name the conventional
   ## transformation for data that are plainly counts or percentages, flagged as
   ## optional - agronomic convention transforms them, the diagnostics do not
   ## demand it, and the analyst should decide knowingly.
   if (ok && dtype == "auto") {
+    fine <- sprintf(paste0("Neither the normality test nor the test of equal variances ",
+                           "finds a significant departure at the %s%% level"), pct(res$alpha))
     if (looks_prop)
       return(list(method = "arcsine01", optional = TRUE,
-        why = "The residuals are normal and the variances homogeneous, so no transformation is strictly required. The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale."))
+        why = paste0(fine, ", so no transformation is strictly required. The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.")))
     if (looks_count && count_slope)
       return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt", optional = TRUE,
-        why = sprintf("The residuals are normal and the variances homogeneous, so no transformation is strictly required. The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", b)))
+        why = sprintf("%s, so no transformation is strictly required. The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", fine, b)))
     if (looks_pct)
       return(list(method = "arcsine", optional = TRUE,
-        why = sprintf("The residuals are normal and the variances homogeneous, so no transformation is strictly required. '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", nm)))
+        why = sprintf("%s, so no transformation is strictly required. '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", fine, nm)))
     return(list(method = "none", optional = FALSE,
-      why = "Residuals are normal and the variances are homogeneous - no transformation is needed."))
+      why = paste0(fine, " - no transformation is needed.")))
   }
 
   ## user-declared data type wins over any guessing

@@ -5,7 +5,7 @@
 ##  It is generated from the package sources in R/ by build_app.R, and is
 ##  overwritten every time that script runs. Edit the files in R/ instead.
 ##
-##  Generated: 24 July 2026 from DOEpro 2.0.1
+##  Generated: 07 October 2026 from DOEpro 2.0.1
 ##  Source:    https://github.com/Uzairkhan11w/DOEpro
 ##  Run with:  shiny::runApp("app.R")
 ###############################################################################
@@ -127,33 +127,66 @@ fmt <- function(x, d = 3) {
   ifelse(is.na(x), "-", formatC(as.numeric(x), digits = d, format = "f"))
 }
 
-pval <- function(p) gsub("<", "&lt;", format.pval(p, digits = 3, eps = 1e-4), fixed = TRUE)
-
-star <- function(p) {
-  ifelse(is.na(p), "", ifelse(p < 0.01, "**", ifelse(p < 0.05, "*", "NS")))
+## An effect's SE(m), SE(d) or C.D. for display (`what` is "sem", "sed" or "cd"):
+## the single value when one applies to every mean and pair, otherwise its
+## range, so a figure that fits only some of the means is never printed as if
+## it fitted them all.
+err_text <- function(e, what, digits = 2, html = TRUE) {
+  v <- e[[what]]
+  if (length(v) == 1L && !is.na(v)) return(fmt(v, digits))
+  rg <- e[[c(sem = "se_range", sed = "sed_range", cd = "cd_range")[[what]]]]
+  if (length(rg) != 2L || anyNA(rg)) return("-")
+  ## a range whose ends round to the same figure reads as nonsense, so show
+  ## enough decimals to tell them apart
+  dg <- digits
+  while (dg < digits + 3 && fmt(rg[1], dg) == fmt(rg[2], dg)) dg <- dg + 1
+  paste0(fmt(rg[1], dg), if (html) "&ndash;" else " to ", fmt(rg[2], dg))
 }
 
-## Significance-letter algorithm (constant critical difference, balanced data).
-## Means sorted descending; a treatment joins every group whose members are all
-## within CD of it, otherwise it seeds a new group. Redundant groups dropped.
-## `cd` is either a constant critical difference, or a function of p = the number
-## of means spanned by the comparison (needed by Duncan's DMRT and SNK).
+## a p-value for reading: never in scientific notation, never "= <0.0001"
+p_text <- function(p) ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
+                             trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
+pval <- function(p) gsub("<", "&lt;", p_text(p), fixed = TRUE)
+
+## "p = 0.0373" or "p &lt; 0.0001", for running text
+p_eq <- function(p) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p)))
+
+## Significance marks at the level the user chose: one star at alpha, two at
+## alpha / 5. At alpha = 0.05 that is the familiar 5% and 1% pair; at any other
+## level the marks follow the choice instead of staying at 5% and 1%.
+star <- function(p, alpha) {
+  ifelse(is.na(p), "", ifelse(p < alpha / 5, "**", ifelse(p < alpha, "*", "NS")))
+}
+
+## a probability as it is written in labels: 0.05, 0.01, 0.002
+p_lab <- function(a) format(a, digits = 6, drop0trailing = TRUE, trim = TRUE, scientific = FALSE)
+
+## a probability as a percentage, for "the 5% level"
+pct <- function(a) format(100 * a, digits = 6, drop0trailing = TRUE, trim = TRUE, scientific = FALSE)
+
+## the key printed under an ANOVA table, so the stars mean what they say
+star_key <- function(alpha)
+  sprintf("** significant at p &lt; %s; * significant at p &lt; %s; NS not significant at the %s%% level.",
+          p_lab(alpha / 5), p_lab(alpha), pct(alpha))
+
+## Letters from critical differences. `cd` is one number that applies to every
+## pair, or a square matrix holding one critical difference per pair (unequal
+## replication). Any missing value means no letters can be given.
 cld_lsd <- function(mu, cd) {
   n <- length(mu)
   if (n < 2) return(rep("a", n))
-  if (!is.function(cd) && (is.na(cd) || !is.finite(cd))) return(rep("", n))
-  rk <- rank(-mu, ties.method = "first")
-  pm <- abs(outer(rk, rk, "-")) + 1L          # number of means spanned
-  crit <- if (is.function(cd))
-    matrix(vapply(as.vector(pm), function(p) if (p < 2L) Inf else cd(p), numeric(1)), n, n)
-  else matrix(cd, n, n)
+  if (!length(cd) || anyNA(cd) || any(!is.finite(cd))) return(rep("", n))
+  crit <- if (is.matrix(cd)) cd else matrix(cd, n, n)
   sig <- abs(outer(mu, mu, "-")) > crit
   diag(sig) <- FALSE
-  cld_from_sig(mu, sig)
+  off <- crit[row(crit) != col(crit)]
+  if (diff(range(off)) <= 1e-12 * max(abs(off))) cld_sweep(mu, sig) else cld_from_sig(mu, sig)
 }
 
-## letters from a logical "significantly different" matrix
-cld_from_sig <- function(mu, sig) {
+## Letters when one critical difference applies to every pair: a single sweep
+## down the sorted means. Exact in that case and instant for hundreds of means,
+## where the general algorithm below is slow; both give identical letters.
+cld_sweep <- function(mu, sig) {
   n <- length(mu)
   ord <- order(mu, decreasing = TRUE)
   groups <- list(); done <- integer(0)
@@ -164,26 +197,69 @@ cld_from_sig <- function(mu, sig) {
         groups[[k]] <- c(groups[[k]], i); joined <- TRUE
       }
     }
-    if (!joined) {
-      cand <- done[!sig[i, done]]
-      groups[[length(groups) + 1L]] <- c(cand, i)
-    }
+    if (!joined) groups[[length(groups) + 1L]] <- c(done[!sig[i, done]], i)
     done <- c(done, i)
   }
   keep <- rep(TRUE, length(groups))
   for (i in seq_along(groups)) for (j in seq_along(groups)) {
-    if (i != j && keep[i] && keep[j] &&
-        all(groups[[i]] %in% groups[[j]]) &&
+    if (i != j && keep[i] && keep[j] && all(groups[[i]] %in% groups[[j]]) &&
         length(groups[[i]]) < length(groups[[j]])) keep[i] <- FALSE
   }
   groups <- groups[keep]
   groups <- groups[!duplicated(vapply(groups, function(g)
     paste(sort(g), collapse = "-"), character(1)))]
-  lets <- c(letters, paste0(letters, letters))[seq_along(groups)]
+  lets <- letter_seq(length(groups))
   out <- character(n)
   for (k in seq_along(groups)) out[groups[[k]]] <- paste0(out[groups[[k]]], lets[k])
   out
 }
+
+## Compact letter display from a symmetric logical matrix `sig` (TRUE where two
+## means differ significantly), by the insert and absorb steps of Piepho's
+## (2004, Journal of Computational and Graphical Statistics 13, 456-466)
+## algorithm. Two means share a letter exactly when they do not differ
+## significantly, whatever produced `sig`. The sweep above only guarantees that
+## when one critical difference applies to every pair, which unequal
+## replication and the step-down range tests both break.
+cld_from_sig <- function(mu, sig) {
+  n <- length(mu)
+  if (n < 2) return(rep("a", n))
+  G <- matrix(TRUE, n, 1L)                      # one column per letter
+  pairs <- which(upper.tri(sig) & sig, arr.ind = TRUE)
+  for (r in seq_len(nrow(pairs))) {
+    i <- pairs[r, 1]; j <- pairs[r, 2]
+    both <- which(G[i, ] & G[j, ])
+    if (!length(both)) next
+    ## insert: split every letter holding both members of a significant pair
+    ## into one copy without i and one without j
+    add <- G[, both, drop = FALSE]
+    add[j, ] <- FALSE
+    G[i, both] <- FALSE
+    G <- absorb_letters(cbind(G, add))
+  }
+  ## letter "a" goes to the group holding the highest mean, and so on down
+  rk <- integer(n); rk[order(mu, decreasing = TRUE)] <- seq_len(n)
+  key <- apply(G, 2, function(g) paste(sprintf("%06d", sort(rk[g])), collapse = "-"))
+  G <- G[, order(key), drop = FALSE]
+  lets <- letter_seq(ncol(G))
+  vapply(seq_len(n), function(i) paste(lets[G[i, ]], collapse = ""), character(1))
+}
+
+## absorb: drop any letter whose members all carry another letter too, and any
+## repeat of an identical letter. sub[a, b] is TRUE when letter a lies inside
+## letter b; done as one matrix product because this runs after every insert.
+absorb_letters <- function(G) {
+  if (ncol(G) < 2L) return(G)
+  sub <- crossprod(G, !G) == 0
+  diag(sub) <- FALSE
+  same <- sub & t(sub)
+  drop <- rowSums(sub & !t(sub)) > 0 | rowSums(same & row(same) > col(same)) > 0
+  G[, !drop, drop = FALSE]
+}
+
+## a, b, ..., z, then aa, bb, ..., then aaa, ...
+letter_seq <- function(k)
+  unlist(lapply(seq_len(ceiling(k / 26)), function(r) strrep(letters, r)))[seq_len(k)]
 
 ## read data pasted straight out of Excel
 read_pasted <- function(txt, sep = "\t", header = TRUE) {
@@ -219,12 +295,12 @@ df_html <- function(df, caption = NULL, foot = NULL, digits = 3) {
     "</table>")
 }
 
-anova_display <- function(an) {
+anova_display <- function(an, alpha) {
   data.frame(Source = an$Source, Df = an$Df,
              `Sum of squares` = an$SS, `Mean square` = an$MS,
              `F value` = an$F,
-             `p value` = ifelse(is.na(an$p), "-", format.pval(an$p, digits = 3, eps = 1e-4)),
-             Signif = star(an$p), check.names = FALSE)
+             `p value` = p_text(an$p),
+             Signif = star(an$p, alpha), check.names = FALSE)
 }
 
 ## ------------------------------------------------------------- demo datasets
@@ -423,17 +499,152 @@ eff_means <- function(d, resp, vars) {
   agg[do.call(order, agg[vars]), , drop = FALSE]
 }
 
-new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL) {
-  m  <- eff_means(d, resp, vars)
-  ni <- nrow(d) / nrow(m)
-  sem <- sqrt(mse / ni)
-  sed <- sqrt(2 * mse / ni)
-  cd5 <- stats::qt(0.975, df) * sed
-  cd1 <- stats::qt(0.995, df) * sed
-  m$Letter <- cld_lsd(m$Mean, cd5)
-  list(label = label %||% paste(vars, collapse = " x "), vars = vars,
-       means = m, n_per_mean = ni, mse = mse, df = df, sem = sem, sed = sed,
-       cd5 = cd5, cd1 = cd1, p = p, F = Fv, notes = character(0))
+## one label per row of a table of means, naming its level(s), as shown to the
+## user and used for the dimnames of an effect's SE(d) and C.D. matrices
+level_key <- function(df, vars)
+  do.call(paste, c(lapply(df[vars], as.character), sep = " : "))
+
+## the same, joined by a character that cannot appear in data, for matching
+## cells internally: two cells whose level names contain " : " could otherwise
+## share a label and be merged
+cell_key <- function(df, vars)
+  do.call(paste, c(lapply(df[vars], as.character), sep = "\u001f"))
+
+## Least-squares (adjusted) means of `vars` from a fitted linear model, with
+## their covariance matrix, in the order of `keys`. Each mean averages the
+## model's predictions over every level of the other factors with equal weight,
+## so a treatment that lost a plot is not pulled up or down by the block that
+## plot was in, and a marginal mean is not weighted by unequal cell sizes. With
+## complete, balanced data these are the plain averages with variance MSE / n.
+## Base R only: the model matrix of a reference grid, coef() and vcov().
+ls_means <- function(fit, vars, keys) {
+  xl <- fit$xlevels
+  grid <- expand.grid(xl, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  for (v in names(xl)) grid[[v]] <- factor(grid[[v]], levels = xl[[v]])
+  X <- stats::model.matrix(stats::delete.response(stats::terms(fit)), grid,
+                           contrasts.arg = fit$contrasts)
+  g <- cell_key(grid, vars)
+  L <- rowsum(X, g, reorder = FALSE) / as.vector(table(g)[unique(g)])
+  L <- L[match(keys, rownames(L)), , drop = FALSE]
+  ## a mean is estimable only if its row of L lies in the row space of the
+  ## data's model matrix; otherwise the data cannot separate it from the blocks
+  Xd <- stats::model.matrix(fit)
+  off <- qr.resid(qr(t(Xd)), t(L))
+  if (any(abs(off) > 1e-8 * max(1, abs(L))))
+    stop("Some means cannot be estimated: the treatments that are present never ",
+         "appear together in a block, so their differences cannot be separated ",
+         "from the block differences.", call. = FALSE)
+  b <- stats::coef(fit); ok <- !is.na(b)
+  Lk <- L[, ok, drop = FALSE]
+  V <- Lk %*% stats::vcov(fit)[ok, ok, drop = FALSE] %*% t(Lk)
+  list(est = drop(Lk %*% b[ok]), V = V)
+}
+
+## One effect's table of means, with the standard errors and critical
+## differences for every comparison. Every standard error comes from V, the
+## covariance matrix of the means: SE(m)_i = sqrt(V_ii) and
+## SE(d)_ij = sqrt(V_ii + V_jj - 2 V_ij). Without a fitted model the means are
+## plain averages with V = diag(MSE / n_i), so with unequal replication each
+## mean and each pair still gets its own value. Given `fit`, the means are
+## least-squares means and V comes from the model, which is what blocked
+## designs with a missing plot and factorials with unequal cells need.
+new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL, fit = NULL) {
+  m <- eff_means(d, resp, vars)
+  key <- level_key(m, vars)
+  notes <- character(0)
+  if (is.null(fit)) {
+    V <- diag(mse / m$N, nrow(m))
+  } else {
+    ls <- ls_means(fit, vars, cell_key(m, vars))
+    V <- ls$V
+    if (any(abs(ls$est - m$Mean) > 1e-8 * max(1, abs(m$Mean)))) {
+      m$Raw_mean <- m$Mean
+      m$Mean <- unname(ls$est)
+      notes <- paste0("The data are unbalanced, so these are adjusted (least-squares) ",
+        "means: each is estimated as if every level had appeared in every block and ",
+        "alongside every level of the other factors. The plain average of the data ",
+        "is shown as the unadjusted mean.")
+    }
+  }
+  dv <- diag(V)
+  S <- sqrt(pmax(outer(dv, dv, "+") - 2 * V, 0))
+  diag(S) <- 0
+  dimnames(S) <- list(key, key)
+  tq <- stats::qt(1 - alpha / 2, df)
+  C <- tq * S
+  m$SE <- sqrt(dv)
+  m$Letter <- cld_lsd(m$Mean, C)
+  e <- list(label = label %||% paste(vars, collapse = " x "), vars = vars,
+            means = m, mse = mse, df = df, alpha = alpha, tcrit = tq,
+            p = p, F = Fv, notes = notes)
+  set_errors(e, m$SE, S, C)
+}
+
+## Attach the standard errors to an effect: the per-mean SE (already a column
+## of the means), the SE(d) and C.D. matrices, and single values sem, sed and cd
+## only when one number genuinely applies to every mean and every pair. When it
+## does not they are NA, the range is kept for display, and equal_rep is FALSE,
+## so no table can print one SE that fits some means and not others.
+set_errors <- function(e, se, S, C) {
+  off <- row(S) != col(S)
+  sd_ <- S[off]; sd_ <- sd_[!is.na(sd_)]
+  cd_ <- C[off]; cd_ <- cd_[!is.na(cd_)]
+  same <- function(x) length(x) > 0 && diff(range(x)) <= 1e-9 * max(abs(x))
+  one <- function(x) if (same(x)) x[1] else NA_real_
+  n <- e$means$N
+  e$sem <- one(se); e$sed <- one(sd_); e$cd <- one(cd_)
+  e$se_range <- range(se)
+  e$sed_range <- if (length(sd_)) range(sd_) else c(NA_real_, NA_real_)
+  e$cd_range <- if (length(cd_)) range(cd_) else c(NA_real_, NA_real_)
+  e$equal_rep <- same(se) && same(sd_)
+  e$n_per_mean <- if (length(unique(n)) == 1L) n[1] else NA_real_
+  e$sed_mat <- S; e$cd_mat <- C
+  e
+}
+
+## An interaction effect from a design with several error strata (split plot,
+## strip plot, pooled analysis). Only comparisons inside one level of `slice`
+## share a single standard error, so the SE(d) and C.D. matrices are filled for
+## those pairs and left NA across slices; letters and post-hoc tests then work
+## one slice at a time. These designs are analysed only when complete, so every
+## within-slice comparison has the same SE(d). The SE column here is the
+## conventional SE(m) for those comparisons, SE(d) / sqrt(2), not the standard
+## error of a cell mean on its own, which would also carry the main-plot (or
+## environment) variation; plots and tables say so. `extra` holds the SE(d) and
+## C.D. of the other comparisons, and `extra_p` the p-value that gates each
+## C.D. (NA for an SE(d), which is always shown).
+slice_effect <- function(m, vars, slice, label, se, sed, tcrit, mse, df, alpha,
+                         p, Fv, extra, notes, ...) {
+  key <- level_key(m, vars)
+  k <- nrow(m)
+  inside <- outer(as.character(m[[slice]]), as.character(m[[slice]]), "==")
+  S <- matrix(NA_real_, k, k, dimnames = list(key, key))
+  S[inside] <- sed
+  diag(S) <- 0
+  m$SE <- rep(se, k)
+  e <- c(list(label = label, vars = vars, means = m, mse = mse, df = df,
+              alpha = alpha, tcrit = tcrit, p = p, F = Fv, slice = slice,
+              extra = extra, notes = notes), list(...))
+  set_errors(e, m$SE, S, tcrit * S)
+}
+
+## An effect's further comparisons (e$extra) as label and display text, each
+## C.D. replaced by "NS" when the F-test it belongs to is not significant.
+extra_text <- function(e, digits = 3) {
+  if (is.null(e$extra)) return(NULL)
+  v <- unlist(e$extra)
+  p <- if (is.null(e$extra_p)) rep(NA_real_, length(v)) else e$extra_p
+  txt <- ifelse(!is.na(p) & !(p < e$alpha), "NS", fmt(v, digits))
+  stats::setNames(txt, names(e$extra))
+}
+
+## Two-sided critical t for an effect at level alpha: plain t on the effect's
+## error df, or, for a comparison whose standard error mixes two error terms,
+## the weighted t of Gomez & Gomez (1984) stored in t_mix.
+t_crit <- function(e, alpha) {
+  if (is.null(e$t_mix)) return(stats::qt(1 - alpha / 2, e$df))
+  w <- e$t_mix$w
+  sum(w * stats::qt(1 - alpha / 2, e$t_mix$df)) / sum(w)
 }
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
@@ -450,10 +661,20 @@ new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL) {
 #' The error term is chosen to match the design. A split plot is fitted with
 #' \code{Error(rep/main)} and a strip plot with \code{Error(rep/(A+B))}, so the
 #' main-plot and sub-plot comparisons are each tested against their own error;
-#' the two mixed comparisons use a Satterthwaite-weighted \emph{t}. In a pooled
-#' (combined) analysis over environments, each treatment effect is tested
-#' against its own interaction with the environment, and each environment by
-#' treatment interaction against the pooled error.
+#' the two mixed comparisons use a weighted \emph{t}. In a pooled (combined)
+#' analysis over environments, each treatment effect is tested against its own
+#' interaction with the environment, and each environment by treatment
+#' interaction against the pooled error.
+#'
+#' Unequal replication is handled exactly in the designs with a single error
+#' term (CRD, RCBD, Latin square and the factorials): each mean gets its own
+#' standard error and each pair of means its own standard error of a difference
+#' and critical difference. When blocks are incomplete or factorial cells are
+#' unequal, the means are adjusted (least-squares) means and every term is
+#' tested adjusted for all the others (Type III). Designs with several error
+#' strata (split plot, strip plot and the pooled analyses) can only be analysed
+#' exactly when they are complete; with a plot missing \code{analyze()} stops
+#' and says which combinations are missing.
 #'
 #' @param d A data frame in long format: one row per plot, with columns for the
 #'   design factors and the response.
@@ -466,14 +687,36 @@ new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL) {
 #'   \code{rep}, \code{main}, \code{sub} (split and strip plots); \code{env}
 #'   together with \code{treat} or \code{factors}, and \code{rep} for an RCBD
 #'   base (pooled designs).
-#' @param alpha The significance level for the critical differences and the
-#'   grouping letters. Defaults to 0.05.
+#' @param alpha The significance level. It sets the critical differences, the
+#'   grouping letters and the significance of every F-test. Defaults to 0.05.
 #'
-#' @return A list with, among others: \code{anova} (the analysis of variance
-#'   table), \code{effects} (one entry per effect, each holding the table of
-#'   means with \code{sem}, \code{sed}, \code{cd5}, \code{cd1} and the grouping
-#'   letters), \code{mse} and \code{dfe} (the error mean square and its degrees
-#'   of freedom), \code{cv}, \code{grand}, \code{resid} and \code{lm}.
+#' @return A list with, among others:
+#'   \describe{
+#'     \item{\code{anova}}{The analysis of variance table.}
+#'     \item{\code{effects}}{One entry per effect. Each holds \code{means}, the
+#'       table of means with columns \code{Mean}, \code{N}, \code{SD}, \code{SE}
+#'       (the standard error of that mean), the grouping letters and, when the
+#'       means are adjusted, \code{Raw_mean}; \code{sed_mat} and \code{cd_mat},
+#'       the standard error of the difference and the critical difference for
+#'       every pair of means; \code{sem}, \code{sed} and \code{cd}, single
+#'       values that are \code{NA} when replication is unequal and they differ
+#'       from mean to mean (\code{equal_rep} is then \code{FALSE}, and
+#'       \code{se_range}, \code{sed_range} and \code{cd_range} give the range);
+#'       \code{mse} and \code{df}, the error mean square and degrees of freedom
+#'       the effect is tested against; \code{p}, \code{F} and \code{alpha}. The
+#'       interaction of a split plot, strip plot or pooled analysis also has
+#'       \code{slice}, the factor within whose levels its means are compared:
+#'       its \code{SE}, \code{sed} and \code{cd} apply to those comparisons,
+#'       \code{sed_mat} and \code{cd_mat} are \code{NA} across levels of
+#'       \code{slice}, and \code{extra} gives the standard errors and critical
+#'       differences of the other comparisons.}
+#'     \item{\code{mse}, \code{dfe}}{The error mean square and its degrees of
+#'       freedom.}
+#'     \item{\code{balanced}}{Whether every cell of the design holds the same
+#'       number of observations.}
+#'     \item{\code{cv}, \code{grand}, \code{resid}, \code{lm}}{The coefficient of
+#'       variation, grand mean, residuals and the fitted linear model.}
+#'   }
 #'
 #' @seealso \code{\link{run_all}} to analyse several responses at once, and
 #'   \code{\link{build_report}} to render the result.
@@ -487,6 +730,9 @@ new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL) {
 #'
 #' @export
 analyze <- function(d, design, map, alpha = 0.05) {
+  if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha) ||
+      alpha <= 0 || alpha >= 0.5)
+    stop("The significance level must be a single number between 0 and 0.5, such as 0.05.")
   resp <- map$response
   d[[resp]] <- suppressWarnings(as.numeric(as.character(d[[resp]])))
 
@@ -502,47 +748,57 @@ analyze <- function(d, design, map, alpha = 0.05) {
     POOLRCBD = map$rep, POOLCRD = character(0),
     POOLFRCBD = map$rep, POOLFCRD = character(0))
 
+  ## the tables of means add columns with these names, so a design factor
+  ## called N (for nitrogen, say) would be overwritten by the counts
+  clash <- intersect(c(facs, blks), RESERVED_COLS)
+  if (length(clash))
+    stop(sprintf(paste0("A column used as a design factor is called %s, a name DOEpro ",
+      "uses in its tables of means. Please rename it (for example 'Nitrogen' rather ",
+      "than 'N') and run the analysis again."), join_and(sprintf("'%s'", clash))),
+      call. = FALSE)
   keep <- unique(c(resp, facs, blks))
   d <- d[stats::complete.cases(d[, keep, drop = FALSE]), keep, drop = FALSE]
   if (nrow(d) < 3) stop("Not enough complete rows to analyse.")
   for (v in c(facs, blks)) d[[v]] <- factor(d[[v]])
 
-  cells <- table(d[facs])
-  balanced <- length(unique(as.vector(cells))) == 1L && all(cells > 0)
+  lay <- check_layout(d, design, map, facs, blks)
   grand <- mean(d[[resp]])
   res <- list(design = design, resp = resp, data = d, facs = facs, blks = blks,
-              alpha = alpha, grand = grand, balanced = balanced,
-              reps = if (balanced) as.vector(cells)[1] else NA)
+              alpha = alpha, grand = grand, balanced = lay$balanced,
+              reps = lay$reps, n_range = lay$n_range)
 
   ## ------------------------------------------------- classic / factorial ----
   if (design %in% c("CRD", "RCBD", "LSD", "FCRD", "FRCBD")) {
     rhs <- paste(c(blks, paste(facs, collapse = "*")), collapse = " + ")
-    fit <- stats::aov(stats::as.formula(paste(resp, "~", rhs)), data = d)
+    form <- stats::as.formula(paste(resp, "~", rhs))
+    fit <- stats::aov(form, data = d)
     an  <- tidy_aov(fit)
     mse <- an$MS[an$Source == "Residuals"]
     dfe <- an$Df[an$Source == "Residuals"]
-    if (dfe < 1) stop("Zero error degrees of freedom - you need replication.")
+    if (!length(dfe) || dfe < 1) stop("Zero error degrees of freedom - you need replication.")
+    lmfit <- stats::lm(form, data = d)
+    if (!lay$balanced) an <- type3_anova(an, form, d, c(blks, facs))
 
     effs <- list()
     for (k in seq_along(facs)) {
       for (v in utils::combn(facs, k, simplify = FALSE)) {
         lab <- paste(v, collapse = ":")
         row <- an[an$Source == lab, ]
-        e <- new_effect(d, resp, v, mse, dfe,
-                        if (nrow(row)) row$p[1] else NA,
-                        if (nrow(row)) row$F[1] else NA, alpha,
-                        label = paste(v, collapse = " x "))
-        effs[[lab]] <- e
+        effs[[lab]] <- new_effect(d, resp, v, mse, dfe,
+                                  if (nrow(row)) row$p[1] else NA,
+                                  if (nrow(row)) row$F[1] else NA, alpha,
+                                  label = paste(v, collapse = " x "),
+                                  fit = if (lay$balanced) NULL else lmfit)
       }
     }
-    an_disp <- an
-    an_disp <- rbind(an_disp, data.frame(Source = "Total", Df = sum(an$Df, na.rm = TRUE),
-                     SS = sum(an$SS, na.rm = TRUE), MS = NA, F = NA, p = NA, check.names = FALSE))
-    res$anova <- an_disp
+    res$anova <- add_total(an, d[[resp]])
+    ## with one treatment factor and no blocks there is nothing to adjust for:
+    ## the means are the plain averages and the sums of squares still add up
+    res$adjusted_ss <- !lay$balanced && length(c(blks, facs)) > 1
     res$mse <- mse; res$dfe <- dfe
     res$cv <- c("CV (%)" = 100 * sqrt(mse) / grand)
     res$effects <- effs
-    res$lm <- stats::lm(stats::as.formula(paste(resp, "~", rhs)), data = d)
+    res$lm <- lmfit
   }
 
   ## ----------------------------------------------------------- split plot ---
@@ -575,12 +831,10 @@ analyze <- function(d, design, map, alpha = 0.05) {
       data.frame(Source = B, rB),
       data.frame(Source = paste(A, "x", B), rAB),
       data.frame(Source = "Error (b)", Df = Eb$df, SS = Eb$ss, MS = Eb$ms, F = NA, p = NA))
-    an <- rbind(an, data.frame(Source = "Total", Df = sum(an$Df, na.rm = TRUE),
-                               SS = sum(an$SS, na.rm = TRUE), MS = NA, F = NA, p = NA))
     names(an) <- c("Source", "Df", "SS", "MS", "F", "p")
+    an <- add_total(an, d[[resp]])
 
-    ta <- stats::qt(0.975, Ea$df); tb <- stats::qt(0.975, Eb$df)
-    ta1 <- stats::qt(0.995, Ea$df); tb1 <- stats::qt(0.995, Eb$df)
+    ta <- stats::qt(1 - alpha / 2, Ea$df); tb <- stats::qt(1 - alpha / 2, Eb$df)
 
     eA <- new_effect(d, resp, A, Ea$ms, Ea$df, rA$p, rA$F, alpha, label = A)
     eB <- new_effect(d, resp, B, Eb$ms, Eb$df, rB$p, rB$F, alpha, label = B)
@@ -590,24 +844,22 @@ analyze <- function(d, design, map, alpha = 0.05) {
     sed_b <- sqrt(2 * Eb$ms / r)                                   # B within same A
     sed_a <- sqrt(2 * ((b - 1) * Eb$ms + Ea$ms) / (r * b))         # A at same B
     tw  <- t_weighted((b - 1) * Eb$ms, tb, Ea$ms, ta)
-    tw1 <- t_weighted((b - 1) * Eb$ms, tb1, Ea$ms, ta1)
-    cd_b <- tb * sed_b; cd_b1 <- tb1 * sed_b
-    cd_a <- tw * sed_a; cd_a1 <- tw1 * sed_a
+    cd_b <- tb * sed_b; cd_a <- tw * sed_a
     m$Letter_within_MP <- ave_letters(m, A, m$Mean, cd_b)
     m$Letter_within_SP <- ave_letters(m, B, m$Mean, cd_a)
-    eAB <- list(label = paste(A, "x", B), vars = c(A, B), means = m,
-                n_per_mean = r, mse = Eb$ms, df = Eb$df,
-                sem = sqrt(Eb$ms / r), sed = sed_b, cd5 = cd_b, cd1 = cd_b1,
-                p = rAB$p, F = rAB$F,
-                extra = list(
-                  `SEd: two SUB-plot means at same main plot`   = sed_b,
-                  `CD 5%: two SUB-plot means at same main plot` = cd_b,
-                  `SEd: two MAIN-plot means at same sub plot`   = sed_a,
-                  `CD 5%: two MAIN-plot means at same sub plot` = cd_a),
-                notes = paste0("Letters 'within MP' compare sub-plot means inside ",
-                  "one main plot (CD = ", fmt(cd_b), "). Letters 'within SP' compare ",
-                  "main-plot means at one sub-plot level (CD = ", fmt(cd_a),
-                  ", Satterthwaite t = ", fmt(tw, 2), ")."))
+    cdl <- cd_name(alpha)
+    eAB <- slice_effect(m, c(A, B), slice = A, label = paste(A, "x", B),
+      se = sqrt(Eb$ms / r), sed = sed_b, tcrit = tb, mse = Eb$ms, df = Eb$df,
+      alpha = alpha, p = rAB$p, Fv = rAB$F,
+      extra = stats::setNames(list(sed_b, cd_b, sed_a, cd_a), c(
+        "SE(d): two sub-plot means at the same main plot",
+        paste0(cdl, ": two sub-plot means at the same main plot"),
+        "SE(d): two main-plot means at the same sub plot",
+        paste0(cdl, ": two main-plot means at the same sub plot"))),
+      extra_p = c(NA, rAB$p, NA, rAB$p),
+      notes = paste0("Letters 'within MP' compare sub-plot means inside one main plot (",
+        cdl, " = ", fmt(cd_b), "). Letters 'within SP' compare main-plot means at one ",
+        "sub-plot level (", cdl, " = ", fmt(cd_a), ", weighted t = ", fmt(tw, 2), ")."))
 
     res$anova <- an
     res$mse <- Eb$ms; res$dfe <- Eb$df
@@ -651,13 +903,11 @@ analyze <- function(d, design, map, alpha = 0.05) {
       data.frame(Source = "Error (b)", Df = Eb$df, SS = Eb$ss, MS = Eb$ms, F = NA, p = NA),
       data.frame(Source = paste(A, "x", B), rAB),
       data.frame(Source = "Error (c)", Df = Ec$df, SS = Ec$ss, MS = Ec$ms, F = NA, p = NA))
-    an <- rbind(an, data.frame(Source = "Total", Df = sum(an$Df, na.rm = TRUE),
-                               SS = sum(an$SS, na.rm = TRUE), MS = NA, F = NA, p = NA))
     names(an) <- c("Source", "Df", "SS", "MS", "F", "p")
+    an <- add_total(an, d[[resp]])
 
-    ta <- stats::qt(0.975, Ea$df); tb <- stats::qt(0.975, Eb$df)
-    tc <- stats::qt(0.975, Ec$df)
-    ta1 <- stats::qt(.995, Ea$df); tb1 <- stats::qt(.995, Eb$df); tc1 <- stats::qt(.995, Ec$df)
+    ta <- stats::qt(1 - alpha / 2, Ea$df); tb <- stats::qt(1 - alpha / 2, Eb$df)
+    tc <- stats::qt(1 - alpha / 2, Ec$df)
 
     eA <- new_effect(d, resp, A, Ea$ms, Ea$df, rA$p, rA$F, alpha, label = A)
     eB <- new_effect(d, resp, B, Eb$ms, Eb$df, rB$p, rB$F, alpha, label = B)
@@ -665,26 +915,33 @@ analyze <- function(d, design, map, alpha = 0.05) {
     m <- eff_means(d, resp, c(A, B))
     sed_a_at_b <- sqrt(2 * ((b - 1) * Ec$ms + Ea$ms) / (r * b))
     sed_b_at_a <- sqrt(2 * ((a - 1) * Ec$ms + Eb$ms) / (r * a))
-    tw_a  <- t_weighted((b - 1) * Ec$ms, tc, Ea$ms, ta)
-    tw_b  <- t_weighted((a - 1) * Ec$ms, tc, Eb$ms, tb)
-    tw_a1 <- t_weighted((b - 1) * Ec$ms, tc1, Ea$ms, ta1)
-    tw_b1 <- t_weighted((a - 1) * Ec$ms, tc1, Eb$ms, tb1)
+    tw_a <- t_weighted((b - 1) * Ec$ms, tc, Ea$ms, ta)
+    tw_b <- t_weighted((a - 1) * Ec$ms, tc, Eb$ms, tb)
     cd_a_at_b <- tw_a * sed_a_at_b; cd_b_at_a <- tw_b * sed_b_at_a
     m$Letter_within_A <- ave_letters(m, A, m$Mean, cd_b_at_a)
     m$Letter_within_B <- ave_letters(m, B, m$Mean, cd_a_at_b)
-    eAB <- list(label = paste(A, "x", B), vars = c(A, B), means = m,
-                n_per_mean = r, mse = Ec$ms, df = Ec$df,
-                sem = sed_b_at_a / sqrt(2), sed = sed_b_at_a,
-                cd5 = cd_b_at_a, cd1 = tw_b1 * sed_b_at_a,
-                p = rAB$p, F = rAB$F,
-                extra = list(
-                  `SEd: two A means at same level of B` = sed_a_at_b,
-                  `CD 5%: two A means at same level of B` = cd_a_at_b,
-                  `SEd: two B means at same level of A` = sed_b_at_a,
-                  `CD 5%: two B means at same level of A` = cd_b_at_a),
-                notes = paste0("Strip-plot interaction uses Satterthwaite-weighted t. ",
-                  "Letters 'within ", A, "' compare ", B, " means at a fixed ", A,
-                  "; letters 'within ", B, "' compare ", A, " means at a fixed ", B, "."))
+    ## B means at one level of A: their SE(d) mixes Error (b) and Error (c), so
+    ## tests that need degrees of freedom use Satterthwaite's approximation
+    w <- c((a - 1) * Ec$ms, Eb$ms); wdf <- c(Ec$df, Eb$df)
+    df_s <- sum(w)^2 / sum(w^2 / wdf)
+    cdl <- cd_name(alpha)
+    eAB <- slice_effect(m, c(A, B), slice = A, label = paste(A, "x", B),
+      se = sed_b_at_a / sqrt(2), sed = sed_b_at_a, tcrit = tw_b,
+      mse = sum(w) / a, df = df_s, alpha = alpha, p = rAB$p, Fv = rAB$F,
+      extra = stats::setNames(list(sed_a_at_b, cd_a_at_b, sed_b_at_a, cd_b_at_a), c(
+        sprintf("SE(d): two %s means at the same level of %s", A, B),
+        sprintf("%s: two %s means at the same level of %s", cdl, A, B),
+        sprintf("SE(d): two %s means at the same level of %s", B, A),
+        sprintf("%s: two %s means at the same level of %s", cdl, B, A))),
+      extra_p = c(NA, rAB$p, NA, rAB$p),
+      notes = paste0("The strip-plot interaction uses a weighted t. Letters 'within ", A,
+        "' compare ", B, " means at a fixed ", A, "; letters 'within ", B, "' compare ",
+        A, " means at a fixed ", B, "."),
+      t_mix = list(w = w, df = wdf),
+      error_desc = sprintf(paste0("Comparisons of %s means at the same level of %s ",
+        "combine Error (b) and Error (c). The critical difference uses the weighted t ",
+        "of Gomez &amp; Gomez; tests that need degrees of freedom use Satterthwaite's ",
+        "approximation (%s df)."), B, A, fmt(df_s, 1)))
 
     res$anova <- an
     res$mse <- Ec$ms; res$dfe <- Ec$df
@@ -703,6 +960,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
     e <- nlevels(d[[E]]); t <- nlevels(d[[Tf]])
     if (e < 2) stop("Pooled analysis needs at least two environments.")
     if (t < 2) stop("Pooled analysis needs at least two treatments.")
+    r <- lay$reps                             # replications in every environment
 
     ## homogeneity of error variances across environments (Bartlett) -----------
     per_env <- lapply(levels(d[[E]]), function(lv) {
@@ -719,17 +977,12 @@ analyze <- function(d, design, map, alpha = 0.05) {
     hom <- bartlett_ms(edf, ess / edf)
 
     ## combined ANOVA via nested Error strata ---------------------------------
-    if (design == "POOLRCBD") {
-      r <- nlevels(d[[R]])
-      f <- stats::as.formula(sprintf("%s ~ %s*%s + Error(%s/%s)", resp, E, Tf, E, R))
-    } else {
-      r <- max(table(d[[E]], d[[Tf]]))
-      f <- stats::as.formula(sprintf("%s ~ %s*%s + Error(%s)", resp, E, Tf, E))
-    }
+    f <- if (design == "POOLRCBD")
+      stats::as.formula(sprintf("%s ~ %s*%s + Error(%s/%s)", resp, E, Tf, E, R))
+    else stats::as.formula(sprintf("%s ~ %s*%s + Error(%s)", resp, E, Tf, E))
     fit <- stats::aov(f, data = d)
     tab <- tidy_aovlist(fit)
     st  <- unique(tab$Stratum)
-    s_top <- st[grepl(paste0(":?", E, "$"), st) & !grepl(":", sub(paste0("Error: ", E), "", st))][1]
     s_top <- paste0("Error: ", E)
     s_w   <- st[grepl("Within", st)][1]
 
@@ -778,43 +1031,35 @@ analyze <- function(d, design, map, alpha = 0.05) {
            data.frame(Source = "Pooled error", Df = Eerr$df, SS = Eerr$ss,
                       MS = Eerr$ms, F = NA, p = NA)))
     an <- do.call(rbind, lapply(rows, function(z) { names(z) <- c("Source","Df","SS","MS","F","p"); z }))
-    an <- rbind(an, data.frame(Source = "Total", Df = sum(an$Df, na.rm = TRUE),
-                               SS = sum(an$SS, na.rm = TRUE), MS = NA, F = NA, p = NA))
+    an <- add_total(an, d[[resp]])
     rownames(an) <- NULL
 
     ## effects with the correct error term for each comparison ----------------
-    eEnv <- new_effect(d, resp, E, err_for_env$ms, err_for_env$df, Fe["p"], Fe["F"],
-                       alpha, label = paste0("Environment (", E, ")"))
-    eT   <- new_effect(d, resp, Tf, ETrow$MS, ETrow$Df, Ft["p"], Ft["F"],
+    eEnv <- new_effect(d, resp, E, err_for_env$ms, err_for_env$df, unname(Fe["p"]),
+                       unname(Fe["F"]), alpha, label = paste0("Environment (", E, ")"))
+    eT   <- new_effect(d, resp, Tf, ETrow$MS, ETrow$Df, unname(Ft["p"]), unname(Ft["F"]),
                        alpha, label = paste0("Treatment (", Tf, ") - over environments"))
 
     ## E x T cell means: compare treatments within an environment (pooled error)
     m <- eff_means(d, resp, c(E, Tf))
+    t_we   <- stats::qt(1 - alpha / 2, Eerr$df)
     sed_we <- sqrt(2 * Eerr$ms / r)                    # two treatments, same environment
     sed_to <- sqrt(2 * ETrow$MS / (e * r))             # two treatment means over environments
-    cd_we  <- stats::qt(0.975, Eerr$df) * sed_we
-    cd_we1 <- stats::qt(0.995, Eerr$df) * sed_we
+    cd_we  <- t_we * sed_we
     m$Letter_within_env <- ave_letters(m, E, m$Mean, cd_we)
-    eET <- list(label = paste0(E, " x ", Tf), vars = c(E, Tf), means = m,
-                n_per_mean = r, mse = Eerr$ms, df = Eerr$df,
-                sem = sqrt(Eerr$ms / r), sed = sed_we, cd5 = cd_we, cd1 = cd_we1,
-                p = Fet["p"], F = Fet["F"], env = E, is_gxe = TRUE,
-                extra = list(
-                  `SEd: two treatments in the same environment`     = sed_we,
-                  `CD 5%: two treatments in the same environment`   = cd_we,
-                  `SEd: two treatment means over all environments`  = sed_to,
-                  `CD 5%: two treatment means over all environments`=
-                    stats::qt(0.975, ETrow$Df) * sed_to),
-                notes = if (!is.na(Fet["p"]) && Fet["p"] < 0.05)
-                  paste0("The ", E, " x ", Tf, " interaction is significant: treatment ",
-                    "performance is shown separately for each environment below. Letters ",
-                    "compare treatment means within one environment (pooled error, CD = ",
-                    fmt(cd_we), ").")
-                else
-                  paste0("The ", E, " x ", Tf, " interaction is <b>not significant</b> (NS): the ",
-                    "treatment ranking is consistent across environments, so the pooled ",
-                    "Treatment table above applies to every environment and the differences ",
-                    "among individual cells are within experimental error."))
+    cdl <- cd_name(alpha)
+    eET <- slice_effect(m, c(E, Tf), slice = E, label = paste0(E, " x ", Tf),
+      se = sqrt(Eerr$ms / r), sed = sed_we, tcrit = t_we, mse = Eerr$ms, df = Eerr$df,
+      alpha = alpha, p = unname(Fet["p"]), Fv = unname(Fet["F"]),
+      extra = stats::setNames(list(sed_we, cd_we, sed_to,
+                                   stats::qt(1 - alpha / 2, ETrow$Df) * sed_to), c(
+        "SE(d): two treatments in the same environment",
+        paste0(cdl, ": two treatments in the same environment"),
+        "SE(d): two treatment means over all environments",
+        paste0(cdl, ": two treatment means over all environments"))),
+      extra_p = c(NA, unname(Fet["p"]), NA, unname(Ft["p"])),
+      notes = gxe_note(Fet["p"], alpha, E, Tf, cd_we, cdl),
+      env = E, is_gxe = TRUE)
 
     an[["F"]] <- as.numeric(an[["F"]]); an[["p"]] <- as.numeric(an[["p"]])
     res$anova <- an
@@ -836,6 +1081,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
     e <- nlevels(d[[E]]); k <- length(fs)
     if (e < 2) stop("Pooled analysis needs at least two environments.")
     if (k < 2) stop("Factorial pooled analysis needs at least two treatment factors.")
+    r <- lay$reps                             # replications in every environment
 
     ## homogeneity of the per-environment error variances (Bartlett) ----------
     per_env <- lapply(levels(d[[E]]), function(lv) {
@@ -854,13 +1100,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
 
     ## combined ANOVA: E crossed with the full treatment factorial -------------
     trt_rhs <- paste(fs, collapse = "*")
-    if (design == "POOLFRCBD") {
-      r <- nlevels(d[[R]])
-      f <- stats::as.formula(sprintf("%s ~ %s*(%s) + Error(%s/%s)", resp, E, trt_rhs, E, R))
-    } else {
-      r <- max(table(interaction(d[fs], drop = TRUE), d[[E]]))
-      f <- stats::as.formula(sprintf("%s ~ %s*(%s) + Error(%s)", resp, E, trt_rhs, E))
-    }
+    f <- if (design == "POOLFRCBD")
+      stats::as.formula(sprintf("%s ~ %s*(%s) + Error(%s/%s)", resp, E, trt_rhs, E, R))
+    else stats::as.formula(sprintf("%s ~ %s*(%s) + Error(%s)", resp, E, trt_rhs, E))
     fit <- stats::aov(f, data = d)
     tab <- tidy_aovlist(fit)
     st  <- unique(tab$Stratum)
@@ -906,8 +1148,8 @@ analyze <- function(d, design, map, alpha = 0.05) {
         Source = paste0(E, " x ", lbl), Df = ETrow$Df, SS = ETrow$SS, MS = ETrow$MS,
         F = Fet["F"], p = Fet["p"])
       effects[[paste(S, collapse = ":")]] <- new_effect(
-        d, resp, S, ETrow$MS, ETrow$Df, Ft["p"], Ft["F"], alpha,
-        label = if (length(S) == 1) lbl else paste("Interaction:", lbl))
+        d, resp, S, ETrow$MS, ETrow$Df, unname(Ft["p"]), unname(Ft["F"]), alpha,
+        label = lbl)
     }
 
     ## assemble the ANOVA table -----------------------------------------------
@@ -922,38 +1164,26 @@ analyze <- function(d, design, map, alpha = 0.05) {
                                 MS = err$ms, F = NA, p = NA)))
     an <- do.call(rbind, lapply(anrows, function(z) {
       names(z) <- c("Source","Df","SS","MS","F","p"); z }))
-    an <- rbind(an, data.frame(Source = "Total", Df = sum(an$Df, na.rm = TRUE),
-                               SS = sum(an$SS, na.rm = TRUE), MS = NA, F = NA, p = NA))
+    an <- add_total(an, d[[resp]])
     an[["F"]] <- as.numeric(an[["F"]]); an[["p"]] <- as.numeric(an[["p"]])
     rownames(an) <- NULL
 
     ## Environment effect, and the E x (full treatment) stability table --------
-    eEnv <- new_effect(d, resp, E, err_env$ms, err_env$df, Fe["p"], Fe["F"], alpha,
-                       label = paste0("Environment (", E, ")"))
+    eEnv <- new_effect(d, resp, E, err_env$ms, err_env$df, unname(Fe["p"]),
+                       unname(Fe["F"]), alpha, label = paste0("Environment (", E, ")"))
     ETfull <- find_src(c(E, fs))
+    Ffull <- if (!is.null(ETfull)) fp(ETfull$MS, ETfull$Df, err$ms, err$df) else c(F = NA, p = NA)
     m <- eff_means(d, resp, c(E, fs))
+    t_we   <- stats::qt(1 - alpha / 2, err$df)
     sed_we <- sqrt(2 * err$ms / r)
-    cd_we  <- stats::qt(0.975, err$df) * sed_we
-    cd_we1 <- stats::qt(0.995, err$df) * sed_we
+    cd_we  <- t_we * sed_we
     m$Letter_within_env <- ave_letters(m, E, m$Mean, cd_we)
-    eETfull <- list(label = paste0(E, " x ", paste(fs, collapse = " x ")),
-                    vars = c(E, fs), means = m, n_per_mean = r,
-                    mse = err$ms, df = err$df, sem = sqrt(err$ms / r),
-                    sed = sed_we, cd5 = cd_we, cd1 = cd_we1, env = E, is_gxe = TRUE,
-                    p = if (!is.null(ETfull)) fp(ETfull$MS, ETfull$Df, err$ms, err$df)["p"] else NA,
-                    F = if (!is.null(ETfull)) ETfull$MS / err$ms else NA,
-                    notes = {
-                      pv <- if (!is.null(ETfull)) fp(ETfull$MS, ETfull$Df, err$ms, err$df)["p"] else NA
-                      if (!is.na(pv) && pv < 0.05)
-                        paste0("The ", E, " x treatment interaction is significant: the treatment ",
-                          "combinations are shown separately for each environment below. Letters ",
-                          "compare cells within one environment (pooled error, CD = ", fmt(cd_we), ").")
-                      else
-                        paste0("The ", E, " x treatment interaction is <b>not significant</b> (NS): ",
-                          "the treatment effects are consistent across environments and are ",
-                          "summarised in the pooled tables above. Differences among individual ",
-                          "environment cells are within experimental error.")
-                    })
+    eETfull <- slice_effect(m, c(E, fs), slice = E,
+      label = paste0(E, " x ", paste(fs, collapse = " x ")),
+      se = sqrt(err$ms / r), sed = sed_we, tcrit = t_we, mse = err$ms, df = err$df,
+      alpha = alpha, p = unname(Ffull["p"]), Fv = unname(Ffull["F"]), extra = NULL,
+      notes = gxe_note(Ffull["p"], alpha, E, "treatment", cd_we, cd_name(alpha), factorial = TRUE),
+      env = E, is_gxe = TRUE)
 
     res$effects <- c(effects, stats::setNames(list(eEnv), E),
                      stats::setNames(list(eETfull), paste0(E, ":", paste(fs, collapse = ":"))))
@@ -975,6 +1205,185 @@ analyze <- function(d, design, map, alpha = 0.05) {
   res
 }
 
+## "C.D. (5%)", at whatever level was chosen
+cd_name <- function(alpha) sprintf("C.D. (%s%%)", pct(alpha))
+
+## The note under a pooled analysis's environment x treatment table. A
+## non-significant interaction is reported as insufficient evidence, not as
+## proof that the treatments behave alike everywhere. In a factorial this is
+## the interaction with the full treatment combination only; the interactions
+## of the environment with each factor are separate rows of the ANOVA.
+gxe_note <- function(p, alpha, E, what, cd, cdl, factorial = FALSE) {
+  if (!is.na(p) && p < alpha)
+    paste0("The ", E, " x ", what, " interaction is significant at the ", pct(alpha),
+      "% level: ", what, " performance is shown separately for each environment below. ",
+      "Letters compare means within one environment only (pooled error, ", cdl, " = ",
+      fmt(cd), ").")
+  else
+    paste0("The ", E, " x ", what, " interaction is <b>not significant</b> at the ",
+      pct(alpha), "% level (NS). There is insufficient evidence that the differences ",
+      "between ", if (factorial) "treatment combinations" else "treatments",
+      " change from one environment to another, so the pooled tables above summarise ",
+      "them and the individual environment cells are not compared.",
+      if (factorial) paste0(" The interactions of ", E, " with each single factor are ",
+                            "tested separately in the ANOVA table.") else "")
+}
+
+## columns the tables of means add, which a design factor must not be called
+RESERVED_COLS <- c("Mean", "N", "SD", "SE", "Raw_mean", "Mean_bt", ".se",
+                   "Letter", "Letter_within_MP", "Letter_within_SP",
+                   "Letter_within_A", "Letter_within_B", "Letter_within_env")
+
+## Is the layout one DOEpro can analyse exactly, and is it balanced? Designs
+## with a single error term (CRD, RCBD, Latin square, the factorials) cope with
+## unequal replication through adjusted means, as long as every treatment
+## combination was observed. Designs with several error strata (split plot,
+## strip plot, the pooled analyses) do not: with a plot missing the strata are
+## no longer orthogonal, aov() moves treatment sums of squares into the
+## replication strata where they silently vanish, and an exact analysis needs a
+## mixed model fitted by REML, which base R does not provide. Those designs
+## must be complete; the message says what is missing instead of printing a
+## wrong ANOVA.
+check_layout <- function(d, design, map, facs, blks) {
+  pooled <- design %in% c("POOLRCBD", "POOLCRD", "POOLFRCBD", "POOLFCRD")
+  trt <- if (pooled) setdiff(facs, map$env) else facs
+  one <- c(facs, blks)[vapply(c(facs, blks), function(v) nlevels(d[[v]]) < 2, logical(1))]
+  if (length(one))
+    stop(sprintf(paste0("%s %s only one level in the complete rows of data, so there is ",
+      "nothing to compare. Check that the right column is mapped, and that the response ",
+      "is not missing for every other level."), join_and(sprintf("'%s'", one)),
+      if (length(one) == 1) "has" else "have"), call. = FALSE)
+  cells <- table(d[trt])
+  if (length(trt) > 1 && any(cells == 0)) {
+    empty <- as.data.frame(cells, stringsAsFactors = FALSE)
+    empty <- empty[empty$Freq == 0, trt, drop = FALSE]
+    stop(sprintf(paste0("Every combination of %s needs at least one observation, but ",
+      "there are none for %s. Without them the main effects cannot be separated from ",
+      "the interaction. Check the data, or leave out the factor with the gap."),
+      join_and(trt), list_cells(empty)), call. = FALSE)
+  }
+
+  if (design %in% c("SPLIT", "STRIP")) {
+    v <- c(map$rep, map$main, map$sub)
+    tab <- as.data.frame(table(d[v]), stringsAsFactors = FALSE)
+    miss <- tab[tab$Freq == 0, v, drop = FALSE]
+    dup  <- tab[tab$Freq > 1, v, drop = FALSE]
+    if (nrow(miss) || nrow(dup))
+      stop(paste0(if (design == "SPLIT") "A split-plot" else "A strip-plot",
+        " analysis needs exactly one observation for every combination of ",
+        join_and(v), ". ",
+        if (nrow(miss)) sprintf("Missing: %s. ", list_cells(miss)) else "",
+        if (nrow(dup)) sprintf("More than one row: %s. ", list_cells(dup)) else "",
+        "With a plot missing or repeated, the design's separate error terms can no ",
+        "longer be estimated exactly, and DOEpro does not estimate missing plots. ",
+        "Remove the incomplete replication and analyse the complete ones",
+        if (nrow(dup)) ", and average repeated measurements of one plot into a single value" else "",
+        "."), call. = FALSE)
+    return(list(balanced = TRUE, reps = nlevels(d[[map$rep]]),
+                n_range = rep(nlevels(d[[map$rep]]), 2)))
+  }
+
+  if (design %in% c("POOLRCBD", "POOLFRCBD")) {
+    E <- map$env; R <- map$rep
+    probs <- character(0); nrep <- integer(0)
+    for (lv in levels(d[[E]])) {
+      di <- d[d[[E]] == lv, , drop = FALSE]
+      di[[R]] <- droplevels(di[[R]])
+      tab <- as.data.frame(table(di[c(R, trt)]), stringsAsFactors = FALSE)
+      miss <- tab[tab$Freq == 0, c(R, trt), drop = FALSE]
+      dup  <- tab[tab$Freq > 1, c(R, trt), drop = FALSE]
+      if (nrow(miss)) probs <- c(probs, sprintf("in %s, %s %s missing", lv, list_cells(miss),
+                                                if (nrow(miss) == 1) "is" else "are"))
+      if (nrow(dup)) probs <- c(probs, sprintf("in %s, %s %s more than one row", lv,
+                                               list_cells(dup), if (nrow(dup) == 1) "has" else "have"))
+      nrep[[lv]] <- nlevels(di[[R]])
+    }
+    if (length(unique(nrep)) > 1)
+      probs <- c(probs, paste("the number of replications differs between environments (",
+        paste(sprintf("%s %d", names(nrep), nrep), collapse = ", "), ")", sep = ""))
+    if (length(probs))
+      stop(paste0("A combined analysis over environments needs a complete RCBD in every ",
+        "environment, with the same number of replications in each. Here ",
+        paste(head_more(probs, 3), collapse = "; "), ". With incomplete or unequal replication the ",
+        "treatments cannot be tested exactly against their interaction with the ",
+        "environment, so DOEpro stops rather than print approximate results. Remove ",
+        "the incomplete replication(s), or analyse each environment on its own as an ",
+        "RCBD, which does handle a missing plot."), call. = FALSE)
+    return(list(balanced = TRUE, reps = nrep[[1]], n_range = rep(nrep[[1]], 2)))
+  }
+
+  if (design %in% c("POOLCRD", "POOLFCRD")) {
+    v <- c(map$env, trt)
+    tab <- as.data.frame(table(d[v]), stringsAsFactors = FALSE)
+    if (length(unique(tab$Freq)) > 1) {
+      common <- as.integer(names(which.max(table(tab$Freq))))
+      odd <- tab[tab$Freq != common, , drop = FALSE]
+      lab <- sprintf("%s has %s", do.call(paste, c(lapply(odd[v], as.character), sep = " x ")),
+                     ifelse(odd$Freq == 0, "none", as.character(odd$Freq)))
+      stop(sprintf(paste0("A combined analysis over environments needs the same number of ",
+        "observations in every environment x treatment cell. Most cells have %d, but %s. ",
+        "With unequal numbers the treatments cannot be tested exactly against their ",
+        "interaction with the environment, so DOEpro stops rather than print approximate ",
+        "results. Analyse each environment on its own as a CRD, which does handle unequal ",
+        "replication."), common, join_and(head_more(lab))), call. = FALSE)
+    }
+    return(list(balanced = TRUE, reps = tab$Freq[1], n_range = rep(tab$Freq[1], 2)))
+  }
+
+  ## single error term: balanced when every cell of the full layout, blocks
+  ## included, holds the same number of plots. An RCBD whose treatments are each
+  ## present three times but in different blocks is not balanced: its plain
+  ## means are pulled by the block effects.
+  full <- if (design == "LSD")
+    list(table(d[c(map$row, map$col)]), table(d[c(map$row, trt)]), table(d[c(map$col, trt)]))
+  else list(table(d[c(blks, trt)]))
+  balanced <- all(vapply(full, function(x) all(x == x[1]) && x[1] > 0, logical(1)))
+  if (design == "LSD") balanced <- balanced && all(full[[1]] == 1L)
+  list(balanced = balanced, reps = if (balanced) as.vector(cells)[1] else NA,
+       n_range = range(cells))
+}
+
+## "R2 x I2 x V3, R3 x I1 x V2 and 4 more", from rows of factor levels
+list_cells <- function(cells)
+  join_and(head_more(do.call(paste, c(lapply(cells, as.character), sep = " x "))))
+
+## at most five items, then "and N more"
+head_more <- function(x, k = 5)
+  if (length(x) > k) c(x[seq_len(k)], sprintf("%d more", length(x) - k)) else x
+
+## "a", "a and b", "a, b and c"
+join_and <- function(x)
+  if (length(x) < 2) x else paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
+
+## A Total row that is the total sum of squares of the data, not the sum of the
+## rows above it, so that nothing an error stratum dropped can go unnoticed.
+add_total <- function(an, y) {
+  rbind(an, data.frame(Source = "Total", Df = length(y) - 1, SS = sum((y - mean(y))^2),
+                       MS = NA, F = NA, p = NA, check.names = FALSE))
+}
+
+## With unequal replication the sequential (Type I) sums of squares depend on
+## the order of the terms and test hypotheses about weighted means. Replace each
+## term's row with its Type III test: the term dropped from the full model fitted
+## with sum-to-zero contrasts. That tests equality of the adjusted means the
+## tables report, so the F-test that gates the letters and the means it gates
+## are about the same thing. The rows then no longer add up to the total.
+type3_anova <- function(an, form, d, fvars) {
+  ctr <- stats::setNames(rep(list("contr.sum"), length(fvars)), fvars)
+  fit <- stats::lm(form, data = d, contrasts = ctr)
+  tl <- attr(stats::terms(fit), "term.labels")
+  dr <- stats::drop1(fit, scope = tl, test = "F")
+  for (x in tl) {
+    i <- an$Source == x
+    if (!any(i)) next
+    an$SS[i] <- dr[x, "Sum of Sq"]
+    an$MS[i] <- dr[x, "Sum of Sq"] / an$Df[i]
+    an$F[i]  <- dr[x, "F value"]
+    an$p[i]  <- dr[x, "Pr(>F)"]
+  }
+  an
+}
+
 ## letters computed separately inside each level of `by`
 ave_letters <- function(m, by, mu, cd) {
   out <- character(nrow(m))
@@ -991,18 +1400,18 @@ LETTER_COLS <- c("Letter", "Letter_within_MP", "Letter_within_SP",
 
 ## Protected mean separation. Returns the effect's table of means with the
 ## grouping letters blanked whenever the effect's F-test is not significant at
-## 5%. This keeps the letters in step with the "CD = NS" shown in the footers:
-## letters are displayed only when the omnibus F justifies pairwise comparison,
-## so an a-e sequence can never sit beneath a non-significant F.
+## the chosen level. This keeps the letters in step with the "C.D. = NS" in the
+## footers: letters are shown only when the F-test justifies pairwise
+## comparison, so an a-e sequence can never sit beneath a non-significant F.
 gate_letters <- function(e) {
   m <- e$means
-  if (is.na(e$p) || e$p >= 0.05)
+  if (!effect_sig(e))
     for (col in intersect(LETTER_COLS, names(m))) m[[col]] <- rep("", nrow(m))
   m
 }
 
-## is the effect significant at 5% (so its letters should be shown)?
-effect_sig <- function(e) !is.na(e$p) && e$p < 0.05
+## is the effect significant at the chosen level (so its letters should be shown)?
+effect_sig <- function(e) !is.na(e$p) && e$p < e$alpha
 
 ## does a table of means carry any non-empty grouping letter?
 has_groups <- function(m) {
@@ -1028,7 +1437,8 @@ levene_test <- function(y, g) {
 ##   z(lambda) = (y^lambda - 1) / (lambda * gm^(lambda-1)),   z(0) = gm * log(y)
 ## with gm the geometric mean of y, and  l(lambda) = -n/2 * log(RSS(z)/n).
 ## Computed directly, so it never depends on re-evaluating a stored model call.
-boxcox_profile <- function(y, X, lambda = seq(-2, 2, 0.02)) {
+## The confidence interval is at `level`, which the analysis sets to 1 - alpha.
+boxcox_profile <- function(y, X, level, lambda = seq(-2, 2, 0.02)) {
   if (any(!is.finite(y)) || any(y <= 0) || is.null(X)) return(NULL)
   n <- length(y); gm <- exp(mean(log(y))); qrx <- qr(X)
   ll <- vapply(lambda, function(l) {
@@ -1039,12 +1449,16 @@ boxcox_profile <- function(y, X, lambda = seq(-2, 2, 0.02)) {
   }, numeric(1))
   if (all(is.na(ll))) return(NULL)
   best <- lambda[which.max(ll)]
-  ## 95% CI: lambda values within qchisq(.95,1)/2 of the maximum log-likelihood
-  inside <- lambda[!is.na(ll) & ll > max(ll, na.rm = TRUE) - 0.5 * stats::qchisq(0.95, 1)]
-  list(x = lambda, y = ll, lambda = best, ci = range(inside))
+  ## confidence interval: lambda values within qchisq(level, 1) / 2 of the
+  ## maximum log-likelihood
+  inside <- lambda[!is.na(ll) & ll > max(ll, na.rm = TRUE) - 0.5 * stats::qchisq(level, 1)]
+  list(x = lambda, y = ll, lambda = best, ci = range(inside), level = level)
 }
 
+## The assumption tests are judged at the analysis's own significance level, so
+## a user who chose 1% is not told about departures at 5%.
 check_assumptions <- function(res) {
+  alpha <- res$alpha
   r <- res$resid
   d <- res$data; resp <- res$resp
   cells <- interaction(d[res$facs], drop = TRUE)
@@ -1060,12 +1474,13 @@ check_assumptions <- function(res) {
   slope <- if (nrow(mv) >= 3)
     unname(stats::coef(stats::lm(log(v) ~ log(m), data = mv))[2]) else NA_real_
 
-  bc <- tryCatch(boxcox_profile(d[[resp]], res$X), error = function(e) NULL)
+  bc <- tryCatch(boxcox_profile(d[[resp]], res$X, level = 1 - alpha),
+                 error = function(e) NULL)
 
   std <- r / stats::sd(r)
   outliers <- which(abs(std) > 3)
 
-  list(shapiro = sw, levene = lev, bartlett = bart, slope = slope,
+  list(alpha = alpha, shapiro = sw, levene = lev, bartlett = bart, slope = slope,
        bc = bc, lambda = if (is.null(bc)) NA_real_ else bc$lambda,
        mv = mv, outliers = outliers,
        p_norm = if (is.null(sw))  NA_real_ else sw$p.value,
@@ -1089,24 +1504,26 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   looks_pct   <- in_pct_range && pct_name
   count_slope <- !is.na(b) && b >= 0.5 && b < 1.5
 
-  ok <- (is.na(pn) || pn > 0.05) && (is.na(ph) || ph > 0.05)
+  ok <- (is.na(pn) || pn > res$alpha) && (is.na(ph) || ph > res$alpha)
 
   ## When the diagnostics are satisfactory we still name the conventional
   ## transformation for data that are plainly counts or percentages, flagged as
   ## optional - agronomic convention transforms them, the diagnostics do not
   ## demand it, and the analyst should decide knowingly.
   if (ok && dtype == "auto") {
+    fine <- sprintf(paste0("Neither the normality test nor the test of equal variances ",
+                           "finds a significant departure at the %s%% level"), pct(res$alpha))
     if (looks_prop)
       return(list(method = "arcsine01", optional = TRUE,
-        why = "The residuals are normal and the variances homogeneous, so no transformation is strictly required. The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale."))
+        why = paste0(fine, ", so no transformation is strictly required. The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.")))
     if (looks_count && count_slope)
       return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt", optional = TRUE,
-        why = sprintf("The residuals are normal and the variances homogeneous, so no transformation is strictly required. The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", b)))
+        why = sprintf("%s, so no transformation is strictly required. The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", fine, b)))
     if (looks_pct)
       return(list(method = "arcsine", optional = TRUE,
-        why = sprintf("The residuals are normal and the variances homogeneous, so no transformation is strictly required. '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", nm)))
+        why = sprintf("%s, so no transformation is strictly required. '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", fine, nm)))
     return(list(method = "none", optional = FALSE,
-      why = "Residuals are normal and the variances are homogeneous - no transformation is needed."))
+      why = paste0(fine, " - no transformation is needed.")))
   }
 
   ## user-declared data type wins over any guessing
@@ -1213,14 +1630,17 @@ two_way <- function(d, resp, f1, f2) {
   out
 }
 
+## SE(m), SE(d) and C.D. under a table of means. With unequal replication they
+## differ from mean to mean, and the range is given instead of one figure.
 effect_footer <- function(e, cv = NULL) {
+  ## a split, strip or pooled interaction's single figures hold only for means
+  ## at the same level of its slicing factor; the others follow in e$extra
+  within <- if (is.null(e$slice)) "" else sprintf(" (within the same %s)", e$slice)
   rows <- c(
-    sprintf("<tr><td>SEm +/-</td><td>%s</td></tr>", fmt(e$sem)),
-    sprintf("<tr><td>SEd</td><td>%s</td></tr>",     fmt(e$sed)),
-    sprintf("<tr><td>CD (5%%)</td><td>%s</td></tr>",
-            if (!is.na(e$p) && e$p < 0.05) fmt(e$cd5) else "NS"),
-    sprintf("<tr><td>CD (1%%)</td><td>%s</td></tr>",
-            if (!is.na(e$p) && e$p < 0.01) fmt(e$cd1) else "NS"))
+    sprintf("<tr><td>SEm +/-%s</td><td>%s</td></tr>", within, err_text(e, "sem", 3)),
+    sprintf("<tr><td>SEd%s</td><td>%s</td></tr>", within, err_text(e, "sed", 3)),
+    sprintf("<tr><td>%s%s</td><td>%s</td></tr>", cd_head(e$alpha), within,
+            if (effect_sig(e)) err_text(e, "cd", 3) else "NS"))
   if (!is.null(cv)) rows <- c(rows, sprintf("<tr><td>CV (%%)</td><td>%s</td></tr>",
                                             paste(fmt(cv, 2), collapse = " / ")))
   paste0("<table class='doe foot'>", paste(rows, collapse = ""), "</table>")
@@ -1229,7 +1649,11 @@ effect_footer <- function(e, cv = NULL) {
 ## compact contingency matrix of f1 x f2 cell means (from an effect's table of
 ## means) with the grouping letters attached as superscripts, plus marginal
 ## means. Used by the detailed Section C and by the per-environment breakdown.
-two_way_lettered <- function(mlet, f1, f2, letter_col, tr_on, digits, caption, grand) {
+## The margins and the corner are averages of the cell means, so they agree
+## with the adjusted margins when replication is unequal; with a transformation
+## they are shown like the cells, back-transformed with the transformed value in
+## parentheses (`btf` is the back-transformation).
+two_way_lettered <- function(mlet, f1, f2, letter_col, tr_on, digits, caption, btf = NULL) {
   l1 <- levels(factor(mlet[[f1]])); l2 <- levels(factor(mlet[[f2]]))
   disp <- if (tr_on && "Mean_bt" %in% names(mlet)) mlet$Mean_bt else mlet$Mean
   raw  <- mlet$Mean
@@ -1239,15 +1663,25 @@ two_way_lettered <- function(mlet, f1, f2, letter_col, tr_on, digits, caption, g
   cD[ix] <- disp; cR[ix] <- raw
   if (!is.null(letter_col) && letter_col %in% names(mlet)) lg[ix] <- mlet[[letter_col]]
   rmean <- rowMeans(cR, na.rm = TRUE); cmean <- colMeans(cR, na.rm = TRUE)
+  marg <- function(x) if (tr_on && is.function(btf))
+    paste0(fmt(btf(x), digits), " (", fmt(x, digits), ")") else fmt(x, digits)
   body <- lapply(seq_along(l1), function(i)
     c(l1[i],
       vapply(seq_along(l2), function(j)
         paste0(fmt(cD[i, j], digits),
                if (tr_on) paste0(" (", fmt(cR[i, j], digits), ")") else "",
                sup(lg[i, j])), character(1)),
-      fmt(rmean[i], digits)))
-  body[[length(body) + 1L]] <- c("<b>Mean</b>", fmt(cmean, digits), fmt(grand, digits))
+      marg(rmean[i])))
+  body[[length(body) + 1L]] <- c("<b>Mean</b>", marg(cmean), marg(mean(cR, na.rm = TRUE)))
   raw_table(c(sprintf("%s \\ %s", f1, f2), l2, "Mean"), body, caption = caption)
+}
+
+## the note under a table whose letters restart in each level of a factor
+slice_note <- function(e) {
+  if (is.null(e$slice)) return("")
+  sprintf(paste0("<p class='note'>Letters compare %s means within the same level of %s ",
+                 "only; the same letter in two levels of %s means nothing.</p>"),
+          paste(setdiff(e$vars, e$slice), collapse = " &times; "), e$slice, e$slice)
 }
 
 ## per-environment breakdown of a *significant* environment x treatment
@@ -1262,7 +1696,7 @@ gxe_env_tables <- function(e, digits, grand) {
     cap <- sprintf("<b>%s</b> &mdash; %s means (letters compare cells within %s)",
                    lv, paste(tf, collapse = " &times; "), lv)
     if (length(tf) == 2) {
-      two_way_lettered(mi, tf[1], tf[2], "Letter_within_env", FALSE, digits, cap, mean(mi$Mean))
+      two_way_lettered(mi, tf[1], tf[2], "Letter_within_env", FALSE, digits, cap)
     } else {
       mm <- mi[order(-mi$Mean), c(tf, "Mean", "Letter_within_env"), drop = FALSE]
       names(mm)[names(mm) == "Letter_within_env"] <- "Group"
@@ -1278,12 +1712,19 @@ integrated_means_html <- function(res, digits = 2) {
                  resp, fmt(res$grand),
                  paste(sprintf("%s = %s", names(res$cv), fmt(res$cv, 2)), collapse = " | ")))
 
+  tr_on <- !is.null(res$trans) && !identical(res$trans, "none")
+  btf <- if (tr_on) function(z) TRANS[[res$trans]]$b(z, res$lambda) else NULL
+  ## the unadjusted average, which with a transformation is on that scale too
+  raw_lab <- if (tr_on) "Unadjusted mean (transformed scale)" else "Unadjusted mean"
+  relabel <- function(x) sub("^Raw_mean$", raw_lab, sub("^Mean_bt$", "Back-transformed",
+                             sub("^N$", "n", sub("^Letter$", "Group", x))))
+
   for (nm in names(res$effects)) {
     e <- res$effects[[nm]]
     sig <- effect_sig(e)
-    tr_on <- !is.null(res$trans) && !identical(res$trans, "none")
-    ttl <- sprintf("Table of means: <b>%s</b> &nbsp;(F = %s, p = %s, %s)",
-                   e$label, fmt(e$F, 2), if (is.na(e$p)) "-" else pval(e$p), star(e$p))
+    ttl <- sprintf("Table of means: <b>%s</b> &nbsp;(F = %s, %s, %s)",
+                   e$label, fmt(e$F, 2), p_eq(e$p), star(e$p, e$alpha))
+    unequal <- !isTRUE(e$equal_rep)
     m <- gate_letters(e)          # letters blanked when the F-test is NS
     foot <- ""; extra <- ""; note <- ""
 
@@ -1292,17 +1733,15 @@ integrated_means_html <- function(res, digits = 2) {
       inner <- if (sig) gxe_env_tables(e, digits, res$grand) else ""
       body <- paste0("<div class='ms-detail-name'>", ttl, "</div>",
                      "<p class='note'>", e$notes, "</p>", inner)
-      if (!is.null(e$extra))
-        extra <- paste0("<table class='doe foot'>",
-          paste0(sprintf("<tr><td>%s</td><td>%s</td></tr>", names(e$extra),
-                         fmt(unlist(e$extra))), collapse = ""), "</table>")
 
     } else if (length(e$vars) == 1) {
-      cols <- intersect(c(e$vars, "Mean", "Mean_bt", "N", "Letter"), names(m))
+      ## with unequal replication each mean carries its own SE, and an adjusted
+      ## mean is shown beside the raw average it was adjusted from
+      cols <- intersect(c(e$vars, "Mean", "Raw_mean", "Mean_bt", "N",
+                          if (unequal) "SE", "Letter"), names(m))
       if (!has_groups(m)) cols <- setdiff(cols, "Letter")     # drop empty Group when NS
       mm <- m[, cols, drop = FALSE]
-      names(mm) <- sub("^Mean_bt$", "Back-transformed", sub("^N$", "n",
-                   sub("^Letter$", "Group", names(mm))))
+      names(mm) <- relabel(names(mm))
       body <- df_html(mm, caption = ttl)
       foot <- effect_footer(e, res$cv)
 
@@ -1310,22 +1749,31 @@ integrated_means_html <- function(res, digits = 2) {
       ## Rec 4: a single contingency matrix with superscript letters
       lc <- intersect(c("Letter", "Letter_within_MP", "Letter_within_A",
                         "Letter_within_env"), names(m))
-      body <- two_way_lettered(m, e$vars[1], e$vars[2],
-                               if (length(lc)) lc[1] else NULL, tr_on, digits, ttl, res$grand)
+      body <- paste0(two_way_lettered(m, e$vars[1], e$vars[2],
+                                      if (length(lc)) lc[1] else NULL, tr_on, digits, ttl, btf),
+                     if (sig) slice_note(e) else "")
       foot <- effect_footer(e, res$cv)
 
     } else {
       ## Rec 2: 3+ way pure-treatment table, Group column only when significant
       lc <- intersect(c("Letter", "Letter_within_env"), names(m))
-      cols <- c(e$vars, "Mean", intersect("Mean_bt", names(m)))
+      cols <- c(e$vars, "Mean", intersect(c("Raw_mean", "Mean_bt"), names(m)),
+                if (unequal) c("N", "SE"))
       ord <- do.call(order, m[e$vars])
       mm <- m[ord, cols, drop = FALSE]
       if (length(lc) && has_groups(m)) mm$Group <- m[ord, lc[1]]
-      names(mm) <- sub("^Mean_bt$", "Back-transformed", names(mm))
+      names(mm) <- relabel(names(mm))
       body <- df_html(mm, caption = ttl)
       foot <- effect_footer(e, res$cv)
     }
 
+    ## the other comparisons of a split, strip or pooled interaction, each C.D.
+    ## shown only where its own F-test is significant
+    xt <- extra_text(e)
+    if (length(xt))
+      extra <- paste0("<table class='doe foot'>",
+        paste0(sprintf("<tr><td>%s</td><td>%s</td></tr>", names(xt), xt), collapse = ""),
+        "</table>")
     if (!isTRUE(e$is_gxe) && length(e$notes) && nzchar(e$notes[1]))
       note <- paste0("<p class='note'>", e$notes, "</p>")
     h <- c(h, "<div class='block'>", body, foot, extra, note, "</div>")
@@ -1335,62 +1783,224 @@ integrated_means_html <- function(res, digits = 2) {
 
 ## ---------------------------------------------------------- posthoc.R ----
 ###############################################################################
-##  POST-HOC  (agricolae)
+##  POST-HOC
 ###############################################################################
-## Post-hoc multiple comparisons, computed from the effect's own error term.
-## For split / strip plots e$sed is already the SEd of the comparison that the
-## effect's letters refer to, so every test inherits the correct error stratum.
+## Post-hoc multiple comparisons, computed from the effect's own error term and
+## from each pair's own standard error of a difference, taken from the effect's
+## SE(d) matrix. With equal replication every pair has the same SE(d) and these
+## are the textbook procedures. With unequal replication Tukey's HSD becomes the
+## Tukey-Kramer procedure, the LSD, Bonferroni and Scheffe tests stay exact,
+## and the two multiple-range tests use Kramer's (1956) pairwise adjustment;
+## the output says which. Interaction effects of split plots, strip plots and
+## pooled analyses are compared within one level of their slicing factor, the
+## only comparisons that share one error term.
 PH_METHODS <- c("LSD (Fisher's protected)", "LSD (Bonferroni-adjusted)",
                 "Tukey HSD", "Duncan's DMRT", "Student-Newman-Keuls", "Scheffe")
 
-posthoc <- function(res, effect, method, alpha = 0.05) {
-  e  <- res$effects[[effect]]
-  m  <- e$means
-  mu <- m$Mean
-  k  <- length(mu)
-  if (k < 2) stop("This effect has fewer than two means.")
-  df  <- e$df
-  sed <- e$sed              # SE of a difference between two means
-  sbar <- sed / sqrt(2)     # SE of a single mean, as used by the studentized range
-  nC  <- k * (k - 1) / 2
+## what each method is called wherever it is shown to the user
+PH_LABELS <- c(
+  "LSD (Fisher's protected)"  = "Least significant difference (LSD), Fisher's protected",
+  "LSD (Bonferroni-adjusted)" = "Least significant difference (LSD), Bonferroni-adjusted",
+  "Tukey HSD"                 = "Tukey's honestly significant difference (HSD)",
+  "Duncan's DMRT"             = "Duncan's multiple range test (DMRT)",
+  "Student-Newman-Keuls"      = "Student-Newman-Keuls (SNK) test",
+  "Scheffe"                   = "Scheffe's test")
 
-  ranges <- NULL
-  cd <- switch(method,
-    "LSD (Fisher's protected)"  = stats::qt(1 - alpha / 2, df) * sed,
-    "LSD (Bonferroni-adjusted)" = stats::qt(1 - alpha / (2 * nC), df) * sed,
-    "Tukey HSD"                 = stats::qtukey(1 - alpha, k, df) * sbar,
-    "Scheffe"                   = sqrt((k - 1) * stats::qf(1 - alpha, k - 1, df)) * sed,
-    "Student-Newman-Keuls"      = function(p) stats::qtukey(1 - alpha, p, df) * sbar,
-    "Duncan's DMRT"             = function(p) {
-        ap <- 1 - (1 - alpha)^(p - 1)          # Duncan's protection level
-        stats::qtukey(1 - ap, p, df) * sbar
-      },
-    stop("Unknown method"))
+posthoc <- function(res, effect, method, alpha = res$alpha) {
+  e <- res$effects[[effect]]
+  if (is.null(e)) stop("Unknown effect.")
+  if (!method %in% PH_METHODS) stop("Unknown method")
+  m <- e$means
+  lab <- apply(m[e$vars], 1, paste, collapse = " : ")
+  fams <- if (is.null(e$slice)) list(seq_len(nrow(m)))
+          else unname(split(seq_len(nrow(m)), factor(m[[e$slice]], levels = unique(m[[e$slice]]))))
+  fams <- fams[lengths(fams) >= 2]
+  if (!length(fams)) stop("This effect has fewer than two means.")
+  df <- e$df
+  ranged <- method %in% c("Student-Newman-Keuls", "Duncan's DMRT")
+  if (method %in% c("Tukey HSD", "Student-Newman-Keuls", "Duncan's DMRT") && df < 2)
+    stop(sprintf(paste0("%s needs at least 2 error degrees of freedom; this effect has %s. ",
+                        "Use the LSD, Bonferroni or Scheffe test, or add replication."),
+                 PH_LABELS[[method]], df_text(df)))
+  kmax <- max(lengths(fams))
+  ## the studentized range for p means spanned (p = 2..kmax), divided by
+  ## sqrt(2) so that it multiplies a standard error of a difference; computed
+  ## once per span, not once per pair
+  qv <- if (ranged) {
+    q <- vapply(2:kmax, function(p) {
+      pr <- if (method == "Student-Newman-Keuls") 1 - alpha else (1 - alpha)^(p - 1)
+      q_tukey(pr, p, df)
+    }, numeric(1))
+    ## Duncan's ranges must not shrink as more means are spanned; with few error
+    ## df the raw quantiles at his protection levels do, so they are held level
+    if (method == "Duncan's DMRT") q <- cummax(q)
+    c(Inf, q / sqrt(2))
+  } else NULL
 
-  if (is.function(cd))
-    ranges <- data.frame(`Means apart (p)` = 2:k,
-                         `Critical range` = vapply(2:k, cd, numeric(1)),
-                         check.names = FALSE)
+  run <- function(ix) {
+    mu <- m$Mean[ix]; k <- length(mu)
+    S <- e$sed_mat[ix, ix, drop = FALSE]            # rows of sed_mat follow e$means
+    nC <- k * (k - 1) / 2
+    rk <- rank(-mu, ties.method = "first")
+    span <- abs(outer(rk, rk, "-")) + 1
+    mult <- switch(method,
+      "LSD (Fisher's protected)"  = matrix(t_crit(e, alpha), k, k),
+      "LSD (Bonferroni-adjusted)" = matrix(stats::qt(1 - alpha / (2 * nC), df), k, k),
+      "Tukey HSD"                 = matrix(q_tukey(1 - alpha, k, df) / sqrt(2), k, k),
+      "Scheffe"                   = matrix(sqrt((k - 1) * stats::qf(1 - alpha, k - 1, df)), k, k),
+      matrix(qv[span], k, k))
+    crit <- mult * S
+    raw <- abs(outer(mu, mu, "-")) > crit
+    diag(raw) <- FALSE
+    sig <- if (ranged) step_down(mu, raw) else raw
+    lets <- cld_from_sig(mu, sig)
 
-  lets <- cld_lsd(mu, cd)
-  g <- data.frame(Treatment = apply(m[e$vars], 1, paste, collapse = " : "),
-                  Mean = mu, n = m$N, Group = lets,
-                  row.names = NULL, check.names = FALSE)
-  g <- g[order(-g$Mean), ]
+    o <- order(-mu)
+    ij <- which(upper.tri(diag(k)), arr.ind = TRUE)
+    ij <- ij[order(ij[, 1], ij[, 2]), , drop = FALSE]
+    ij <- cbind(o[ij[, 1]], o[ij[, 2]])                 # larger mean first
+    pairs <- data.frame(
+      Comparison = paste(lab[ix][ij[, 1]], "vs", lab[ix][ij[, 2]]),
+      Difference = mu[ij[, 1]] - mu[ij[, 2]],
+      SEd = S[ij],
+      `Critical value` = mult[ij],
+      `Critical difference` = crit[ij],
+      Significant = ifelse(sig[ij], "Yes",
+                    ifelse(raw[ij], "No (inside a non-significant range)", "No")),
+      check.names = FALSE, stringsAsFactors = FALSE)
+    list(lets = lets, pairs = pairs, k = k, crit = crit[upper.tri(crit)])
+  }
+  out <- lapply(fams, run)
 
+  within <- if (is.null(e$slice)) NULL else
+    vapply(fams, function(ix) as.character(m[[e$slice]][ix[1]]), character(1))
+  groups <- do.call(rbind, lapply(seq_along(fams), function(f) {
+    ix <- fams[[f]]
+    g <- data.frame(Treatment = lab[ix], Mean = m$Mean[ix], row.names = NULL, check.names = FALSE)
+    if (!is.null(m$Raw_mean)) g$`Unadjusted mean` <- m$Raw_mean[ix]
+    g <- cbind(g, n = m$N[ix], SE = m$SE[ix], Group = out[[f]]$lets)
+    if (!is.null(within)) g <- cbind(Within = within[f], g)
+    g[order(-g$Mean), ]
+  }))
+  rownames(groups) <- NULL
+  pairs <- do.call(rbind, lapply(seq_along(fams), function(f) {
+    p <- out[[f]]$pairs
+    if (!is.null(within)) p <- cbind(Within = within[f], p)
+    p
+  }))
+
+  ## one critical difference for the whole family only if one really applies
+  crit_all <- unlist(lapply(out, `[[`, "crit"))
+  equal <- isTRUE(e$equal_rep)
+  one_cd <- !ranged && diff(range(crit_all)) <= 1e-9 * max(abs(crit_all))
+  ranges <- if (ranged && equal)
+    data.frame(`Means apart (p)` = 2:kmax, `Critical range` = qv[2:kmax] * e$sed,
+               check.names = FALSE)
+  else NULL
+
+  kramer <- !equal && (method == "Tukey HSD" || ranged)
+  shown <- if (method == "Tukey HSD" && !equal)
+             "Tukey-Kramer procedure (Tukey's HSD for unequal replication)"
+           else if (kramer) paste(PH_LABELS[[method]], "with Kramer's adjustment for unequal replication")
+           else PH_LABELS[[method]]
+  k_txt <- if (is.null(within)) as.character(nrow(m))
+           else sprintf("%s within each level of %s", paste(unique(vapply(out, `[[`, numeric(1), "k")),
+                                                         collapse = " or "), e$slice)
   st <- data.frame(
     Item  = c("Effect", "Method", "Error mean square", "Error df",
               "SE of a mean (SEm)", "SE of a difference (SEd)",
-              "Number of means (k)", "alpha",
-              if (is.function(cd)) "Critical difference" else "Critical difference (CD)"),
-    Value = c(e$label, method, fmt(e$mse, 4), as.character(df),
-              fmt(sbar), fmt(sed), as.character(k), fmt(alpha, 2),
-              if (is.function(cd)) "varies with p - see the table of critical ranges"
-              else fmt(cd)),
+              "Number of means (k)", "Significance level",
+              if (one_cd) "Critical difference (C.D.)" else "Critical difference"),
+    Value = c(e$label, shown, fmt(e$mse, 4), df_text(df),
+              err_text(e, "sem", 3, html = FALSE), err_text(e, "sed", 3, html = FALSE),
+              k_txt, p_lab(alpha),
+              if (one_cd) fmt(crit_all[1])
+              else if (ranged && equal) "varies with p - see the table of critical ranges"
+              else "varies by pair - see the pairwise comparisons"),
     check.names = FALSE)
 
-  list(groups = g, stats = st, ranges = ranges, note = e$note)
+  f_sig <- !is.na(e$p) && e$p < alpha
+  note <- c(
+    if (!f_sig)
+      sprintf(paste0("The F-test for %s is not significant at the %s%% level, so, as ",
+                     "everywhere else in DOEpro, no letters are shown and no pair is ",
+                     "declared different."), e$label, pct(alpha)),
+    if (!is.null(e$slice))
+      sprintf(paste0("Means are compared within each level of %s: these are the only ",
+                     "comparisons that share one error term. Letters restart in each level, ",
+                     "so the same letter in two levels of %s means nothing."), e$slice, e$slice),
+    if (!is.null(e$error_desc)) e$error_desc,
+    if (method == "Tukey HSD" && !equal)
+      paste0("Replication is unequal, so this is the Tukey-Kramer procedure: Tukey's ",
+             "studentized range applied to each pair's own standard error of a difference."),
+    if (ranged && !equal)
+      paste0("Replication is unequal, so each pair uses its own standard error of a ",
+             "difference (Kramer, 1956). agricolae and SAS use the harmonic mean of the ",
+             "replications instead, so their critical ranges will differ slightly."),
+    if (ranged)
+      paste0("As a multiple-range test this is a step-down procedure: two means inside a ",
+             "range that is not significant are not declared different, even if their own ",
+             "difference exceeds its critical range."),
+    if (method %in% c("Tukey HSD", "Student-Newman-Keuls", "Duncan's DMRT"))
+      paste0("The critical value in the pairwise table is the studentized range q divided ",
+             "by &radic;2, so that critical difference = critical value &times; SEd. Tables of ",
+             "q list it before that division."),
+    ## notes written for the tables of means describe that table's letters and
+    ## level, so they are repeated here only when they apply to this output
+    if (is.null(e$slice) && isTRUE(all.equal(alpha, e$alpha))) e$notes,
+    if (!isTRUE(all.equal(alpha, e$alpha)))
+      sprintf(paste0("These comparisons are at the %s%% level, while the analysis and its ",
+                     "tables of means are at the %s%% level."), pct(alpha), pct(e$alpha)))
+  note <- note[nzchar(note)]
+
+  list(groups = groups, stats = st, ranges = ranges, pairs = pairs,
+       note = if (length(note)) note else NULL, f_sig = f_sig, alpha = alpha,
+       method = PH_LABELS[[method]])
 }
+
+## What the user sees and exports: the procedure's letters and verdicts only
+## when the effect's F-test is significant, as for every other table in
+## DOEpro. posthoc() itself keeps them, as an effect keeps its letters.
+gate_posthoc <- function(x) {
+  if (isTRUE(x$f_sig)) return(x)
+  x$groups$Group <- ""
+  x$pairs$Significant <- sprintf("Not declared (F-test not significant at %s%%)", pct(x$alpha))
+  x
+}
+
+## Multiple-range tests are step-down procedures: once a range of means is
+## declared homogeneous, no pair inside it may be declared different. Working
+## from the widest range inwards, a pair stays significant only if both ranges
+## one step wider than it were significant, and therefore every range around it.
+step_down <- function(mu, sig) {
+  k <- length(mu); o <- order(mu, decreasing = TRUE)
+  s <- sig[o, o, drop = FALSE]
+  out <- matrix(FALSE, k, k)
+  for (w in rev(seq_len(k - 1))) for (i in seq_len(k - w)) {
+    j <- i + w
+    out[i, j] <- s[i, j] && (i == 1 || out[i - 1, j]) && (j == k || out[i, j + 1])
+  }
+  out <- out | t(out)
+  res <- matrix(FALSE, k, k)
+  res[o, o] <- out
+  res
+}
+
+## qtukey() fails to converge for the long ranges Duncan's test needs once about
+## twenty means are compared (it returns NaN); inverting ptukey() does not
+q_tukey <- function(pr, p, df) {
+  q <- suppressWarnings(stats::qtukey(pr, p, df))
+  if (is.finite(q)) return(q)
+  f <- function(x) stats::ptukey(x, p, df) - pr
+  if (!is.finite(f(1e-3)) || !is.finite(f(100)))
+    stop(sprintf(paste0("The studentized range cannot be computed for %d means on %s ",
+                        "error degrees of freedom. Use the LSD, Bonferroni or Scheffe test."),
+                 p, df_text(df)), call. = FALSE)
+  stats::uniroot(f, c(1e-3, 100), tol = 1e-12)$root
+}
+
+## degrees of freedom: whole numbers as they are, Satterthwaite's to one decimal
+df_text <- function(df) if (abs(df - round(df)) < 1e-8) as.character(round(df)) else fmt(df, 1)
 
 ## ---------------------------------------------------------- plots.R ----
 ###############################################################################
@@ -1409,11 +2019,31 @@ scale_note <- function(res) {
   paste("Transformed scale:", TRANS[[res$trans]]$lab)
 }
 
+## What the error bars and letters on a plot of means mean, at the chosen level.
+## For a split, strip or pooled interaction both differ: the bars are the SE(m)
+## for comparing means at the same level of the slicing factor, and the letters
+## restart in each of its levels.
+plot_caption <- function(e, bars, lets_on) {
+  sl <- e$slice
+  bars <- if (!bars) NULL
+          else if (is.null(sl)) "Error bars: one standard error either side of each mean."
+          else sprintf("Error bars: SE(m) for comparing means at the same level of %s (SE(d) / sqrt(2)).", sl)
+  lets <- if (!lets_on) NULL
+          else if (!effect_sig(e))
+            sprintf("No letters: the F-test is not significant at the %s%% level.", pct(e$alpha))
+          else if (is.null(sl))
+            sprintf("Means sharing a letter are not significantly different at the %s%% level.", pct(e$alpha))
+          else sprintf(paste0("Letters compare means within the same level of %s only; there, ",
+                              "means sharing a letter are not significantly different at the %s%% level."),
+                       sl, pct(e$alpha))
+  if (is.null(c(bars, lets))) NULL else paste(c(bars, lets), collapse = " ")
+}
+
 plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
   e <- res$effects[[effect]]; d <- res$data; resp <- res$resp
-  m <- e$means
+  m <- gate_letters(e)              # no letters under a non-significant F-test
   v <- e$vars
-  m$.se <- e$sem
+  m$.se <- m$SE                     # each mean's own SE: replication may differ
   lab_y <- max(m$Mean + m$.se) * 1.06
 
   if (length(v) == 1) {
@@ -1429,7 +2059,8 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
       (if (show_letters && type != "box")
         geom_text(aes(y = Mean + .se, label = Letter), vjust = -0.6, size = 4.5) else NULL) +
       labs(title = paste("Effect of", v, "on", resp), y = resp, x = v,
-           subtitle = scale_note(res)) +
+           subtitle = scale_note(res),
+           caption = plot_caption(e, type != "box", show_letters && type != "box")) +
       theme_doe()
     return(p)
   }
@@ -1458,7 +2089,9 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
   if (length(v) > 2) p <- p + facet_wrap(stats::as.formula(
     paste("~", paste(v[-(1:2)], collapse = "+"))))
   p <- p + labs(title = paste("Interaction:", e$label), y = resp, x = f1,
-                colour = f2, subtitle = scale_note(res)) + theme_doe()
+                colour = f2, subtitle = scale_note(res),
+                caption = plot_caption(e, type %in% c("bar", "line"),
+                                       show_letters && type == "bar")) + theme_doe()
   if (type == "heat") p + labs(fill = paste("Mean", resp), y = f2) else p + labs(fill = f2)
 }
 
@@ -1489,8 +2122,8 @@ plot_boxcox <- function(asm) {
     geom_vline(xintercept = bc$ci, colour = "grey55", lty = 3) +
     annotate("text", x = bc$lambda, y = min(df$loglik), vjust = -0.4, hjust = -0.1,
              label = sprintf("lambda = %.2f", bc$lambda), colour = "#C0392B", size = 3.6) +
-    labs(title = sprintf("Box-Cox profile (optimal lambda = %.2f, 95%% CI %.2f to %.2f)",
-                         bc$lambda, bc$ci[1], bc$ci[2]),
+    labs(title = sprintf("Box-Cox profile (optimal lambda = %.2f, %s%% CI %.2f to %.2f)",
+                         bc$lambda, pct(bc$level), bc$ci[1], bc$ci[2]),
          x = "lambda", y = "log-likelihood") + theme_doe()
 }
 
@@ -1514,14 +2147,31 @@ cv_verdict <- function(cv) {
   else "very high - the experiment has low reliability; check for outliers, plot heterogeneity or a wrong error term"
 }
 
+## Every statement is made at the significance level the user chose, and a
+## non-significant result is reported as insufficient evidence of a difference,
+## never as evidence that there is none.
 interpret <- function(res, asm, sug, trans_lab = "None") {
   d <- res$data; p <- character(0)
   dn <- names(DESIGNS)[match(res$design, DESIGNS)]
+  a <- res$alpha; lvl <- sprintf("%s%%", pct(a))
 
-  p <- c(p, sprintf("<h4>1. What was analysed</h4><p>A <b>%s</b> was analysed with <b>%s</b> as the response (%d observations, %s data).%s</p>",
-    dn, res$resp, nrow(d),
-    if (res$balanced) "balanced" else "<b>unbalanced</b>",
-    if (trans_lab != "None") sprintf(" The response was transformed using <b>%s</b>; all means, SEd and CD values below are on the transformed scale (back-transformed means are shown alongside).", trans_lab) else ""))
+  ## why the data are unbalanced, in the terms of the design
+  why_unbal <- switch(res$design,
+    CRD = "the treatments have unequal numbers of replications",
+    FCRD = "the treatment combinations have unequal numbers of replications",
+    LSD = "a plot is missing from the Latin square",
+    "a plot is missing from a block, or the treatments are unequally replicated")
+  adjusted <- isTRUE(res$adjusted_ss) &&
+    any(vapply(res$effects, function(e) !is.null(e$means$Raw_mean), logical(1)))
+
+  p <- c(p, sprintf("<h4>1. What was analysed</h4><p>A <b>%s</b> was analysed with <b>%s</b> as the response (%d observations). Every test is at the %s significance level.%s%s%s</p>",
+    dn, res$resp, nrow(d), lvl,
+    if (res$balanced) " The data are balanced."
+    else sprintf(" The data are <b>unbalanced</b>: %s. Each mean therefore has its own standard error, and two means are compared using the standard error of that particular pair.", why_unbal),
+    if (adjusted) " The means are adjusted (least-squares) means, and each term in the ANOVA is tested after allowing for every other term (Type III sums of squares, which need not add up to the total)."
+    else if (isTRUE(res$adjusted_ss)) " Each term in the ANOVA is tested after allowing for every other term (Type III sums of squares, which need not add up to the total)."
+    else "",
+    if (trans_lab != "None") sprintf(" The response was transformed using <b>%s</b>; all means, SEd and C.D. values below are on the transformed scale (back-transformed means are shown alongside).", trans_lab) else ""))
 
   p <- c(p, sprintf("<h4>2. Precision of the experiment</h4><p>%s. Grand mean = %s. A CV of this magnitude is %s.</p>",
     paste(sprintf("%s = %s", names(res$cv), fmt(res$cv, 2)), collapse = "; "),
@@ -1533,40 +2183,81 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
   for (nm in names(res$effects)) {
     e <- res$effects[[nm]]
     if (is.na(e$p)) next
-    s <- if (e$p < 0.01) "highly significant (p &lt; 0.01)" else
-         if (e$p < 0.05) "significant (p &lt; 0.05)" else "not significant"
+    s <- if (e$p < a / 5) "highly significant" else
+         if (e$p < a) sprintf("significant at the %s level", lvl)
+         else sprintf("not significant at the %s level", lvl)
     best <- e$means[which.max(e$means$Mean), ]
-    lvl <- paste(vapply(e$vars, function(v) as.character(best[[v]]), character(1)),
+    top <- paste(vapply(e$vars, function(v) as.character(best[[v]]), character(1)),
                  collapse = " x ")
-    if (e$p < 0.05) {
+    if (effect_sig(e)) {
       if (length(e$vars) > 1) inter_sig <- TRUE
-      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s). The highest mean, %s, was recorded for <b>%s</b>. Two means of this effect must differ by at least <b>%s</b> (CD at 5%%) to be declared different.</li>",
-        e$label, s, fmt(e$F, 2), fmt(best$Mean), lvl, fmt(e$cd5)))
+      cd_txt <- if (!is.null(e$slice))
+        sprintf("Two means at the same level of %s must differ by at least <b>%s</b> (C.D. at %s) to be declared different; other comparisons have their own C.D., given with the table of means.",
+                e$slice, fmt(e$cd), lvl)
+      else if (!is.na(e$cd))
+        sprintf("Two means of this effect must differ by at least <b>%s</b> (C.D. at %s) to be declared different.",
+                fmt(e$cd), lvl)
+      else
+        sprintf("Because the data are unbalanced, the difference two means need to be declared different depends on which two are compared: the C.D. at %s ranges from <b>%s</b>.",
+                lvl, err_text(e, "cd", 3, html = FALSE))
+      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). The highest mean, %s, was recorded for <b>%s</b>. %s</li>",
+        e$label, s, fmt(e$F, 2), p_eq(e$p), fmt(best$Mean), top, cd_txt))
+    } else if (length(e$vars) > 1) {
+      ## an interaction F-test asks whether one factor's effect depends on the
+      ## other, not whether the cell means are all equal
+      fx <- e$vars
+      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence at the %s level that the effect of %s depends on the level of %s. This is not evidence that the interaction is absent; a small one may have gone undetected.</li>",
+        e$label, s, fmt(e$F, 2), p_eq(e$p), lvl, fx[1], paste(fx[-1], collapse = " and ")))
     } else {
-      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, p = %s). The observed spread among its means can be explained by experimental error alone, so no CD is quoted and the means should be treated as statistically alike.</li>",
-        e$label, s, fmt(e$F, 2), pval(e$p)))
+      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence to conclude that its means differ at the %s level, so no C.D. is quoted and no letters are given. This is not evidence that the means are equal; the experiment may have been too small to detect a real difference.</li>",
+        e$label, s, fmt(e$F, 2), p_eq(e$p), lvl))
+    }
+  }
+
+  ## In a pooled factorial the interaction of the environment with each single
+  ## factor is an ANOVA row but not a table of means, so read it from the ANOVA.
+  if (res$design %in% c("POOLFRCBD", "POOLFCRD")) {
+    env <- setdiff(res$effects[[length(res$effects)]]$vars, res$facs)
+    an <- res$anova
+    rows <- an[startsWith(an$Source, paste0(env, " x ")) & !is.na(an$p), , drop = FALSE]
+    full <- paste0(env, " x ", paste(res$facs, collapse = " x "))
+    rows <- rows[rows$Source != full, , drop = FALSE]
+    for (i in seq_len(nrow(rows))) {
+      fac <- sub(paste0("^", env, " x "), "", rows$Source[i])
+      if (rows$p[i] < a) {
+        inter_sig <- TRUE
+        ee <- c(ee, sprintf("<li><b>%s</b> is significant at the %s level (F = %s, %s): the effect of %s differs between environments, so its pooled means are averages over environments that behave differently and should be read with that in mind.</li>",
+          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i]), fac))
+      } else {
+        ee <- c(ee, sprintf("<li><b>%s</b> is not significant at the %s level (F = %s, %s): there is insufficient evidence that the effect of %s differs between environments.</li>",
+          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i]), fac))
+      }
     }
   }
   p <- c(p, "<h4>3. Effect of each source</h4><ul>", ee, "</ul>")
 
   if (inter_sig) p <- c(p, "<p class='warn'><b>An interaction is significant.</b> The effect of one factor depends on the level of the other, so the main-effect means are averages over conditions that behave differently. Interpret the <i>interaction (cell) means</i> and the simple effects rather than the main effects, and use the interaction plot to describe the pattern.</p>")
-  else if (length(res$facs) > 1) p <- c(p, "<p>No interaction was significant, so the factors act independently: the main-effect means can be interpreted directly and the best level of each factor can be chosen separately.</p>")
+  else if (length(res$facs) > 1) p <- c(p, sprintf("<p>No interaction was significant at the %s level, so there is insufficient evidence that the factors interact. The main-effect means can be interpreted directly and the best level of each factor chosen separately, bearing in mind that a small interaction may have gone undetected.</p>", lvl))
 
-  ## assumptions
-  a <- character(0)
-  if (!is.na(asm$p_norm)) a <- c(a, sprintf("<li>Shapiro-Wilk on residuals: W = %s, p = %s - residuals %s normal.</li>",
-    fmt(asm$shapiro$statistic, 3), pval(asm$p_norm),
-    if (asm$p_norm > 0.05) "can be regarded as" else "<b>depart from</b>"))
-  if (!is.na(asm$p_hov)) a <- c(a, sprintf("<li>Levene's test: p = %s - variances are %s across treatments.</li>",
-    pval(asm$p_hov),
-    if (asm$p_hov > 0.05) "homogeneous" else "<b>heterogeneous</b>"))
-  if (length(asm$outliers)) a <- c(a, sprintf("<li>%d observation(s) have standardised residuals beyond +/-3 (rows %s) - check them for recording errors.</li>",
+  ## assumptions, judged at the same level
+  at <- character(0)
+  if (!is.na(asm$p_norm)) at <- c(at, sprintf("<li>Shapiro-Wilk on residuals: W = %s, %s - %s.</li>",
+    fmt(asm$shapiro$statistic, 3), p_eq(asm$p_norm),
+    if (asm$p_norm > a) sprintf("insufficient evidence at the %s level that the residuals depart from normality", lvl)
+    else sprintf("the residuals <b>depart from normality</b> at the %s level", lvl)))
+  if (!is.na(asm$p_hov)) at <- c(at, sprintf("<li>Levene's test: %s - %s.</li>",
+    p_eq(asm$p_hov),
+    if (asm$p_hov > a) sprintf("insufficient evidence at the %s level that the treatments differ in variance", lvl)
+    else sprintf("the variances are <b>heterogeneous</b> at the %s level", lvl)))
+  if (length(asm$outliers)) at <- c(at, sprintf("<li>%d observation(s) have standardised residuals beyond +/-3 (rows %s) - check them for recording errors.</li>",
     length(asm$outliers), paste(asm$outliers, collapse = ", ")))
-  a <- c(a, sprintf("<li>Recommendation: <b>%s</b>. %s</li>", TRANS[[sug$method]]$lab, sug$why))
-  p <- c(p, "<h4>4. Assumptions of the ANOVA</h4><ul>", a, "</ul>")
+  at <- c(at, sprintf("<li>Recommendation: <b>%s</b>. %s</li>", TRANS[[sug$method]]$lab, sug$why))
+  p <- c(p, "<h4>4. Assumptions of the ANOVA</h4><ul>", at, "</ul>")
 
-  p <- c(p, sprintf("<h4>5. How to report this</h4><p>Present the ANOVA table, then the table of means with SEm&plusmn;, SEd, CD (5%%) and CV(%%) at the foot. Means followed by a common letter do not differ significantly at the %s%% level. For pairwise inference Fisher's protected LSD is used only after a significant F-test; Tukey's HSD or Duncan's DMRT may be preferred when many treatments are compared.</p>",
-    fmt(res$alpha * 100, 0)))
+  p <- c(p, sprintf("<h4>5. How to report this</h4><p>Present the ANOVA table, then the table of means with SEm&plusmn;, SEd, C.D. (%s) and CV(%%) at the foot%s. Means followed by a common letter are not significantly different at the %s level. For pairwise inference the least significant difference (LSD) is used only after a significant F-test (Fisher's protected LSD); Tukey's honestly significant difference (HSD) or Duncan's multiple range test (DMRT) may be preferred when many treatments are compared.</p>",
+    lvl,
+    if (res$balanced) "" else "; with unbalanced data give each mean its own SE and quote the range of the SEd and C.D. values",
+    lvl))
   paste(p, collapse = "\n")
 }
 
@@ -1629,7 +2320,15 @@ TRANS_NOTE <- paste0("<div class='note'>Figures in parentheses are transformed v
   "SE(m), SE(d), C.D. and C.V. refer to the transformed scale; the leading figure ",
   "is the back-transformed mean.</div>")
 
-cd_or_ns <- function(e, digits = 2) if (!is.na(e$p) && e$p < 0.05) fmt(e$cd5, digits) else "NS"
+cd_or_ns <- function(e, digits = 2) if (effect_sig(e)) err_text(e, "cd", digits) else "NS"
+
+## the heading of a C.D. row, at the level the user chose
+cd_head <- function(alpha) sprintf("C.D. (P&le;%s)", p_lab(alpha))
+
+## does any effect in the analysis have unequal replication?
+any_unequal <- function(rr)
+  any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e)
+    !isTRUE(e$equal_rep), logical(1))), logical(1)))
 
 ## A raw HTML table: `head` is a character vector of <th> labels, `body` a list
 ## of character vectors (one per row), `foot` a list of character vectors.
@@ -1654,7 +2353,7 @@ raw_table <- function(head, body, foot = NULL, caption = NULL, cls = "doe") {
 ##      ...
 ##      SE(m)+/-  |  ...
 ##      SE(d)+/-  |  ...
-##      C.D. (P<=0.05)  <effect name>: ...
+##      C.D. (P<=alpha)  <effect name>: ...
 ##      CV (%)    |  ...
 ## ---------------------------------------------------------------------------
 sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
@@ -1664,6 +2363,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
   resps <- names(fits)
 
   lv <- as.character(fits[[1]]$final$effects[[fac]]$means[[fac]])
+  alpha <- fits[[1]]$final$alpha
   any_tr <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
   cells <- lapply(fits, function(f) {
     e <- f$final$effects[[fac]]
@@ -1671,7 +2371,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
     idx <- match(lv, as.character(m[[fac]]))
     lets <- if ("Letter" %in% names(m)) m$Letter[idx] else rep("", length(lv))
     bt <- if (!identical(f$trans, "none") && "Mean_bt" %in% names(m)) m$Mean_bt[idx] else NULL
-    ms_cell(m$Mean[idx], e$sem, lets, digits, letters_on, mu_bt = bt)
+    ms_cell(m$Mean[idx], m$SE[idx], lets, digits, letters_on, mu_bt = bt)
   })
 
   body <- lapply(seq_along(lv), function(i)
@@ -1679,16 +2379,18 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
 
   ef <- lapply(fits, function(f) f$final$effects[[fac]])
   foot <- list(
-    c("SE(m) &plusmn;",   vapply(ef, function(e) fmt(e$sem, digits), character(1))),
-    c("SE(d) &plusmn;",   vapply(ef, function(e) fmt(e$sed, digits), character(1))),
-    c(sprintf("C.D. (P&le;0.05) &nbsp; <b>%s</b>", fac),
+    c("SE(m) &plusmn;",   vapply(ef, function(e) err_text(e, "sem", digits), character(1))),
+    c("SE(d) &plusmn;",   vapply(ef, function(e) err_text(e, "sed", digits), character(1))),
+    c(sprintf("%s &nbsp; <b>%s</b>", cd_head(alpha), fac),
                           vapply(ef, function(e) cd_or_ns(e, digits), character(1))),
     c("C.V. (%)",         vapply(fits, function(f) fmt(f$final$cv[length(f$final$cv)], 2),
                                  character(1))))
 
   hdr <- c(toupper(fac), vapply(fits, function(f) f$header, character(1)))
   paste0(raw_table(hdr, body, foot,
-           caption = sprintf("Effect of <b>%s</b> (mean &plusmn; SE)", fac)),
+           caption = sprintf("Effect of <b>%s</b> (%s)", fac,
+             if (any_tr) "mean &plusmn; SE; transformed responses show the back-transformed mean with the transformed value in parentheses"
+             else "mean &plusmn; SE")),
          if (any_tr) TRANS_NOTE else "")
 }
 
@@ -1699,7 +2401,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
 ##      Factor 1  T1            ..    ..    ..   |  ..
 ##                T2
 ##                Mean          ..    ..    ..   |  ..
-##      C.D. (P<=0.05)  Factor 1: .. ; Factor 2: .. ; Factor 1 x Factor 2: ..
+##      C.D. (P<=alpha)  Factor 1: .. ; Factor 2: .. ; Factor 1 x Factor 2: ..
 ## ---------------------------------------------------------------------------
 sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
   r  <- fit$final
@@ -1728,6 +2430,12 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
 
   graw <- matrix(NA_real_, length(l1), length(l2), dimnames = list(l1, l2))
   graw[cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))] <- m$Mean
+  ## margins and corner are shown like the cells: back-transformed, with the
+  ## transformed value in parentheses. The corner is the average of the cell
+  ## means, which is what the (adjusted) margins average to.
+  btf <- function(z) TRANS[[fit$trans]]$b(z, fit$lambda)
+  marg <- function(z) if (tr_on) paste0(fmt(btf(z), digits), " (", fmt(z, digits), ")")
+                      else fmt(z, digits)
   body <- lapply(seq_along(l1), function(i)
     c(l1[i],
       vapply(seq_along(l2), function(j)
@@ -1735,25 +2443,38 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
                if (tr_on) paste0(" (", fmt(graw[i, j], digits), ")") else "",
                if (!is.null(lets)) sup(lets[i, j]) else ""),
         character(1)),
-      fmt(bt(e1)[i], digits)))
-  body[[length(body) + 1L]] <- c("<b>Mean</b>", fmt(bt(e2), digits), fmt(r$grand, digits))
+      marg(e1$means$Mean[i])))
+  body[[length(body) + 1L]] <- c("<b>Mean</b>", vapply(e2$means$Mean, marg, character(1)),
+                                 marg(mean(graw, na.rm = TRUE)))
 
   ncol <- length(l2) + 2L
   span <- function(txt) sprintf("<tr><td colspan='%d' class='cdrow'>%s</td></tr>", ncol, txt)
-  trio <- function(f) sprintf("%s / %s / %s", fmt(f(e1), digits), fmt(f(e2), digits), fmt(f(eI), digits))
+  trio <- function(what) sprintf("%s / %s / %s", err_text(e1, what, digits),
+                                 err_text(e2, what, digits), err_text(eI, what, digits))
+  ## in a split, strip or pooled design the interaction's single SE(d) and C.D.
+  ## hold only within one level of its slicing factor; the others are listed
+  within <- if (is.null(eI$slice)) "" else
+    sprintf(" (%s within the same %s)", paste(setdiff(eI$vars, eI$slice), collapse = " &times; "),
+            eI$slice)
+  xt <- extra_text(eI, digits)
   foot <- list(
-    span(sprintf("SE(m) &plusmn; &nbsp; %s", trio(function(e) e$sem))),
-    span(sprintf("SE(d) &plusmn; &nbsp; %s", trio(function(e) e$sed))),
-    span(sprintf("<b>C.D. (P&le;0.05)</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s: <b>%s</b>",
-                 f1, cd_or_ns(e1, digits), f2, cd_or_ns(e2, digits),
-                 f1, f2, cd_or_ns(eI, digits))),
+    span(sprintf("SE(m) &plusmn; &nbsp; %s", trio("sem"))),
+    span(sprintf("SE(d) &plusmn; &nbsp; %s", trio("sed"))),
+    span(sprintf("<b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s%s: <b>%s</b>",
+                 cd_head(r$alpha), f1, cd_or_ns(e1, digits), f2, cd_or_ns(e2, digits),
+                 f1, f2, within, cd_or_ns(eI, digits))),
+    if (length(xt)) span(paste(sprintf("%s: <b>%s</b>", names(xt), xt), collapse = " &nbsp;&middot;&nbsp; ")),
     span(sprintf("C.V. (%%) &nbsp; %s", paste(fmt(r$cv, 2), collapse = " / "))))
+  foot <- Filter(Negate(is.null), foot)
 
   hdr <- c(sprintf("%s \\ %s", f1, f2), l2, "Mean")
   tbl <- raw_table(hdr, body, foot,
     caption = sprintf("<b>%s</b> &mdash; %s &times; %s", fit$header, f1, f2))
   paste0(tbl, "<div class='note'>SE(m), SE(d) are given as ", f1, " / ", f2, " / ",
-         f1, " &times; ", f2, ".</div>", if (tr_on) TRANS_NOTE else "")
+         f1, " &times; ", f2, if (nzchar(within)) paste0(within, ", the conventional SE(m) for those comparisons being SE(d) / &radic;2") else "",
+         ".</div>",
+         if (!is.null(lets) && effect_sig(eI)) slice_note(eI) else "",
+         if (tr_on) TRANS_NOTE else "")
 }
 
 ## A compact summary card: design, observations, and grand mean + C.V. per response.
@@ -1762,7 +2483,8 @@ means_summary_card <- function(rr, digits = 2) {
   f1 <- fits[[1]]$final
   chips <- vapply(names(fits), function(nm) {
     f <- fits[[nm]]; fin <- f$final
-    cv <- paste(sprintf("%s = %s", names(fin$cv), fmt(fin$cv, 2)), collapse = " &middot; ")
+    cv <- if (length(fin$cv) == 1) fmt(fin$cv, 2)
+          else paste(sprintf("%s = %s", names(fin$cv), fmt(fin$cv, 2)), collapse = " &middot; ")
     sprintf(paste0("<div class='ms-chip'><div class='ms-chip-name'>%s</div>",
                    "<div class='ms-chip-row'><span>Grand mean</span><b>%s</b></div>",
                    "<div class='ms-chip-row'><span>%s</span><b>%s</b></div></div>"),
@@ -1774,17 +2496,24 @@ means_summary_card <- function(rr, digits = 2) {
                  "%s</div><div class='ms-chip-wrap'>%s</div></div>"),
           names(DESIGNS)[match(rr$design, DESIGNS)], nrow(f1$data),
           if (f1$balanced) sprintf(" &middot; %d replication(s), balanced", f1$reps)
-          else " &middot; unbalanced",
+          else if (length(f1$n_range) == 2L && f1$n_range[1] != f1$n_range[2])
+            sprintf(" &middot; unequal replication (%d to %d per treatment)",
+                    f1$n_range[1], f1$n_range[2])
+          else " &middot; unbalanced (the treatments do not appear equally often in every block)",
           paste(chips, collapse = ""))
 }
 
 ## A key to the notation, shown once at the foot of the section.
-means_legend <- function(any_letters, any_trans) {
+means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE) {
   items <- c(
     "<b>mean &plusmn; SE</b> &mdash; treatment mean with its standard error",
-    if (any_letters) "<b><sup>a b c</sup></b> &mdash; means sharing a letter do not differ at P &le; 0.05" else NULL,
+    if (any_letters) sprintf("<b><sup>a b c</sup></b> &mdash; means sharing a letter are not significantly different at the %s%% level", pct(alpha)) else NULL,
     "<b>SE(m)</b> standard error of a mean &nbsp; <b>SE(d)</b> standard error of a difference",
-    "<b>C.D. (P&le;0.05)</b> critical difference; <b>NS</b> when the F-test is not significant",
+    sprintf("<b>%s</b> critical difference at the %s%% level; <b>NS</b> when the F-test is not significant at that level",
+            cd_head(alpha), pct(alpha)),
+    if (unequal) paste0("<b>0.96&ndash;1.13</b> (a range of two numbers) &mdash; the data are unbalanced, ",
+                        "so SE(d) and C.D. depend on which two means are compared; the range is shown, ",
+                        "and each mean carries its own SE") else NULL,
     "<b>C.V.</b> coefficient of variation (%)",
     if (any_trans) "figures <b>in parentheses</b> are transformed values; the leading figure is the back-transformed mean" else NULL)
   paste0("<div class='ms-legend'><b>How to read these tables</b><ul><li>",
@@ -1839,7 +2568,7 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
       det, "</div>")
   }
 
-  out <- c(out, means_legend(letters_on, any_trans), "</div>")
+  out <- c(out, means_legend(letters_on, any_trans, rr$alpha, any_unequal(rr)), "</div>")
   paste(out, collapse = "\n")
 }
 
@@ -1855,11 +2584,12 @@ combined_anova_html <- function(rr) {
       vapply(fits, function(f) {
         an <- f$final$anova
         if (is.na(an$MS[i])) "-" else
-          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i]), "</span>")
+          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i], rr$alpha), "</span>")
       }, character(1))))
-  raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
-            body, caption = "Analysis of variance &mdash; mean squares",
-            cls = "doe")
+  paste0(raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
+                   body, caption = "Analysis of variance &mdash; mean squares",
+                   cls = "doe"),
+         "<div class='note'>", star_key(rr$alpha), "</div>")
 }
 
 
@@ -1969,7 +2699,8 @@ build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE)
     if (!is.null(anv)) anv else "",
     paste(vapply(names(fits), function(nm) paste0(
       "<h4>", fits[[nm]]$header, "</h4>",
-      df_html(anova_display(fits[[nm]]$final$anova))), character(1)), collapse = ""),
+      df_html(anova_display(fits[[nm]]$final$anova, rr$alpha)),
+      anova_note(fits[[nm]]$final)), character(1)), collapse = ""),
     "<h2>2. Tables of means</h2>",
     means_section_html(rr, letters_on = letters_on, detailed = detailed),
     "<h2>3. Assumptions and transformation</h2>",
@@ -2026,33 +2757,47 @@ save_pdf <- function(html, outfile) {
   FALSE
 }
 
+## What sits under an ANOVA table: the key to the stars at the chosen level, and
+## a warning when the sums of squares are adjusted ones that need not add up.
+anova_note <- function(res) {
+  paste0("<div class='note'>", star_key(res$alpha),
+         if (isTRUE(res$adjusted_ss))
+           paste0(" The data are unbalanced, so each term is tested after allowing for ",
+                  "every other term (Type III sums of squares); these need not add up to ",
+                  "the total.") else "",
+         "</div>")
+}
+
+## The assumption checks, each judged at the analysis's significance level.
 assum_table_html <- function(a) {
   rows <- character(0)
+  ok <- function(p) if (isTRUE(p > a$alpha)) "no significant departure" else "<b>significant departure</b>"
   if (!is.null(a$shapiro)) rows <- c(rows, sprintf(
-    "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>W = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$shapiro$statistic), pval(a$p_norm),
-    if (isTRUE(a$p_norm > 0.05)) "OK" else "violated"))
+    "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>W = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$shapiro$statistic), p_eq(a$p_norm), ok(a$p_norm)))
   if (!is.null(a$levene)) rows <- c(rows, sprintf(
-    "<tr><td>Levene, median-centred (homogeneity)</td><td>F = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$levene$F), pval(a$p_hov), if (isTRUE(a$p_hov > 0.05)) "OK" else "violated"))
+    "<tr><td>Levene, median-centred (homogeneity)</td><td>F = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$levene$F), p_eq(a$p_hov), ok(a$p_hov)))
   if (!is.null(a$bartlett)) rows <- c(rows, sprintf(
-    "<tr><td>Bartlett (homogeneity)</td><td>K2 = %s</td><td>p = %s</td><td>%s</td></tr>",
-    fmt(a$bartlett$statistic), pval(a$bartlett$p.value),
-    if (isTRUE(a$bartlett$p.value > 0.05)) "OK" else "violated"))
+    "<tr><td>Bartlett (homogeneity)</td><td>K2 = %s</td><td>%s</td><td>%s</td></tr>",
+    fmt(a$bartlett$statistic), p_eq(a$bartlett$p.value), ok(a$bartlett$p.value)))
   rows <- c(rows, sprintf(
     "<tr><td>Taylor's power-law slope b</td><td colspan='2'>%s</td><td>%s</td></tr>",
     fmt(a$slope, 2), if (is.na(a$slope)) "-" else if (abs(a$slope) < 0.5)
-      "variance independent of mean" else "variance depends on mean"))
+      "little sign that the variance changes with the mean"
+      else if (a$slope > 0) "the variance appears to rise with the mean"
+      else "the variance appears to fall as the mean rises"))
   rows <- c(rows, sprintf(
     "<tr><td>Optimal Box-Cox lambda</td><td colspan='2'>%s</td><td>%s</td></tr>",
     fmt(a$lambda, 2),
     if (is.null(a$bc)) "not estimable (response must be &gt; 0)"
-    else sprintf("95%% CI %.2f to %.2f", a$bc$ci[1], a$bc$ci[2])))
+    else sprintf("%s%% CI %.2f to %.2f", pct(a$bc$level), a$bc$ci[1], a$bc$ci[2])))
   rows <- c(rows, sprintf(
     "<tr><td>Possible outliers (|std resid| &gt; 3)</td><td colspan='2'>%s</td><td></td></tr>",
     if (length(a$outliers)) paste(a$outliers, collapse = ", ") else "none"))
   paste0("<table class='doe'><thead><tr><th>Test</th><th>Statistic</th><th>p</th>",
-         "<th>Verdict</th></tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>")
+         "<th>Verdict</th></tr></thead><tbody>", paste(rows, collapse = ""), "</tbody></table>",
+         sprintf("<div class='note'>Verdicts are at the %s%% significance level.</div>", pct(a$alpha)))
 }
 
 ## ---------------------------------------------------------- run_all.R ----
@@ -2156,6 +2901,16 @@ auto_scan <- function(d, design, map, candidates, alpha = 0.05, dtype = "auto") 
 
 CREDIT_ASCII <- "DOEpro | Shah, Khan & Jeelani"
 
+## HTML text as plain text for the monospaced PDF: tags dropped, entities spelt out
+plain_text <- function(x) {
+  x <- gsub("<[^>]*>", " ", x)
+  ent <- c("&lt;" = "<", "&gt;" = ">", "&le;" = "<=", "&plusmn;" = "+/-",
+           "&times;" = "x", "&radic;" = "sqrt", "&nbsp;" = " ", "&mdash;" = "-",
+           "&ndash;" = "-", "&middot;" = ".", "&chi;" = "chi", "&amp;" = "&")
+  for (k in names(ent)) x <- gsub(k, ent[[k]], x, fixed = TRUE)
+  x
+}
+
 ## Plain monospaced PDF, drawn on the base graphics device.  Used when no
 ## HTML-to-PDF renderer is installed, so the PDF button always works.
 pdf_plain <- function(rr, file, letters_on = TRUE) {
@@ -2173,22 +2928,29 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
   for (nm in names(rr$fits)) {
     f <- rr$fits[[nm]]
     L <- c(L, strrep("-", 92), paste("RESPONSE:", f$header), strrep("-", 92), "",
-           "ANALYSIS OF VARIANCE", txt(anova_display(f$final$anova)), "")
+           "ANALYSIS OF VARIANCE", txt(anova_display(f$final$anova, rr$alpha)),
+           strwrap(plain_text(anova_note(f$final)), width = 90), "")
     for (en in names(f$final$effects)) {
       e <- f$final$effects[[en]]
-      m <- e$means
-      keep <- intersect(c(e$vars, "Mean", "Mean_bt", "N", "Letter"), names(m))
-      L <- c(L, sprintf("MEANS: %s", e$label), txt(m[, keep, drop = FALSE]),
-             sprintf("  SE(m) = %s   SE(d) = %s   C.D.(5%%) = %s   C.D.(1%%) = %s",
-                     fmt(e$sem), fmt(e$sed),
-                     if (!is.na(e$p) && e$p < 0.05) fmt(e$cd5) else "NS",
-                     if (!is.na(e$p) && e$p < 0.01) fmt(e$cd1) else "NS"), "")
+      m <- gate_letters(e)
+      keep <- intersect(c(e$vars, "Mean", "Raw_mean", "Mean_bt", "N",
+                          if (!isTRUE(e$equal_rep)) "SE", LETTER_COLS), names(m))
+      mm <- m[, keep, drop = FALSE]
+      names(mm) <- sub("^Raw_mean$", "Unadjusted_mean", sub("^Mean_bt$", "Back_transformed", names(mm)))
+      within <- if (is.null(e$slice)) "" else sprintf(" (within the same %s)", e$slice)
+      xt <- extra_text(e)
+      L <- c(L, sprintf("MEANS: %s", e$label), txt(mm),
+             sprintf("  SE(m)%s = %s   SE(d) = %s   %s = %s", within,
+                     err_text(e, "sem", 3, html = FALSE), err_text(e, "sed", 3, html = FALSE),
+                     cd_name(e$alpha),
+                     if (effect_sig(e)) err_text(e, "cd", 3, html = FALSE) else "NS"),
+             if (length(xt)) sprintf("  %s = %s", names(xt), xt), "")
     }
     L <- c(L, sprintf("C.V. : %s",
                       paste(sprintf("%s = %s", names(f$final$cv), fmt(f$final$cv, 2)),
                             collapse = "   ")), "",
            "INTERPRETATION",
-           strwrap(gsub("<[^>]*>", " ", interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab)),
+           strwrap(plain_text(interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab)),
                    width = 90), "")
   }
 
@@ -2208,73 +2970,6 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
   }
   invisible(TRUE)
 }
-
-
-HELP_HTML <- "
-<h3>Quick start</h3>
-<ol>
-<li>Copy your data from Excel in <b>long format</b> (one row per plot) and paste it into tab 1, or load an example.</li>
-<li>Go to tab 2, choose the design, map each column to its role, and press <b>Run analysis</b>.</li>
-<li>Tab 3 gives every table of means with SEm&plusmn;, SEd, CD (5% and 1%) and CV(%).</li>
-<li>Tab 4 tests the ANOVA assumptions and suggests a transformation.</li>
-<li>Tabs 5-6 give post-hoc groupings and publication-ready plots; tab 7 writes the interpretation and exports a report.</li>
-</ol>
-
-<h3>Layout expected for each design</h3>
-<table class='doe'>
-<tr><th>Design</th><th>Columns you must supply</th><th>Error term used for CD</th></tr>
-<tr><td>CRD</td><td>Response, Treatment</td><td>Error</td></tr>
-<tr><td>RCBD</td><td>Response, Treatment, Block</td><td>Error</td></tr>
-<tr><td>Latin square</td><td>Response, Treatment, Row, Column</td><td>Error</td></tr>
-<tr><td>Factorial CRD / RCBD</td><td>Response, 2-4 factors (+ Block for RCBD)</td><td>Error (pooled)</td></tr>
-<tr><td>Split plot</td><td>Response, Replication, Main-plot factor, Sub-plot factor</td><td>Error(a) for main plots, Error(b) for sub plots</td></tr>
-<tr><td>Strip plot</td><td>Response, Replication, Horizontal factor, Vertical factor</td><td>Error(a), Error(b), Error(c)</td></tr>
-</table>
-
-<h3>Standard errors and critical differences</h3>
-<p>For a mean based on <i>n</i> observations, SEm&plusmn; = &radic;(MSE/n), SEd = &radic;(2&middot;MSE/n) and CD = t<sub>&alpha;/2, df</sub> &times; SEd. Two means differ significantly when their difference exceeds the CD. CD is quoted only when the corresponding F-test is significant.</p>
-<p>In a <b>split plot</b> the two factors are tested against different errors, so four different comparisons exist:</p>
-<ul>
-<li>two main-plot means: SEd = &radic;(2&middot;Ea/(r&middot;b))</li>
-<li>two sub-plot means: SEd = &radic;(2&middot;Eb/(r&middot;a))</li>
-<li>two sub-plot means at the same main plot: SEd = &radic;(2&middot;Eb/r)</li>
-<li>two main-plot means at the same sub-plot level: SEd = &radic;(2[(b-1)Eb + Ea]/(r&middot;b)), tested with a Satterthwaite-weighted <i>t</i></li>
-</ul>
-<p>The <b>strip plot</b> uses the analogous formulae with the three error terms Ea, Eb and Ec. The app applies the correct one automatically for whichever effect you select.</p>
-
-<h3>Choosing a transformation</h3>
-<ul>
-<li><b>Square root</b> - counts, variance proportional to the mean (Taylor slope b &asymp; 1). Use &radic;(y+0.5) when zeros are present.</li>
-<li><b>Logarithm</b> - variance proportional to the square of the mean (b &asymp; 2), multiplicative effects. Use log(y+1) when zeros are present.</li>
-<li><b>Angular (arcsine &radic;p)</b> - percentages or proportions bounded at 0-100% or 0-1.</li>
-<li><b>Reciprocal</b> - variance rising faster than the square of the mean; rates and times.</li>
-<li><b>Box-Cox</b> - lets the data choose the exponent; the profile plot shows the optimal &lambda;.</li>
-</ul>
-<p>Always analyse on the transformed scale but present <b>back-transformed means</b> (given in tab 3) with the SEd/CD from the transformed scale.</p>
-
-<h3>Which post-hoc test?</h3>
-<ul>
-<li><b>LSD</b> - only after a significant F (Fisher's protected LSD); most powerful, highest false-positive risk with many treatments.</li>
-<li><b>Duncan's DMRT</b> - widely used in agronomy; intermediate.</li>
-<li><b>SNK</b> - intermediate, controls better than DMRT.</li>
-<li><b>Tukey HSD</b> - controls the family-wise error rate; the safe default for all pairwise comparisons.</li>
-<li><b>Scheffe</b> - the most conservative; suitable for complex contrasts.</li>
-<li><b>Bonferroni</b> - simple and conservative; fine for a small pre-planned set of comparisons.</li>
-</ul>
-<p><b>Interpreting an interaction:</b> when A&times;B is significant, do not read the main-effect means; compare cell means using the appropriate CD and describe how the response to one factor changes across levels of the other.</p>
-
-<h3>Several response variables at once</h3>
-<p>Select as many response columns as you like in <i>Response variable(s)</i>. Every one of them is analysed with the same design and mapping, and the tables of means place them side by side, one column per character, exactly as in a results table for publication. Each response keeps its own transformation, its own assumption checks and its own interpretation.</p>
-
-<h3>The automatic scan</h3>
-<p>As soon as data are loaded and the design columns are mapped, tab 1 reports Shapiro-Wilk, Levene, Taylor's slope, the optimal Box-Cox lambda and the CV for every numeric column, and names the transformation that column wants. A suggestion marked <i>optional</i> means the diagnostics are satisfactory but convention (counts, percentages) would still transform. Nothing is applied until you press <i>Apply all suggested</i> or choose a transformation yourself.</p>
-
-<h3>Reading the mean tables</h3>
-<p>A one-factor table shows <b>mean &plusmn; SE</b> for every treatment and every character, with SE(m), SE(d), C.D. (P&le;0.05) and C.V. (%) beneath it. A two-factor table is a grid of the two factors with marginal means, and the C.D. line quotes the critical difference for factor 1, for factor 2 and for their interaction. Where a response was transformed the back-transformed mean is printed first and the transformed value, on which every statistic was computed, follows in parentheses.</p>
-
-<h3>Reports</h3>
-<p>Tab 7 exports the whole analysis as a self-contained HTML file or as a PDF. The PDF is typeset by a headless browser when the <code>pagedown</code> package (or a <code>weasyprint</code> / <code>wkhtmltopdf</code> binary) is available; otherwise a plain typeset PDF is written. Both carry the credit line in the bottom-right corner of every page.</p>
-"
 
 ## ---------------------------------------------------------- app_ui.R ----
 ###############################################################################
@@ -2429,13 +3124,20 @@ doepro_ui <- function() navbarPage(
     sidebarLayout(
       sidebarPanel(width = 3,
         uiOutput("aRespUI2"), uiOutput("phEffectUI"),
-        selectInput("phMethod", "Test", PH_METHODS),
-        actionButton("dl_ph", "Groups (CSV)", icon = icon("download"))),
+        selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
+        actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
+        tags$br(), tags$br(),
+        actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
       mainPanel(width = 9,
         uiOutput("phNote"),
         h4("Treatment groups"), DTOutput("phTab"),
         h4("Test parameters"), DTOutput("phStats"),
-        uiOutput("phRangesUI"))
+        uiOutput("phRangesUI"),
+        h4("Pairwise comparisons"),
+        div(class = "note", paste(
+          "Every pair of means: their difference, the standard error of that difference,",
+          "the critical value and critical difference it is judged against, and the verdict.")),
+        DTOutput("phPairs"))
     )),
 
   ## ----------------------------------------------------------------- plots --
@@ -2733,18 +3435,27 @@ doepro_server <- function(input, output, session) {
         "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %d observations &nbsp;|&nbsp; %s",
         names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits), nrow(f1$data),
         paste(sprintf("%s = %s", names(f1$cv), fmt(f1$cv, 2)), collapse = " | ")))),
-      if (!f1$balanced) div(class = "warn",
-        "The data are unbalanced. The ANOVA uses sequential (Type I) sums of squares and the grouping letters are approximate.") else NULL,
+      if (!f1$balanced) div(class = "warn", HTML(paste0(
+        "<b>The data are unbalanced</b>: ",
+        switch(r$design,
+          CRD = "the treatments have unequal numbers of replications. ",
+          FCRD = "the treatment combinations have unequal numbers of replications. ",
+          LSD = "a plot is missing from the Latin square. ",
+          "a plot is missing from a block, or the treatments are unequally replicated. "),
+        "Each mean is given its own standard error, and each pair of means its own SE(d) and C.D.",
+        if (isTRUE(f1$adjusted_ss))
+          " The means are adjusted (least-squares) means, and each ANOVA term is tested after allowing for every other term (Type III)."
+        else ""))) else NULL,
       if (isTRUE(f1$pooled) && !is.null(f1$homogeneity)) {
         h <- f1$homogeneity
-        homog <- isTRUE(h$p > 0.05)
+        homog <- isTRUE(h$p > r$alpha)
         div(class = if (homog) "sugbox" else "warn", HTML(sprintf(
-          "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, p = %s. %s",
-          fmt(h$chisq, 3), h$df, pval(h$p),
+          "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
+          fmt(h$chisq, 3), h$df, p_eq(h$p),
           if (homog)
-            "The error variances are homogeneous, so the environments may be pooled and the combined ANOVA is valid."
+            sprintf("There is insufficient evidence at the %s%% level that the environments' error variances differ, so pooling the errors is reasonable; a small difference may have gone undetected.", pct(r$alpha))
           else
-            "The error variances are <b>heterogeneous</b>. The pooled F-tests should be read with caution; consider a variance-stabilising transformation (see the Assumptions tab) or analysing the environments separately.")))
+            sprintf("The error variances are <b>heterogeneous</b> at the %s%% level. The pooled F-tests should be read with caution; consider a variance-stabilising transformation (see the Assumptions tab) or analysing the environments separately.", pct(r$alpha)))))
       } else NULL)
   })
 
@@ -2756,7 +3467,8 @@ doepro_server <- function(input, output, session) {
       tags$hr(),
       HTML(paste(vapply(names(r$fits), function(nm) paste0(
         "<h4>", r$fits[[nm]]$header, "</h4>",
-        df_html(anova_display(r$fits[[nm]]$final$anova))), character(1)), collapse = "")))
+        df_html(anova_display(r$fits[[nm]]$final$anova, r$alpha)),
+        anova_note(r$fits[[nm]]$final)), character(1)), collapse = "")))
   })
 
   ## ------------------------------------------------------------------ means --
@@ -2801,10 +3513,13 @@ doepro_server <- function(input, output, session) {
   ## ---------------------------------------------------------------- posthoc --
   output$phEffectUI <- renderUI(selectInput("phEff", "Effect", names(pFit()$final$effects)))
 
+  ## the post-hoc tests run at the level the analysis was run at, so the
+  ## letters here and in the tables of means always mean the same thing; and,
+  ## as everywhere, no letters or verdicts are shown under a non-significant F
   ph <- reactive({
     f <- pFit(); req(input$phEff)
     validate(need(input$phEff %in% names(f$final$effects), "Choose an effect."))
-    tryCatch(posthoc(f$final, input$phEff, input$phMethod, as.numeric(input$alpha)),
+    tryCatch(gate_posthoc(posthoc(f$final, input$phEff, input$phMethod, f$final$alpha)),
              error = function(e) list(err = conditionMessage(e)))
   })
 
@@ -2814,20 +3529,23 @@ doepro_server <- function(input, output, session) {
     e <- pFit()$final$effects[[input$phEff]]
     tagList(
       div(class = "box", HTML(sprintf(
-        "Comparisons use the error term of <b>%s</b>: MSE = %s on %d degrees of freedom.",
-        e$label, fmt(e$mse, 4), e$df))),
-      if (!is.null(x$note)) div(class = "warn", HTML(x$note)) else NULL,
-      if (identical(input$phMethod, "LSD (Fisher's protected)") &&
-          !is.na(e$p) && e$p >= 0.05)
-        div(class = "warn",
-            "The F-test for this effect is not significant, so Fisher's LSD is not protected here. Treat these comparisons with caution.")
-      else NULL)
+        "Comparisons use the error term of <b>%s</b>: MSE = %s on %s degrees of freedom, at the %s%% significance level.",
+        e$label, fmt(e$mse, 4), df_text(e$df), pct(e$alpha)))),
+      if (!is.null(x$note)) div(class = "warn", HTML(paste(x$note, collapse = "<br><br>"))) else NULL)
   })
 
   output$phTab <- renderDT({
     x <- ph(); validate(need(is.null(x$err), x$err))
     formatRound(datatable(x$groups, rownames = FALSE,
-                          options = list(pageLength = 25, dom = "tp")), "Mean", 3)
+                          options = list(pageLength = 25, dom = "tp")),
+                intersect(c("Mean", "Unadjusted mean", "SE"), names(x$groups)), 3)
+  })
+
+  output$phPairs <- renderDT({
+    x <- ph(); validate(need(is.null(x$err), x$err))
+    formatRound(datatable(x$pairs, rownames = FALSE,
+                          options = list(pageLength = 15, dom = "tp", scrollX = TRUE)),
+                c("Difference", "SEd", "Critical value", "Critical difference"), 3)
   })
 
   output$phStats <- renderDT({
@@ -2890,39 +3608,60 @@ doepro_server <- function(input, output, session) {
     r <- ok()
     out <- do.call(rbind, lapply(names(r$fits), function(nm) {
       a <- r$fits[[nm]]$final$anova
-      data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p),
-                 row.names = NULL, check.names = FALSE)
+      data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p, r$alpha),
+                 alpha = r$alpha, row.names = NULL, check.names = FALSE)
     }))
     save_browser(paste0("DOEpro_anova_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## One row per mean. SEm is that mean's own standard error (for a split,
+  ## strip or pooled interaction, the SE(m) for comparisons within one level of
+  ## its slicing factor). SEd and CD are filled only when one value applies to
+  ## every pair they describe; otherwise they are left empty and the note says
+  ## where the pairwise values are, rather than writing one figure that fits
+  ## only some pairs.
   observeEvent(input$dl_means, {
     r <- ok()
-    lt <- c("Letter", "Letter_within_MP", "Letter_within_SP",
-            "Letter_within_A", "Letter_within_B", "Letter_within_env")
     out <- do.call(rbind, lapply(names(r$fits), function(nm) {
       fit <- r$fits[[nm]]
       do.call(rbind, lapply(names(fit$final$effects), function(en) {
         e <- fit$final$effects[[en]]; m <- gate_letters(e)
-        g <- intersect(lt, names(m))
+        g <- intersect(LETTER_COLS, names(m))
+        xt <- extra_text(e)
+        note <- c(
+          if (is.na(e$sed)) "SEd and CD differ between pairs of means; see the pairwise comparisons on the post-hoc tab."
+          else if (!isTRUE(e$equal_rep)) "SEm differs between means.",
+          if (!is.null(e$slice))
+            sprintf("SEd and CD apply to means at the same level of %s. %s", e$slice,
+                    paste(sprintf("%s = %s", names(xt), xt), collapse = "; ")))
         data.frame(
           Response = nm, Transformation = TRANS[[fit$trans]]$lab, Effect = e$label,
           Level = apply(m[e$vars], 1, paste, collapse = " x "),
           Mean = m$Mean,
+          Unadjusted_mean = if ("Raw_mean" %in% names(m)) m$Raw_mean else NA_real_,
           Back_transformed = if ("Mean_bt" %in% names(m)) m$Mean_bt else NA_real_,
-          N = m$N, SD = m$SD, SEm = e$sem, SEd = e$sed,
-          CD5 = e$cd5, CD1 = e$cd1, p_value = e$p,
+          N = m$N, SD = m$SD, SEm = m$SE, SEd = e$sed,
+          CD = if (effect_sig(e)) e$cd else NA_real_, alpha = e$alpha, p_value = e$p,
           Group  = if (length(g) >= 1) m[[g[1]]] else NA_character_,
           Group2 = if (length(g) >= 2) m[[g[2]]] else NA_character_,
+          Note = paste(note, collapse = " "),
           row.names = NULL, check.names = FALSE)
       }))
     }))
     save_browser(paste0("DOEpro_means_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## the post-hoc exports say which test and level produced them
+  ph_csv <- function(x, tab) cbind(Method = x$method, alpha = x$alpha, x[[tab]])
+
   observeEvent(input$dl_ph, {
     x <- ph(); req(is.null(x$err))
-    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(x$groups), "text/csv")
+    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "groups")), "text/csv")
+  })
+
+  observeEvent(input$dl_ph_pairs, {
+    x <- ph(); req(is.null(x$err))
+    save_browser(paste0("DOEpro_pairwise_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "pairs")), "text/csv")
   })
 
   output$dl_plot <- downloadHandler(
@@ -2983,9 +3722,10 @@ columns, and stack all environments in one long table.</p>
 <p>The analysis proceeds in three steps:</p>
 <ol>
 <li><b>Homogeneity of error variances.</b> Bartlett's test compares the error variances of
-the separate environments. If they are homogeneous the environments may be pooled; if not,
-the app warns you and a variance-stabilising transformation (or separate analyses) should be
-considered. The verdict is shown above the ANOVA table.</li>
+the separate environments. If the test finds no significant difference at your chosen level,
+the environments may be pooled; if it does, the app warns you and a variance-stabilising
+transformation (or separate analyses) should be considered. The verdict is shown above the
+ANOVA table.</li>
 <li><b>Combined ANOVA</b> with the correct error terms:
   <ul>
   <li><b>RCBD base:</b> Environment is tested against replications-within-environment; the
@@ -3022,13 +3762,21 @@ stable enough across environments to be declared real.</p>
 
 <h3>Standard errors and critical differences</h3>
 <p>With <i>n</i> observations behind each mean, SE(m) = &radic;(MSE/n),
-SE(d) = &radic;(2&middot;MSE/n) and C.D. = t<sub>&alpha;/2, df</sub> &times; SE(d).</p>
+SE(d) = &radic;(2&middot;MSE/n) and C.D. = t<sub>&alpha;/2, df</sub> &times; SE(d), where
+&alpha; is the significance level you chose.</p>
+<p>When replication is unequal, mean <i>i</i> has SE(m) = &radic;(MSE/n<sub>i</sub>) and
+two means have SE(d) = &radic;(MSE(1/n<sub>i</sub> + 1/n<sub>j</sub>)), so the C.D. depends
+on which two means are compared and the tables show its range. In a blocked design with a
+missing plot, or a factorial with unequal cells, the means are adjusted (least-squares)
+means and their standard errors come from the fitted model. Split plots, strip plots and
+pooled analyses must be complete: with a plot missing the app says what is missing rather
+than give an approximate answer.</p>
 <p>A split plot needs <b>four</b> different SE(d):</p>
 <ul>
 <li>two main-plot means: &radic;(2&middot;Ea / rb)</li>
 <li>two sub-plot means: &radic;(2&middot;Eb / ra)</li>
 <li>two sub-plot means within the same main plot: &radic;(2&middot;Eb / r)</li>
-<li>two main-plot means at the same sub-plot level: &radic;(2[(b-1)Eb + Ea] / rb), with a Satterthwaite-weighted <i>t</i></li>
+<li>two main-plot means at the same sub-plot level: &radic;(2[(b-1)Eb + Ea] / rb), with a weighted <i>t</i></li>
 </ul>
 <p>A strip plot needs three error terms and the analogous mixed comparisons. The app
 prints every one of them under the relevant table of means, so you never have to work
@@ -3048,21 +3796,27 @@ the back-transformed mean with the transformed value in parentheses.</p>
 
 <h3>Choosing a post-hoc test</h3>
 <ul>
-<li><b>Fisher's protected LSD</b>: only after a significant F-test, and best with few treatments.</li>
-<li><b>Tukey's HSD</b>: controls the error rate over all pairwise comparisons; the safe default.</li>
-<li><b>Duncan's DMRT</b>: less conservative, still standard in agronomy.</li>
-<li><b>Student-Newman-Keuls</b>: sits between Duncan and Tukey.</li>
-<li><b>Scheffe</b>: the most conservative; built for arbitrary contrasts.</li>
-<li><b>Bonferroni</b>: simple and strict.</li>
+<li><b>Least significant difference (LSD), Fisher's protected</b>: only after a significant F-test, and best with few treatments.</li>
+<li><b>Tukey's honestly significant difference (HSD)</b>: controls the error rate over all pairwise comparisons; the safe default.</li>
+<li><b>Duncan's multiple range test (DMRT)</b>: less conservative, still standard in agronomy.</li>
+<li><b>Student-Newman-Keuls (SNK) test</b>: sits between Duncan and Tukey.</li>
+<li><b>Scheffe's test</b>: the most conservative; built for arbitrary contrasts.</li>
+<li><b>Bonferroni-adjusted LSD</b>: simple and strict.</li>
 </ul>
 <p>All six are computed from the error mean square of whichever effect you select, so in a
-split or strip plot they automatically use the right error stratum.</p>
+split or strip plot they automatically use the right error stratum. An interaction in a split
+plot, strip plot or pooled analysis is compared within one level of the main-plot (or strip)
+factor, or one environment, at a time. With unequal replication each pair of means uses its
+own SE(d): Tukey's HSD becomes the Tukey-Kramer procedure, and Duncan's and the
+Student-Newman-Keuls tests use Kramer's adjustment. As everywhere in the app, no letters are
+shown when the effect's F-test is not significant.</p>
 
 <h3>Reporting</h3>
 <p>Present the ANOVA table, then the table of means with SE(m)&plusmn;, SE(d),
-C.D. (P&le;0.05) and C.V. (%) at the foot. Means followed by a common letter do not differ
-significantly. When an interaction is significant, interpret the cell means and the simple
-effects rather than the main effects.</p>
+the C.D. at your chosen significance level and C.V. (%) at the foot. Means followed by a
+common letter are not significantly different at that level. When an interaction is
+significant, interpret the cell means and the simple effects rather than the main
+effects.</p>
 <hr>", authors_html())))
 
   output$about <- renderUI({

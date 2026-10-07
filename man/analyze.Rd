@@ -21,15 +21,37 @@ needs \code{response}. Then, by design: \code{treat} (CRD, RCBD, LSD);
 together with \code{treat} or \code{factors}, and \code{rep} for an RCBD
 base (pooled designs).}
 
-\item{alpha}{The significance level for the critical differences and the
-grouping letters. Defaults to 0.05.}
+\item{alpha}{The significance level. It sets the critical differences, the
+grouping letters and the significance of every F-test. Defaults to 0.05.}
 }
 \value{
-A list with, among others: \code{anova} (the analysis of variance
-  table), \code{effects} (one entry per effect, each holding the table of
-  means with \code{sem}, \code{sed}, \code{cd5}, \code{cd1} and the grouping
-  letters), \code{mse} and \code{dfe} (the error mean square and its degrees
-  of freedom), \code{cv}, \code{grand}, \code{resid} and \code{lm}.
+A list with, among others:
+  \describe{
+    \item{\code{anova}}{The analysis of variance table.}
+    \item{\code{effects}}{One entry per effect. Each holds \code{means}, the
+      table of means with columns \code{Mean}, \code{N}, \code{SD}, \code{SE}
+      (the standard error of that mean), the grouping letters and, when the
+      means are adjusted, \code{Raw_mean}; \code{sed_mat} and \code{cd_mat},
+      the standard error of the difference and the critical difference for
+      every pair of means; \code{sem}, \code{sed} and \code{cd}, single
+      values that are \code{NA} when replication is unequal and they differ
+      from mean to mean (\code{equal_rep} is then \code{FALSE}, and
+      \code{se_range}, \code{sed_range} and \code{cd_range} give the range);
+      \code{mse} and \code{df}, the error mean square and degrees of freedom
+      the effect is tested against; \code{p}, \code{F} and \code{alpha}. The
+      interaction of a split plot, strip plot or pooled analysis also has
+      \code{slice}, the factor within whose levels its means are compared:
+      its \code{SE}, \code{sed} and \code{cd} apply to those comparisons,
+      \code{sed_mat} and \code{cd_mat} are \code{NA} across levels of
+      \code{slice}, and \code{extra} gives the standard errors and critical
+      differences of the other comparisons.}
+    \item{\code{mse}, \code{dfe}}{The error mean square and its degrees of
+      freedom.}
+    \item{\code{balanced}}{Whether every cell of the design holds the same
+      number of observations.}
+    \item{\code{cv}, \code{grand}, \code{resid}, \code{lm}}{The coefficient of
+      variation, grand mean, residuals and the fitted linear model.}
+  }
 }
 \description{
 Fits the analysis of variance for a single response variable and returns the
@@ -40,10 +62,20 @@ comparison the design allows.
 The error term is chosen to match the design. A split plot is fitted with
 \code{Error(rep/main)} and a strip plot with \code{Error(rep/(A+B))}, so the
 main-plot and sub-plot comparisons are each tested against their own error;
-the two mixed comparisons use a Satterthwaite-weighted \emph{t}. In a pooled
-(combined) analysis over environments, each treatment effect is tested
-against its own interaction with the environment, and each environment by
-treatment interaction against the pooled error.
+the two mixed comparisons use a weighted \emph{t}. In a pooled (combined)
+analysis over environments, each treatment effect is tested against its own
+interaction with the environment, and each environment by treatment
+interaction against the pooled error.
+
+Unequal replication is handled exactly in the designs with a single error
+term (CRD, RCBD, Latin square and the factorials): each mean gets its own
+standard error and each pair of means its own standard error of a difference
+and critical difference. When blocks are incomplete or factorial cells are
+unequal, the means are adjusted (least-squares) means and every term is
+tested adjusted for all the others (Type III). Designs with several error
+strata (split plot, strip plot and the pooled analyses) can only be analysed
+exactly when they are complete; with a plot missing \code{analyze()} stops
+and says which combinations are missing.
 }
 \examples{
 d <- demo_data("RCBD")
