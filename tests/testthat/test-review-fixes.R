@@ -142,3 +142,104 @@ test_that("p-values in text are never in scientific notation", {
   expect_identical(p_eq(2e-7), "p &lt; 0.0001")
   expect_identical(p_lab(0.001 / 5), "0.0002")
 })
+
+## ------------------------------------------- level order and the X-axis ----
+
+test_that("signed numbers, thousands separators and controls sort as people expect", {
+  expect_identical(natural_levels(c("25 C", "4 C", "-4 C", "-20 C")),
+                   c("-20 C", "-4 C", "4 C", "25 C"))
+  expect_identical(natural_levels(c("-5C", "+5C", "0C", "-10C", "10C")),
+                   c("-10C", "-5C", "0C", "+5C", "10C"))
+  # a hyphen inside a code or a range is not a minus sign
+  expect_identical(natural_levels(c("SR-10", "SR-2", "SR-1")), c("SR-1", "SR-2", "SR-10"))
+  expect_identical(natural_levels(c("15-30 cm", "0-15 cm", "30-45 cm")),
+                   c("0-15 cm", "15-30 cm", "30-45 cm"))
+  expect_identical(natural_levels(c("1,000 ppm", "500 ppm", "250 ppm", "2,000 ppm")),
+                   c("250 ppm", "500 ppm", "1,000 ppm", "2,000 ppm"))
+  expect_identical(natural_levels(c("ID1152921504606846976", "ID900000000000000000", "ID5")),
+                   c("ID5", "ID900000000000000000", "ID1152921504606846976"))
+  # the unnumbered control or starting point comes first
+  expect_identical(natural_levels(c("90 days", "Fresh", "30 days", "60 days")),
+                   c("Fresh", "30 days", "60 days", "90 days"))
+  expect_identical(natural_levels(c("T2", "T1", "Control")), c("Control", "T1", "T2"))
+  # wholly worded labels stay alphabetical
+  expect_identical(natural_levels(c("Vegetative", "Flowering", "Maturity")),
+                   c("Flowering", "Maturity", "Vegetative"))
+})
+
+test_that("codes that look like times or doses are not mistaken for them", {
+  dx <- function(...) {
+    cols <- list(...)
+    d <- lapply(cols, function(lv) factor(lv, levels = natural_levels(lv)))
+    default_x(list(vars = names(cols)), d)
+  }
+  nit <- c("N0", "N40", "N80", "N120")
+  expect_identical(dx(Hybrid = c("H1", "H2", "H3", "H4"), Nitrogen = nit), "Nitrogen")
+  expect_identical(dx(Treatment = c("D1", "D2", "D3"), Nitrogen = nit), "Nitrogen")
+  expect_identical(dx(Molybdenum = c("Mo0", "Mo1", "Mo2"), Phosphorus = c("P0", "P30", "P60")),
+                   "Phosphorus")
+  expect_identical(dx(Days = c("D0", "D30", "D60"), DAP = c("0", "50", "100", "150")), "Days")
+  # real times with a one-letter stem still count
+  expect_identical(dx(Variety = c("V1", "V2"), Obs = c("H6", "H12", "H24")), "Obs")
+  # a control beside numbered rates, and a fresh sample beside storage times
+  expect_identical(dx(Variety = c("V1", "V2", "V3"), Nitrogen = c("Control", "N40", "N80")),
+                   "Nitrogen")
+  expect_identical(dx(Variety = c("V1", "V2"), Storage = c("Fresh", "30 days", "60 days")),
+                   "Storage")
+  # a dropped entry in numbered codes does not make them quantities
+  expect_identical(dx(Treatment = c("T1", "T2", "T3"), Variety = c("V1", "V2", "V4")),
+                   "Treatment")
+  # worded labels earn nothing, whatever the column is called
+  expect_identical(dx(Packaging = c("P1", "P2", "P3"),
+                      Storage_condition = c("Ambient", "Refrigerated")), "Packaging")
+  expect_identical(dx(Variety = c("V1", "V2"), Month = c("January", "February", "March")),
+                   "Variety")
+})
+
+test_that("tied means give the same range-test result in any level order", {
+  mk <- function(lv) {
+    d <- data.frame(Treatment = factor(rep(names(lv), each = 3), levels = names(lv)))
+    d$Yield <- rep(unname(lv), each = 3) + rep(c(-0.4, 0, 0.4), length(lv))
+    analyze(d, "CRD", list(response = "Yield", treat = "Treatment"))
+  }
+  a <- mk(c(T1 = 10, T2 = 12.1, T3 = 16, T10 = 12.1))
+  b <- mk(c(T1 = 10, T10 = 12.1, T2 = 12.1, T3 = 16))
+  for (m in c("Student-Newman-Keuls", "Duncan's DMRT")) {
+    pa <- posthoc(a, "Treatment", m)$pairs
+    pb <- posthoc(b, "Treatment", m)$pairs
+    key <- function(p) vapply(strsplit(p$Comparison, " vs "), function(z)
+      paste(sort(z), collapse = "|"), character(1))
+    pb <- pb[match(key(pa), key(pb)), ]
+    expect_equal(pa[["Critical value"]], pb[["Critical value"]], info = m)
+    expect_identical(pa$Significant, pb$Significant, info = m)
+  }
+})
+
+test_that("an x_var that is not a single factor name falls back to the default", {
+  r <- analyze(demo_data("FRCBD"), "FRCBD",
+               list(response = "Yield", block = "Block", factors = c("Variety", "Nitrogen")))
+  for (xv in list(c("Variety", "Nitrogen"), character(0), NA, "", "Block")) {
+    p <- plot_main(r, "Variety:Nitrogen", "line", x_var = xv)
+    expect_identical(rlang::as_label(p$mapping$x), "Nitrogen")
+  }
+})
+
+test_that("a stale X-axis choice from another effect is not used", {
+  skip_on_cran()
+  shiny::testServer(doepro_server, {
+    d <- expand.grid(Rep = 1:3, Variety = c("V1", "V2"), Nitrogen = c("N0", "N60"),
+                     Days = c("D0", "D60"), stringsAsFactors = FALSE)
+    d$Yield <- 20 + 3 * (d$Nitrogen == "N60") - 2 * (d$Days == "D60") +
+      (d$Variety == "V2") + sin(seq_len(nrow(d)))
+    rv$data <- d
+    session$setInputs(design = "FCRD", nfac = 3, alpha = "0.05", dtype = "auto")
+    session$setInputs(resp = "Yield", f1 = "Variety", f2 = "Nitrogen", f3 = "Days")
+    session$setInputs(tr_1 = "none", run = 1)
+    session$setInputs(plEff = "Variety:Nitrogen", plType = "line", plLetters = TRUE)
+    session$setInputs(plX = "Variety")
+    expect_identical(rlang::as_label(mp()$mapping$x), "Variety")
+    # a new effect: until its own selector reports back, its default is drawn
+    session$setInputs(plEff = "Variety:Days")
+    expect_identical(rlang::as_label(mp()$mapping$x), "Days")
+  })
+})

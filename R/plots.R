@@ -34,7 +34,55 @@ plot_caption <- function(e, bars, lets_on) {
   if (is.null(c(bars, lets))) NULL else paste(c(bars, lets), collapse = " ")
 }
 
-plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
+## How strongly a factor asks to be the X-axis of an interaction plot. Only
+## numbered labels qualify: their natural order is their order in time or
+## size, whereas worded labels (Vegetative, Flowering) sort alphabetically and
+## a line through them would run in the wrong order. Time comes first,
+## recognised by the column name (Days, Week, Stage, Interval...) or by a
+## common stem (D0, D60; Week1, Week2; 30 DAS). Next come labels that carry
+## real quantities (N0, N60, N120; 2021, 2022; 0, 25, 50) rather than mere
+## numbering (T1, T2, V1, V2, V4), which is read as codes. One unnumbered label
+## such as Control or Fresh may sit among the numbered ones.
+TIME_NAME <- "(^|[^a-z])(day|days|das|dat|dae|doy|time|week|weeks|month|months|year|years|stage|stages|interval|period|storage|hour|hours|date)([^a-z]|$)"
+TIME_STEM <- "^(d|day|days|das|dat|dap|dae|doy|h|hr|hrs|hour|hours|wk|wks|week|weeks|month|months|yr|yrs|year|years)$"
+
+x_score <- function(name, lv) {
+  num <- "[0-9]+(?:[.][0-9]+)?"
+  cnt <- lengths(regmatches(lv, gregexpr(num, lv, perl = TRUE)))
+  lab <- lv[cnt == 1]
+  if (length(lab) < 2 || any(cnt > 1) || sum(cnt == 0) > 1) return(0)
+  stem <- unique(gsub("[^a-z]", "", tolower(gsub(num, "", lab, perl = TRUE))))
+  one_stem <- length(stem) == 1
+  n <- sort(as.numeric(regmatches(lab, regexpr(num, lab, perl = TRUE))))
+  step <- diff(n)
+  ## codes: whole numbers starting at 0 or 1 that either run 1, 2, 3 or skip
+  ## unevenly (a dropped entry: V1, V2, V4); evenly spaced rates (0, 2, 4;
+  ## 0, 40, 80) and other values are quantities
+  counting <- anyDuplicated(n) > 0 ||
+    (all(n == round(n)) && n[1] %in% c(0, 1) &&
+     (all(step == 1) || length(unique(round(step, 9))) > 1))
+  ## a one-letter stem (D, H) counts as time only on real quantities, so D0,
+  ## D60 and H6, H12 are times while the dose codes D1, D2 and hybrids H1, H2
+  ## are not
+  stem_time <- one_stem && grepl(TIME_STEM, stem) && (nchar(stem) > 1 || !counting)
+  is_time <- grepl(TIME_NAME, tolower(name)) || stem_time
+  2 * is_time + (one_stem && !counting)
+}
+
+## The factor that goes on the X-axis by default: the best-scoring one above,
+## the one with more levels on a tie, and otherwise the effect's first factor.
+default_x <- function(e, d) {
+  v <- e$vars
+  sc <- vapply(v, function(f) x_score(f, levels(d[[f]])), numeric(1))
+  if (max(sc) <= 0) return(v[1])
+  cand <- v[sc == max(sc)]
+  cand[which.max(vapply(cand, function(f) nlevels(d[[f]]), numeric(1)))]
+}
+
+## `x_var` names the factor for the X-axis of an interaction plot; by default
+## default_x() chooses it. The other factor becomes the lines (or the bar
+## colours), and any further factors become panels.
+plot_main <- function(res, effect, type = "bar", show_letters = TRUE, x_var = NULL) {
   e <- res$effects[[effect]]; d <- res$data; resp <- res$resp
   m <- gate_letters(e)              # no letters under a non-significant F-test
   v <- e$vars
@@ -60,7 +108,9 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
     return(p)
   }
 
-  f1 <- v[1]; f2 <- v[2]
+  f1 <- if (length(x_var) == 1L && isTRUE(x_var %in% v)) x_var else default_x(e, d)
+  rest <- setdiff(v, f1)
+  f2 <- rest[1]
   lt <- if ("Letter" %in% names(m)) "Letter" else
         if ("Letter_within_MP" %in% names(m)) "Letter_within_MP"
         else if ("Letter_within_env" %in% names(m)) "Letter_within_env"
@@ -81,8 +131,8 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
       scale_fill_gradient(low = "#EAF1FB", high = "#1B4F9C"),
     "box" = ggplot(d, aes(x = .data[[f1]], y = .data[[resp]], fill = .data[[f2]])) +
       geom_boxplot(position = position_dodge(.8)))
-  if (length(v) > 2) p <- p + facet_wrap(stats::as.formula(
-    paste("~", paste(v[-(1:2)], collapse = "+"))))
+  if (length(rest) > 1) p <- p + facet_wrap(stats::as.formula(
+    paste("~", paste(rest[-1], collapse = "+"))))
   p <- p + labs(title = paste("Interaction:", e$label), y = resp, x = f1,
                 colour = f2, subtitle = scale_note(res),
                 caption = plot_caption(e, type %in% c("bar", "line"),

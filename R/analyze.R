@@ -26,7 +26,11 @@
 #' and says which combinations are missing.
 #'
 #' @param d A data frame in long format: one row per plot, with columns for the
-#'   design factors and the response.
+#'   design factors and the response. Text factor columns are put in natural
+#'   order (D0, D60, D120; T1, T2, ..., T10), with a label carrying no number,
+#'   such as Control, placed first; a column that is already a factor keeps its
+#'   levels, so supply a factor to fix an order such as Vegetative, Flowering,
+#'   Maturity.
 #' @param design The design code. One of the values of \code{\link{DESIGNS}},
 #'   for example \code{"RCBD"}, \code{"SPLIT"} or \code{"POOLFRCBD"}.
 #' @param map A named list mapping roles to column names of \code{d}. Always
@@ -108,7 +112,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
   keep <- unique(c(resp, facs, blks))
   d <- d[stats::complete.cases(d[, keep, drop = FALSE]), keep, drop = FALSE]
   if (nrow(d) < 3) stop("Not enough complete rows to analyse.")
-  for (v in c(facs, blks)) d[[v]] <- factor(d[[v]])
+  ## levels in natural order, so tables and plots run D0, D60, D120 and
+  ## T1, T2, ..., T10 instead of alphabetically
+  for (v in c(facs, blks)) d[[v]] <- factor(d[[v]], levels = natural_levels(d[[v]]))
 
   lay <- check_layout(d, design, map, facs, blks)
   grand <- mean(d[[resp]])

@@ -170,7 +170,7 @@ doepro_ui <- function() navbarPage(
   tabPanel("6. Plots",
     sidebarLayout(
       sidebarPanel(width = 3,
-        uiOutput("aRespUI3"), uiOutput("plEffectUI"),
+        uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
         radioButtons("plType", "Plot type",
           c("Bar chart" = "bar", "Interaction lines" = "line",
             "Heat map" = "heat", "Box plot" = "box")),

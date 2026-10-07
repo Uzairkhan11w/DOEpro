@@ -57,8 +57,11 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
     mu <- m$Mean[ix]; k <- length(mu)
     S <- e$sed_mat[ix, ix, drop = FALSE]            # rows of sed_mat follow e$means
     nC <- k * (k - 1) / 2
-    rk <- rank(-mu, ties.method = "first")
-    span <- abs(outer(rk, rk, "-")) + 1
+    ## the number of means spanned by a pair, counting every mean between the
+    ## two values; tied means then share the wider, more cautious range
+    ## whatever order their levels happen to be in
+    span <- outer(seq_len(k), seq_len(k), Vectorize(function(i, j)
+      sum(mu >= min(mu[i], mu[j]) & mu <= max(mu[i], mu[j]))))
     mult <- switch(method,
       "LSD (Fisher's protected)"  = matrix(t_crit(e, alpha), k, k),
       "LSD (Bonferroni-adjusted)" = matrix(stats::qt(1 - alpha / (2 * nC), df), k, k),
@@ -188,17 +191,30 @@ gate_posthoc <- function(x) {
 ## declared homogeneous, no pair inside it may be declared different. Working
 ## from the widest range inwards, a pair stays significant only if both ranges
 ## one step wider than it were significant, and therefore every range around it.
+## With tied means the enclosing ranges are taken by value, not by position: a
+## pair keeps its own test and is gated by every range that strictly encloses
+## its two values, so the result does not depend on the order in which tied
+## levels happen to sit. Without ties this is the recursion above unchanged.
 step_down <- function(mu, sig) {
   k <- length(mu); o <- order(mu, decreasing = TRUE)
-  s <- sig[o, o, drop = FALSE]
+  s <- sig[o, o, drop = FALSE]; v <- mu[o]
   out <- matrix(FALSE, k, k)
   for (w in rev(seq_len(k - 1))) for (i in seq_len(k - w)) {
     j <- i + w
     out[i, j] <- s[i, j] && (i == 1 || out[i - 1, j]) && (j == k || out[i, j + 1])
   }
-  out <- out | t(out)
+  first <- vapply(v, function(x) min(which(v == x)), integer(1))  # start of each tie block
+  last  <- vapply(v, function(x) max(which(v == x)), integer(1))  # end of each tie block
+  fin <- matrix(FALSE, k, k)
+  for (i in seq_len(k - 1)) for (j in (i + 1):k) {
+    ## a range reaching above the larger value, or below the smaller one
+    above <- first[i] == 1 || out[first[i] - 1, first[j]]
+    below <- last[j] == k || out[last[i], last[j] + 1]
+    fin[i, j] <- s[i, j] && above && below
+  }
+  fin <- fin | t(fin)
   res <- matrix(FALSE, k, k)
-  res[o, o] <- out
+  res[o, o] <- fin
   res
 }
 

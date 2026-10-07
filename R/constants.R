@@ -466,6 +466,36 @@ bartlett_ms <- function(df, s2) {
        pooled_var = sp2, k = k)
 }
 
+## Factor levels in natural order: numbers inside labels compare as numbers, so
+## D0, D60, D120, D180 and T1, T2, ..., T10 come out in the order people mean
+## rather than the alphabetical D0, D120, D180, D60. A column that is already a
+## factor keeps the order it was given; a numeric column sorts numerically.
+natural_levels <- function(x) {
+  if (is.factor(x)) return(levels(droplevels(x)))
+  if (is.numeric(x)) return(levels(factor(x)))
+  u <- unique(as.character(x[!is.na(x)]))
+  if (!length(u)) return(u)
+  ## a thousands separator is part of the number (1,000 ppm); a decimal comma
+  ## (5,6) is left for the data checks to flag
+  s <- gsub("(?<=[0-9]),(?=[0-9]{3}([^0-9]|$))", "", u, perl = TRUE)
+  ## a sign belongs to the number only when it stands apart from the letters
+  ## and digits before it: "-20 C" is negative, "SR-1" and "0-15 cm" are not
+  num <- "(?:(?<![[:alnum:].])[-+])?[0-9]+(?:[.][0-9]+)?"
+  m <- gregexpr(num, s, perl = TRUE)
+  hits <- regmatches(s, m)
+  ## each number is replaced by its zero-padded rank among all the numbers, so
+  ## numbers of any size or sign compare correctly as text
+  vals <- sort(unique(as.numeric(unlist(hits))))
+  w <- nchar(length(vals))
+  regmatches(s, m) <- lapply(hits, function(h)
+    formatC(match(as.numeric(h), vals), width = w, flag = "0"))
+  ## a label without a number beside numbered ones is usually the control or
+  ## the starting point (Control, Fresh, Local check), so it comes first
+  plain <- lengths(hits) == 0
+  first <- if (sum(!plain) >= 2 && any(plain)) ifelse(plain, "0", "1") else ""
+  u[order(paste0(first, tolower(s)), u, method = "radix")]
+}
+
 ## cell means for a set of factors
 eff_means <- function(d, resp, vars) {
   agg <- stats::aggregate(d[[resp]], by = d[vars], FUN = mean)

@@ -8,7 +8,11 @@ analyze(d, design, map, alpha = 0.05)
 }
 \arguments{
 \item{d}{A data frame in long format: one row per plot, with columns for the
-design factors and the response.}
+design factors and the response. Text factor columns are put in natural
+order (D0, D60, D120; T1, T2, ..., T10), with a label carrying no number,
+such as Control, placed first; a column that is already a factor keeps its
+levels, so supply a factor to fix an order such as Vegetative, Flowering,
+Maturity.}
 
 \item{design}{The design code. One of the values of \code{\link{DESIGNS}},
 for example \code{"RCBD"}, \code{"SPLIT"} or \code{"POOLFRCBD"}.}

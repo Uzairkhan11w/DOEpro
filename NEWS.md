@@ -11,6 +11,10 @@
 * Grouping letters use Piepho's (2004) insert-and-absorb algorithm; SNK and
   Duncan enforce the step-down rule; Tukey becomes Tukey-Kramer with unequal
   replication; post-hoc output includes a table of every pairwise comparison.
+* Factor levels follow their natural order everywhere: D0, D60, D120, D180 and
+  T1, T2, ..., T10 rather than alphabetically. Interaction plots put a time
+  factor (or, failing that, a quantitative one such as N0, N60, N120) on the
+  X-axis by default, and the Plots tab lets you choose the X-axis factor.
 
 # DOEpro 2.0.1
 

@@ -490,6 +490,36 @@ bartlett_ms <- function(df, s2) {
        pooled_var = sp2, k = k)
 }
 
+## Factor levels in natural order: numbers inside labels compare as numbers, so
+## D0, D60, D120, D180 and T1, T2, ..., T10 come out in the order people mean
+## rather than the alphabetical D0, D120, D180, D60. A column that is already a
+## factor keeps the order it was given; a numeric column sorts numerically.
+natural_levels <- function(x) {
+  if (is.factor(x)) return(levels(droplevels(x)))
+  if (is.numeric(x)) return(levels(factor(x)))
+  u <- unique(as.character(x[!is.na(x)]))
+  if (!length(u)) return(u)
+  ## a thousands separator is part of the number (1,000 ppm); a decimal comma
+  ## (5,6) is left for the data checks to flag
+  s <- gsub("(?<=[0-9]),(?=[0-9]{3}([^0-9]|$))", "", u, perl = TRUE)
+  ## a sign belongs to the number only when it stands apart from the letters
+  ## and digits before it: "-20 C" is negative, "SR-1" and "0-15 cm" are not
+  num <- "(?:(?<![[:alnum:].])[-+])?[0-9]+(?:[.][0-9]+)?"
+  m <- gregexpr(num, s, perl = TRUE)
+  hits <- regmatches(s, m)
+  ## each number is replaced by its zero-padded rank among all the numbers, so
+  ## numbers of any size or sign compare correctly as text
+  vals <- sort(unique(as.numeric(unlist(hits))))
+  w <- nchar(length(vals))
+  regmatches(s, m) <- lapply(hits, function(h)
+    formatC(match(as.numeric(h), vals), width = w, flag = "0"))
+  ## a label without a number beside numbered ones is usually the control or
+  ## the starting point (Control, Fresh, Local check), so it comes first
+  plain <- lengths(hits) == 0
+  first <- if (sum(!plain) >= 2 && any(plain)) ifelse(plain, "0", "1") else ""
+  u[order(paste0(first, tolower(s)), u, method = "radix")]
+}
+
 ## cell means for a set of factors
 eff_means <- function(d, resp, vars) {
   agg <- stats::aggregate(d[[resp]], by = d[vars], FUN = mean)
@@ -677,7 +707,11 @@ t_crit <- function(e, alpha) {
 #' and says which combinations are missing.
 #'
 #' @param d A data frame in long format: one row per plot, with columns for the
-#'   design factors and the response.
+#'   design factors and the response. Text factor columns are put in natural
+#'   order (D0, D60, D120; T1, T2, ..., T10), with a label carrying no number,
+#'   such as Control, placed first; a column that is already a factor keeps its
+#'   levels, so supply a factor to fix an order such as Vegetative, Flowering,
+#'   Maturity.
 #' @param design The design code. One of the values of \code{\link{DESIGNS}},
 #'   for example \code{"RCBD"}, \code{"SPLIT"} or \code{"POOLFRCBD"}.
 #' @param map A named list mapping roles to column names of \code{d}. Always
@@ -759,7 +793,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
   keep <- unique(c(resp, facs, blks))
   d <- d[stats::complete.cases(d[, keep, drop = FALSE]), keep, drop = FALSE]
   if (nrow(d) < 3) stop("Not enough complete rows to analyse.")
-  for (v in c(facs, blks)) d[[v]] <- factor(d[[v]])
+  ## levels in natural order, so tables and plots run D0, D60, D120 and
+  ## T1, T2, ..., T10 instead of alphabetically
+  for (v in c(facs, blks)) d[[v]] <- factor(d[[v]], levels = natural_levels(d[[v]]))
 
   lay <- check_layout(d, design, map, facs, blks)
   grand <- mean(d[[resp]])
@@ -1841,8 +1877,11 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
     mu <- m$Mean[ix]; k <- length(mu)
     S <- e$sed_mat[ix, ix, drop = FALSE]            # rows of sed_mat follow e$means
     nC <- k * (k - 1) / 2
-    rk <- rank(-mu, ties.method = "first")
-    span <- abs(outer(rk, rk, "-")) + 1
+    ## the number of means spanned by a pair, counting every mean between the
+    ## two values; tied means then share the wider, more cautious range
+    ## whatever order their levels happen to be in
+    span <- outer(seq_len(k), seq_len(k), Vectorize(function(i, j)
+      sum(mu >= min(mu[i], mu[j]) & mu <= max(mu[i], mu[j]))))
     mult <- switch(method,
       "LSD (Fisher's protected)"  = matrix(t_crit(e, alpha), k, k),
       "LSD (Bonferroni-adjusted)" = matrix(stats::qt(1 - alpha / (2 * nC), df), k, k),
@@ -1972,17 +2011,30 @@ gate_posthoc <- function(x) {
 ## declared homogeneous, no pair inside it may be declared different. Working
 ## from the widest range inwards, a pair stays significant only if both ranges
 ## one step wider than it were significant, and therefore every range around it.
+## With tied means the enclosing ranges are taken by value, not by position: a
+## pair keeps its own test and is gated by every range that strictly encloses
+## its two values, so the result does not depend on the order in which tied
+## levels happen to sit. Without ties this is the recursion above unchanged.
 step_down <- function(mu, sig) {
   k <- length(mu); o <- order(mu, decreasing = TRUE)
-  s <- sig[o, o, drop = FALSE]
+  s <- sig[o, o, drop = FALSE]; v <- mu[o]
   out <- matrix(FALSE, k, k)
   for (w in rev(seq_len(k - 1))) for (i in seq_len(k - w)) {
     j <- i + w
     out[i, j] <- s[i, j] && (i == 1 || out[i - 1, j]) && (j == k || out[i, j + 1])
   }
-  out <- out | t(out)
+  first <- vapply(v, function(x) min(which(v == x)), integer(1))  # start of each tie block
+  last  <- vapply(v, function(x) max(which(v == x)), integer(1))  # end of each tie block
+  fin <- matrix(FALSE, k, k)
+  for (i in seq_len(k - 1)) for (j in (i + 1):k) {
+    ## a range reaching above the larger value, or below the smaller one
+    above <- first[i] == 1 || out[first[i] - 1, first[j]]
+    below <- last[j] == k || out[last[i], last[j] + 1]
+    fin[i, j] <- s[i, j] && above && below
+  }
+  fin <- fin | t(fin)
   res <- matrix(FALSE, k, k)
-  res[o, o] <- out
+  res[o, o] <- fin
   res
 }
 
@@ -2039,7 +2091,55 @@ plot_caption <- function(e, bars, lets_on) {
   if (is.null(c(bars, lets))) NULL else paste(c(bars, lets), collapse = " ")
 }
 
-plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
+## How strongly a factor asks to be the X-axis of an interaction plot. Only
+## numbered labels qualify: their natural order is their order in time or
+## size, whereas worded labels (Vegetative, Flowering) sort alphabetically and
+## a line through them would run in the wrong order. Time comes first,
+## recognised by the column name (Days, Week, Stage, Interval...) or by a
+## common stem (D0, D60; Week1, Week2; 30 DAS). Next come labels that carry
+## real quantities (N0, N60, N120; 2021, 2022; 0, 25, 50) rather than mere
+## numbering (T1, T2, V1, V2, V4), which is read as codes. One unnumbered label
+## such as Control or Fresh may sit among the numbered ones.
+TIME_NAME <- "(^|[^a-z])(day|days|das|dat|dae|doy|time|week|weeks|month|months|year|years|stage|stages|interval|period|storage|hour|hours|date)([^a-z]|$)"
+TIME_STEM <- "^(d|day|days|das|dat|dap|dae|doy|h|hr|hrs|hour|hours|wk|wks|week|weeks|month|months|yr|yrs|year|years)$"
+
+x_score <- function(name, lv) {
+  num <- "[0-9]+(?:[.][0-9]+)?"
+  cnt <- lengths(regmatches(lv, gregexpr(num, lv, perl = TRUE)))
+  lab <- lv[cnt == 1]
+  if (length(lab) < 2 || any(cnt > 1) || sum(cnt == 0) > 1) return(0)
+  stem <- unique(gsub("[^a-z]", "", tolower(gsub(num, "", lab, perl = TRUE))))
+  one_stem <- length(stem) == 1
+  n <- sort(as.numeric(regmatches(lab, regexpr(num, lab, perl = TRUE))))
+  step <- diff(n)
+  ## codes: whole numbers starting at 0 or 1 that either run 1, 2, 3 or skip
+  ## unevenly (a dropped entry: V1, V2, V4); evenly spaced rates (0, 2, 4;
+  ## 0, 40, 80) and other values are quantities
+  counting <- anyDuplicated(n) > 0 ||
+    (all(n == round(n)) && n[1] %in% c(0, 1) &&
+     (all(step == 1) || length(unique(round(step, 9))) > 1))
+  ## a one-letter stem (D, H) counts as time only on real quantities, so D0,
+  ## D60 and H6, H12 are times while the dose codes D1, D2 and hybrids H1, H2
+  ## are not
+  stem_time <- one_stem && grepl(TIME_STEM, stem) && (nchar(stem) > 1 || !counting)
+  is_time <- grepl(TIME_NAME, tolower(name)) || stem_time
+  2 * is_time + (one_stem && !counting)
+}
+
+## The factor that goes on the X-axis by default: the best-scoring one above,
+## the one with more levels on a tie, and otherwise the effect's first factor.
+default_x <- function(e, d) {
+  v <- e$vars
+  sc <- vapply(v, function(f) x_score(f, levels(d[[f]])), numeric(1))
+  if (max(sc) <= 0) return(v[1])
+  cand <- v[sc == max(sc)]
+  cand[which.max(vapply(cand, function(f) nlevels(d[[f]]), numeric(1)))]
+}
+
+## `x_var` names the factor for the X-axis of an interaction plot; by default
+## default_x() chooses it. The other factor becomes the lines (or the bar
+## colours), and any further factors become panels.
+plot_main <- function(res, effect, type = "bar", show_letters = TRUE, x_var = NULL) {
   e <- res$effects[[effect]]; d <- res$data; resp <- res$resp
   m <- gate_letters(e)              # no letters under a non-significant F-test
   v <- e$vars
@@ -2065,7 +2165,9 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
     return(p)
   }
 
-  f1 <- v[1]; f2 <- v[2]
+  f1 <- if (length(x_var) == 1L && isTRUE(x_var %in% v)) x_var else default_x(e, d)
+  rest <- setdiff(v, f1)
+  f2 <- rest[1]
   lt <- if ("Letter" %in% names(m)) "Letter" else
         if ("Letter_within_MP" %in% names(m)) "Letter_within_MP"
         else if ("Letter_within_env" %in% names(m)) "Letter_within_env"
@@ -2086,8 +2188,8 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE) {
       scale_fill_gradient(low = "#EAF1FB", high = "#1B4F9C"),
     "box" = ggplot(d, aes(x = .data[[f1]], y = .data[[resp]], fill = .data[[f2]])) +
       geom_boxplot(position = position_dodge(.8)))
-  if (length(v) > 2) p <- p + facet_wrap(stats::as.formula(
-    paste("~", paste(v[-(1:2)], collapse = "+"))))
+  if (length(rest) > 1) p <- p + facet_wrap(stats::as.formula(
+    paste("~", paste(rest[-1], collapse = "+"))))
   p <- p + labs(title = paste("Interaction:", e$label), y = resp, x = f1,
                 colour = f2, subtitle = scale_note(res),
                 caption = plot_caption(e, type %in% c("bar", "line"),
@@ -3144,7 +3246,7 @@ doepro_ui <- function() navbarPage(
   tabPanel("6. Plots",
     sidebarLayout(
       sidebarPanel(width = 3,
-        uiOutput("aRespUI3"), uiOutput("plEffectUI"),
+        uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
         radioButtons("plType", "Plot type",
           c("Bar chart" = "bar", "Interaction lines" = "line",
             "Heat map" = "heat", "Box plot" = "box")),
@@ -3564,10 +3666,27 @@ doepro_server <- function(input, output, session) {
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 
+  ## for an interaction, which factor runs along the X-axis: the app suggests
+  ## the time factor (or a quantitative one) and the user can change it
+  output$plXUI <- renderUI({
+    f <- gFit(); req(input$plEff)
+    e <- f$final$effects[[input$plEff]]
+    if (is.null(e) || length(e$vars) < 2) return(NULL)
+    selectInput("plX", "Factor on the X-axis", e$vars, selected = default_x(e, f$final$data))
+  })
+
+  ## When the effect changes, input$plX still holds the previous effect's
+  ## choice until the new selector reports back. Remember which effect the
+  ## choice was made for, and use the default until the two agree, so a stale
+  ## choice never draws the wrong axis.
+  plx_for <- reactiveVal(NULL)
+  observeEvent(input$plX, plx_for(isolate(input$plEff)))
+
   mp <- reactive({
     f <- gFit(); req(input$plEff)
     validate(need(input$plEff %in% names(f$final$effects), "Choose an effect."))
-    plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters))
+    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
+    plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv)
   })
   output$mainPlot <- renderPlot(mp())
 

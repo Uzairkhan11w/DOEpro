@@ -392,10 +392,27 @@ doepro_server <- function(input, output, session) {
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 
+  ## for an interaction, which factor runs along the X-axis: the app suggests
+  ## the time factor (or a quantitative one) and the user can change it
+  output$plXUI <- renderUI({
+    f <- gFit(); req(input$plEff)
+    e <- f$final$effects[[input$plEff]]
+    if (is.null(e) || length(e$vars) < 2) return(NULL)
+    selectInput("plX", "Factor on the X-axis", e$vars, selected = default_x(e, f$final$data))
+  })
+
+  ## When the effect changes, input$plX still holds the previous effect's
+  ## choice until the new selector reports back. Remember which effect the
+  ## choice was made for, and use the default until the two agree, so a stale
+  ## choice never draws the wrong axis.
+  plx_for <- reactiveVal(NULL)
+  observeEvent(input$plX, plx_for(isolate(input$plEff)))
+
   mp <- reactive({
     f <- gFit(); req(input$plEff)
     validate(need(input$plEff %in% names(f$final$effects), "Choose an effect."))
-    plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters))
+    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
+    plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv)
   })
   output$mainPlot <- renderPlot(mp())
 
