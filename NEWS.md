@@ -30,6 +30,24 @@
   the report, instead of disappearing silently. Pasted "-" and "." are no
   longer turned into missing values without notice, "#" is no longer read as
   the start of a comment, and semicolon-separated CSV files are recognised.
+* A new Explore menu holds descriptive statistics. For each numeric column:
+  N, missing, mean, SD, minimum, Q1, median, Q3 (as Excel's QUARTILE.INC
+  gives them), maximum, CV and skewness (as Excel's SKEW gives it),
+  optionally for each level of a grouping column. A histogram, density
+  curve, box plot and normal Q-Q plot go with them, each followed by a
+  plain-language reading worked out from the numbers that plot shows.
+  Skewness is read with Bulmer's bands, and the direction is stated only in
+  figures the table shows. Unusual values are those beyond the box-plot
+  fences, judged within each group when the table is grouped. The Q-Q
+  reading compares the bend at each end of the plot with what normal
+  samples of the same size show. Values recorded in steps get histogram
+  bars on their grid. New exported function `describe_data()`.
+* The Assumptions tab now shows all four residual plots. Before, only the
+  scale-location plot appeared. With few distinct fitted values (a CRD), its
+  trend line joins the mean at each fitted value instead of a loess curve
+  that rose where there were no points.
+* Numbers written back by the data-check corrections are never in scientific
+  notation (400000, not 4e+05).
 
 # DOEpro 2.0.1
 

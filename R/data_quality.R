@@ -55,7 +55,9 @@ eg_text <- function(x) {
 }
 
 ## a number as it will be written back: as many digits as it needs, no more
-num_text <- function(v) vapply(v, function(z) format(z, digits = 15, trim = TRUE), "")
+## (never in scientific notation: 400000, not 4e+05, which would also be
+## written into the data by a correction)
+num_text <- function(v) vapply(v, function(z) format(z, digits = 15, trim = TRUE, scientific = FALSE), "")
 
 ## rows with no value in any cell: empty, or holding only entries such as "-"
 ## or "n/a", so that one pass of the corrections removes them

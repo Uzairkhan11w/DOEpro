@@ -144,7 +144,10 @@ doepro_ui <- function() navbarPage(
     fluidRow(column(6, plotOutput("bcPlot", height = "300px")),
              column(6, plotOutput("mvPlot", height = "300px"))),
     tags$hr(), h4("Residual diagnostics"),
-    plotOutput("diagPlot", height = "620px")),
+    fluidRow(column(6, plotOutput("diagFit", height = "300px")),
+             column(6, plotOutput("diagQQ", height = "300px"))),
+    fluidRow(column(6, plotOutput("diagHist", height = "300px")),
+             column(6, plotOutput("diagScale", height = "300px")))),
 
   ## --------------------------------------------------------------- posthoc --
   tabPanel("5. Post-hoc",
@@ -188,6 +191,32 @@ doepro_ui <- function() navbarPage(
       column(6, uiOutput("pdfBtn"))),
     tags$hr(),
     uiOutput("interpOut")),
+
+  ## ---------------------------------------------------------------- explore --
+  ## analyses that describe and explore the data without a design; the
+  ## numbered tabs keep the analysis-of-variance workflow in order
+  navbarMenu("Explore",
+    tabPanel("Descriptive statistics",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "A summary of each numeric column, and plots of how its values are spread.",
+            "Entries that are not plain numbers (such as 5,6 or 12a) count as missing here",
+            "until they are corrected on the Data tab.")),
+          uiOutput("descUI"),
+          actionButton("dl_desc", "Table (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("descTab"),
+          uiOutput("descText"),
+          tags$hr(),
+          h4(textOutput("descPlotTitle", inline = TRUE)),
+          fluidRow(
+            column(6, plotOutput("descHist", height = "320px"), uiOutput("descHistText")),
+            column(6, plotOutput("descDens", height = "320px"), uiOutput("descDensText"))),
+          fluidRow(
+            column(6, plotOutput("descBox", height = "320px"), uiOutput("descBoxText")),
+            column(6, plotOutput("descQQ", height = "320px"), uiOutput("descQQText"))))
+      ))),
 
   ## ------------------------------------------------------------------ help --
   tabPanel("Help", htmlOutput("help")),

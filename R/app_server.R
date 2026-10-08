@@ -409,7 +409,13 @@ doepro_server <- function(input, output, session) {
     p <- plot_meanvar(aFit()$asm)
     validate(need(!is.null(p), "Too few cells to estimate the mean-variance slope."))
     p })
-  output$diagPlot <- renderPlot(plot_diag(aFit()$final))
+  ## plot_diag() returns four plots; a single renderPlot() would print each in
+  ## turn and show only the last, so each gets its own output
+  diag_plots <- reactive(plot_diag(aFit()$final))
+  output$diagFit   <- renderPlot(diag_plots()[[1]])
+  output$diagQQ    <- renderPlot(diag_plots()[[2]])
+  output$diagHist  <- renderPlot(diag_plots()[[3]])
+  output$diagScale <- renderPlot(diag_plots()[[4]])
 
   ## ---------------------------------------------------------------- posthoc --
   output$phEffectUI <- renderUI(selectInput("phEff", "Effect", names(pFit()$final$effects)))
@@ -460,6 +466,104 @@ doepro_server <- function(input, output, session) {
     tagList(h4("Critical ranges"), HTML(df_html(x$ranges)),
       div(class = "note",
           "p is the number of means spanned by the comparison once the means are ranked in order."))
+  })
+
+  ## ---------------------------------------------------------- descriptives --
+  ## The variables offered are the columns the data check reads as numbers.
+  ## Columns that are usually labels written as numbers (Rep, Block, Plot) and
+  ## columns already mapped as design factors start unselected.
+  output$descUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) > 0, "No column holds numbers."))
+    used <- tryCatch({ m <- mapping(); unlist(m[setdiff(names(m), "response")]) },
+                     error = function(e) character(0))
+    def <- setdiff(num, used)
+    def <- def[!is_id_name(def)]
+    if (!length(def)) def <- num
+    ## the sidebar is drawn again when the data or the design mapping change;
+    ## choices the user has made that still fit the data are kept
+    grp <- group_choices(d)
+    keep_vars <- isolate(intersect(input$descVars, num))
+    keep_grp <- isolate(input$descGroup %||% "")
+    keep_plot <- isolate(input$descPlotVar %||% "")
+    tagList(
+      selectizeInput("descVars", "Variables to summarise", num,
+                     selected = if (length(keep_vars)) keep_vars else def, multiple = TRUE),
+      selectInput("descGroup", "Summarise separately for each level of (optional)",
+                  c("Nothing - all rows together" = "", grp),
+                  selected = if (keep_grp %in% grp) keep_grp else ""),
+      selectInput("descPlotVar", "Variable to plot", num,
+                  selected = if (keep_plot %in% num) keep_plot else def[1]))
+  })
+
+  ## The choices as they apply to the data now loaded: just after new data
+  ## arrive, the inputs can still name columns of the previous data until the
+  ## sidebar is drawn again.
+  desc_vars <- reactive({
+    d <- rv$data; req(d)
+    v <- intersect(input$descVars, chk()$numeric); req(length(v) > 0); v
+  })
+  desc_group <- reactive({
+    g <- input$descGroup %||% ""
+    if (nzchar(g) && g %in% group_choices(rv$data)) g else ""
+  })
+
+  ## a grouping column with no labels, and the like, give a message in place
+  ## of the table rather than an R error
+  desc_tab <- reactive({
+    d <- rv$data; v <- desc_vars(); g <- desc_group()
+    tryCatch(describe_data(d, v, g), error = function(e) validate(need(FALSE, conditionMessage(e))))
+  })
+
+  output$descTab <- renderUI({
+    d <- rv$data; tab <- desc_tab()
+    HTML(paste0(describe_html(tab, d, desc_group()),
+      "<div class='note'>N counts the values used; Missing counts empty cells and entries that are not ",
+      "plain numbers. Q1 and Q3 are the quartiles (calculated as Excel's QUARTILE.INC does): a quarter of the ",
+      "values lie below Q1 and a quarter above Q3. CV = 100 &times; SD / mean. Skewness (as Excel's SKEW ",
+      "gives it) measures how lopsided the values are: about 0 when they spread evenly either side, positive ",
+      "when the high values trail further out, negative when the low values do.</div>"))
+  })
+
+  ## the reading describes the table as it is shown: one figure per variable,
+  ## or, when the table is split into groups, the groups
+  output$descText <- renderUI({
+    d <- rv$data; v <- desc_vars(); g <- desc_group(); desc_tab()
+    ids <- row_ids(d)
+    txt <- vapply(v, function(z)
+      if (nzchar(g)) describe_group_text(z, d[[z]], group_labels(d, g), ids, g)
+      else describe_text(z, d[[z]], ids), "")
+    div(class = "box", HTML(paste0("<b>What the table shows.</b><ul>",
+      paste0("<li>", esc(txt), "</li>", collapse = ""), "</ul>")))
+  })
+
+  desc_v <- reactive({ d <- rv$data; req(d, input$descPlotVar %in% chk()$numeric); input$descPlotVar })
+  output$descPlotTitle <- renderText(paste("Distribution of", desc_v()))
+  ## a plot that cannot be drawn says why, in the words its note would use
+  desc_plot <- function(p, kind) {
+    validate(need(!is.null(p), plot_text(kind, rv$data, desc_v(), desc_group())$reading))
+    p
+  }
+  desc_note <- function(kind) renderUI({
+    d <- rv$data; req(d)
+    t <- plot_text(kind, d, desc_v(), desc_group())
+    div(class = "note", HTML(if (nzchar(t$what))
+      paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading))
+      else esc(t$reading)))
+  })
+  output$descHist <- renderPlot(desc_plot(plot_hist(rv$data, desc_v()), "hist"))
+  output$descDens <- renderPlot(desc_plot(plot_density(rv$data, desc_v()), "density"))
+  output$descBox  <- renderPlot(desc_plot(plot_box(rv$data, desc_v(), desc_group()), "box"))
+  output$descQQ   <- renderPlot(desc_plot(plot_qq(rv$data, desc_v()), "qq"))
+  output$descHistText <- desc_note("hist")
+  output$descDensText <- desc_note("density")
+  output$descBoxText  <- desc_note("box")
+  output$descQQText   <- desc_note("qq")
+
+  observeEvent(input$dl_desc, {
+    tab <- tryCatch(desc_tab(), error = function(e) NULL); req(tab)
+    save_browser(paste0("DOEpro_descriptives_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
   })
 
   ## ------------------------------------------------------------------ plots --

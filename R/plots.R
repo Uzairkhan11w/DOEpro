@@ -150,8 +150,17 @@ plot_diag <- function(res) {
     labs(title = "Normal Q-Q plot", x = "Theoretical", y = "Standardised residual") + theme_doe()
   p3 <- ggplot(df, aes(res)) + geom_histogram(bins = 12, fill = "#BBD3F2", colour = "white") +
     labs(title = "Histogram of residuals", x = "Residual", y = "Count") + theme_doe()
-  p4 <- ggplot(df, aes(fit, sqrt(abs(std)))) + geom_point(colour = "#3B7DD8") +
-    geom_smooth(se = FALSE, method = "loess", formula = y ~ x, colour = "#C0392B") +
+  ## With only a few distinct fitted values (a CRD has one per treatment) a
+  ## loess curve swings between them and rises where there are no points, so
+  ## the trend joins the mean at each fitted value instead.
+  df$sl <- sqrt(abs(df$std))
+  df$at <- signif(df$fit, 10)
+  trend <- if (length(unique(df$at)) <= 10) {
+    m <- stats::aggregate(sl ~ at, data = df, FUN = mean)
+    geom_line(data = m, aes(.data$at, .data$sl), colour = "#C0392B", linewidth = 0.9)
+  } else geom_smooth(se = FALSE, method = "loess", formula = y ~ x,
+                     method.args = list(degree = 1), colour = "#C0392B")
+  p4 <- ggplot(df, aes(.data$fit, .data$sl)) + geom_point(colour = "#3B7DD8") + trend +
     labs(title = "Scale-location", x = "Fitted", y = "sqrt|std residual|") + theme_doe()
   list(p1, p2, p3, p4)
 }

@@ -24,6 +24,7 @@ ORDER <- c(
   "tables_detail.R",   # integrated tables of means
   "posthoc.R",         # post-hoc procedures
   "plots.R",           # plots
+  "descriptives.R",    # descriptive statistics and distribution plots
   "interpret.R",       # plain-English interpretation and the report CSS
   "tables_sketch.R",   # the tables of means shown in the app
   "report.R",          # the HTML report
