@@ -104,14 +104,22 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
 
   ## assumptions, judged at the same level
   at <- character(0)
+  if (isTRUE(asm$exact)) at <- c(at, paste("<li>The model fits every value exactly, so the residuals are all zero:",
+    "there is no", if (isTRUE(asm$strata)) "sub-plot" else "residual",
+    "error variation, and the checks of normality and equal variances do not apply.</li>"))
   if (!is.na(asm$p_norm)) at <- c(at, sprintf("<li>Shapiro-Wilk on residuals: W = %s, %s - %s.</li>",
     fmt(asm$shapiro$statistic, 3), p_eq(asm$p_norm),
     if (asm$p_norm > a) sprintf("insufficient evidence at the %s level that the residuals depart from normality", lvl)
     else sprintf("the residuals <b>depart from normality</b> at the %s level", lvl)))
-  if (!is.na(asm$p_hov)) at <- c(at, sprintf("<li>Levene's test: %s - %s.</li>",
+  else if (!isTRUE(asm$exact)) at <- c(at, sprintf("<li>Normality could not be tested: %s.</li>",
+    asm$norm_why %||% "too few residuals"))
+  if (!is.na(asm$p_hov)) at <- c(at, sprintf("<li>%s: %s - %s.</li>",
+    paste0(toupper(substr(asm$hov_label, 1, 1)), substring(asm$hov_label, 2)),
     p_eq(asm$p_hov),
     if (asm$p_hov > a) sprintf("insufficient evidence at the %s level that the treatments differ in variance", lvl)
     else sprintf("the variances are <b>heterogeneous</b> at the %s level", lvl)))
+  else if (!isTRUE(asm$exact)) at <- c(at, sprintf("<li>Equal variances could not be tested: %s.</li>",
+    asm$hov_why %||% "too few values"))
   if (length(asm$outliers)) at <- c(at, sprintf("<li>%d observation(s) have standardised residuals beyond +/-3 (rows %s) - check them for recording errors.</li>",
     length(asm$outliers), paste(asm$outliers, collapse = ", ")))
   at <- c(at, sprintf("<li>Recommendation: <b>%s</b>. %s</li>", TRANS[[sug$method]]$lab, sug$why))

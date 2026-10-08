@@ -2,13 +2,102 @@
 ##  ASSUMPTIONS  &  TRANSFORMATIONS
 ###############################################################################
 ## Levene's test, median-centred (Brown-Forsythe): a one-way ANOVA on the
-## absolute deviations from the cell medians.  Identical to car::leveneTest.
+## absolute deviations from the cell medians. In a cell with an odd number of
+## values the median is one of them, so one deviation is always zero; when
+## every cell has three values that caps F at 4, and the test could never find
+## unequal variances among four or fewer treatments. When every cell used is
+## of odd size, each therefore loses that one zero (Hines and O'Hara Hines,
+## 2000, Biometrics 56: 451-454), which by simulation holds the 5% level for
+## normal, skewed and count data with three or five values per cell. When
+## sizes are mixed (a missing plot among cells of four) the zero stays:
+## removing it from the odd cells alone makes them look more spread out than
+## the even ones, and the test then calls equal variances unequal too often,
+## while the plain test holds its level there. `zeros_removed` counts the
+## cells that lost a zero.
+## A cell needs three values to take part. With two, both values lie equally far from their median, so
+## nothing varies within the cell: a design with two replications gave an
+## enormous F and a false verdict of unequal variances, and keeping two-value
+## cells beside larger ones (as car::leveneTest does) adds error degrees of
+## freedom with no variation in them, which by simulation calls equal
+## variances unequal 13-45% of the time at the 5% level. Such cells are left
+## out and named in `left_out`; when fewer than two cells remain, or the
+## deviations do not vary within any cell, the test is not run and `why`
+## gives the reason as a plain clause.
 levene_test <- function(y, g) {
-  g <- droplevels(factor(g))
-  if (nlevels(g) < 2L || length(y) <= nlevels(g)) return(NULL)
+  ok <- !is.na(y) & !is.na(g)
+  y <- y[ok]; g <- droplevels(factor(g[ok]))
+  n <- table(g)
+  out <- list(F = NA_real_, p = NA_real_, df1 = NA_real_, df2 = NA_real_,
+              cells = sum(n >= 3), dropped = sum(n < 3), left_out = names(n)[n < 3],
+              zeros_removed = 0L, why = NULL)
+  if (out$cells < 2) {
+    out$why <- if (out$cells == 0) "no cell has three or more values" else "only one cell has three or more values"
+    return(out)
+  }
+  keep <- g %in% names(n)[n >= 3]
+  constant <- all(tapply(y, g, function(v) length(unique(v)) == 1))
+  y <- y[keep]; g <- droplevels(g[keep])
   z <- abs(y - stats::ave(y, g, FUN = stats::median))
-  a <- stats::anova(stats::lm(z ~ g))
-  list(F = a[1, "F value"], p = a[1, "Pr(>F)"], df1 = a[1, "Df"], df2 = a[2, "Df"])
+  if (all(table(g) %% 2 == 1)) {
+    sz <- unlist(lapply(split(seq_along(z), g), function(i) i[which(z[i] == 0)[1]]), use.names = FALSE)
+    z <- z[-sz]; g <- droplevels(g[-sz]); out$zeros_removed <- length(sz)
+  }
+  tss <- sum((z - mean(z))^2)
+  rss <- sum((z - stats::ave(z, g))^2)
+  if (tss == 0 || rss <= 1e-10 * tss) {
+    out$why <- if (constant) "every cell's values are identical"
+               else if (all(z == 0)) "the values are identical within every cell of three or more"
+               else if (out$zeros_removed > 0)
+                 "with the median's own zero set aside, the other deviations from the median are equal within every cell"
+               else "the deviations from the cell medians do not vary within any cell"
+    return(out)
+  }
+  df1 <- nlevels(g) - 1; df2 <- length(z) - nlevels(g)
+  Fv <- ((tss - rss) / df1) / (rss / df2)
+  out[c("F", "p", "df1", "df2")] <- list(Fv, stats::pf(Fv, df1, df2, lower.tail = FALSE), df1, df2)
+  out
+}
+
+## Bartlett's test of equal variances across the cells. A cell needs two
+## values for a variance, so cells of one value are left out; a variance of
+## zero (every value in a cell the same) has no logarithm, so the test is not
+## run and `why` says so.
+bartlett_cells <- function(y, g) {
+  ok <- !is.na(y) & !is.na(g)
+  y <- y[ok]; g <- droplevels(factor(g[ok]))
+  n <- table(g)
+  out <- list(statistic = NA_real_, p.value = NA_real_, cells = sum(n >= 2),
+              dropped = sum(n < 2), why = NULL)
+  if (out$cells < 2) {
+    out$why <- "fewer than two cells have two or more values"
+    return(out)
+  }
+  keep <- g %in% names(n)[n >= 2]
+  y <- y[keep]; g <- droplevels(g[keep])
+  s2 <- tapply(y, g, stats::var)
+  if (any(s2 == 0)) {
+    out$why <- if (all(s2 == 0)) "every cell's values are identical"
+               else "the values in some cells are all the same, so those cells have no variance"
+    return(out)
+  }
+  b <- stats::bartlett.test(y, g)
+  out$statistic <- unname(b$statistic); out$p.value <- b$p.value
+  out
+}
+
+## An exact fit: every observation equals its fitted value, so the residuals
+## are only the rounding left by the arithmetic (about 1e-16 of the data).
+## There is then no error variation to test, transform or plot, and treating
+## the rounding as residuals would give verdicts about nothing.
+## The rounding grows with the size of the values (10000.001 carries more
+## than 0.001), so the tolerance is set against their magnitude; real
+## residuals are never within a billionth of the values themselves.
+exact_fit <- function(res) {
+  y <- res$data[[res$resp]]
+  size <- max(abs(y), na.rm = TRUE)
+  spread <- max(abs(y - mean(y, na.rm = TRUE)), na.rm = TRUE)
+  r <- res$resid
+  !length(r) || !is.finite(size) || spread == 0 || all(abs(r) <= 1e-9 * size, na.rm = TRUE)
 }
 
 ## Box-Cox log-likelihood profile.  For a positive response y and design matrix X,
@@ -40,29 +129,87 @@ check_assumptions <- function(res) {
   r <- res$resid
   d <- res$data; resp <- res$resp
   cells <- interaction(d[res$facs], drop = TRUE)
+  exact <- exact_fit(res)
 
-  sw <- if (length(r) >= 3 && length(r) <= 5000) stats::shapiro.test(r) else NULL
-  lev  <- tryCatch(levene_test(d[[resp]], cells), error = function(e) NULL)
-  bart <- tryCatch(stats::bartlett.test(d[[resp]], cells), error = function(e) NULL)
+  sw <- if (!exact && length(r) >= 3 && length(r) <= 5000) stats::shapiro.test(r) else NULL
+  norm_why <- if (exact) "the model fits every value exactly, so the residuals are all zero"
+              else if (is.null(sw)) "Shapiro-Wilk needs between 3 and 5000 residuals" else NULL
+  lev  <- levene_test(d[[resp]], cells)
+  bart <- bartlett_cells(d[[resp]], cells)
+  if (exact) {
+    why <- "the model fits every value exactly"
+    lev[c("F", "p")] <- NA_real_; lev$why <- why
+    bart[c("statistic", "p.value")] <- NA_real_; bart$why <- why
+  }
+  ## The equal-variance verdict comes from the test that covers every
+  ## treatment: Levene's, which does not assume normality, when every cell has
+  ## three or more values; otherwise Bartlett's, which needs only two but
+  ## assumes normality; and Levene's on the cells it can use only when
+  ## Bartlett's cannot be run. `hov_label` names the test as the text uses it.
+  lev_full <- is.finite(lev$p) && lev$dropped == 0
+  hov_test <- if (lev_full) "Levene" else if (is.finite(bart$p.value)) "Bartlett"
+              else if (is.finite(lev$p)) "Levene" else NA_character_
+  p_hov <- if (identical(hov_test, "Levene")) lev$p else if (identical(hov_test, "Bartlett")) bart$p.value else NA_real_
+  left <- join_and(head_more(lev$left_out, 6))
+  hov_label <- if (identical(hov_test, "Levene") && lev_full) "Levene's test"
+    else if (identical(hov_test, "Levene")) sprintf("Levene's test on the cells with three or more values (%s left out)", left)
+    else if (identical(hov_test, "Bartlett")) sprintf("Bartlett's test (%s; Bartlett's assumes the values are normal)",
+      if (is.finite(lev$p)) sprintf("Levene's test leaves out %s, which %s fewer than three values", left,
+                                    if (lev$dropped == 1) "has" else "have")
+      else sprintf("Levene's test could not be run: %s", lev$why))
+    else NA_character_
+  hov_short <- if (identical(hov_test, "Levene") && lev_full) "Levene's"
+               else if (identical(hov_test, "Levene")) "Levene's, on some cells" else if (identical(hov_test, "Bartlett")) "Bartlett's"
+               else NA_character_
+  ## why equal variances could not be tested at all
+  hov_why <- if (!is.na(hov_test)) NULL
+    else if (identical(lev$why, bart$why)) lev$why
+    else sprintf("for Levene's test, %s; for Bartlett's test, %s", lev$why, bart$why)
 
   ## mean-variance relationship -> Taylor's power law slope
   mv <- data.frame(m = tapply(d[[resp]], cells, mean),
                    v = tapply(d[[resp]], cells, stats::var))
   mv <- mv[stats::complete.cases(mv) & mv$m > 0 & mv$v > 0, ]
+  ## with an exact fit the cell variances are block (or row and column)
+  ## effects, not error, so they say nothing about the error variance
+  if (exact) mv <- mv[0, ]
   slope <- if (nrow(mv) >= 3)
     unname(stats::coef(stats::lm(log(v) ~ log(m), data = mv))[2]) else NA_real_
+  ## the slope's own p-value: with two values per cell each variance rests on
+  ## one degree of freedom, and a slope from such variances is mostly noise
+  slope_p <- if (nrow(mv) >= 4)
+    tryCatch(suppressWarnings(summary(stats::lm(log(v) ~ log(m), data = mv))$coefficients[2, 4]),
+             error = function(e) NA_real_)
+    else NA_real_
 
-  bc <- tryCatch(boxcox_profile(d[[resp]], res$X, level = 1 - alpha),
-                 error = function(e) NULL)
+  bc <- if (exact) NULL else tryCatch(boxcox_profile(d[[resp]], res$X, level = 1 - alpha),
+                                      error = function(e) NULL)
 
-  std <- r / stats::sd(r)
-  outliers <- which(abs(std) > 3)
+  outliers <- if (exact) integer(0) else which(abs(r / stats::sd(r)) > 3)
 
-  list(alpha = alpha, shapiro = sw, levene = lev, bartlett = bart, slope = slope,
+  list(alpha = alpha, exact = exact, strata = isTRUE(res$design %in% c("SPLIT", "STRIP")),
+       shapiro = sw, norm_why = norm_why,
+       levene = lev, bartlett = bart, hov_test = hov_test, hov_label = hov_label, hov_short = hov_short,
+       hov_why = hov_why, slope = slope, slope_p = slope_p,
        bc = bc, lambda = if (is.null(bc)) NA_real_ else bc$lambda,
        mv = mv, outliers = outliers,
-       p_norm = if (is.null(sw))  NA_real_ else sw$p.value,
-       p_hov  = if (is.null(lev)) NA_real_ else lev$p)
+       p_norm = if (is.null(sw)) NA_real_ else sw$p.value,
+       p_hov  = p_hov)
+}
+
+## What the checks of normality and equal variances found, for the sentence
+## that opens a recommendation: only the tests that could be run are named.
+checks_text <- function(asm, alpha) {
+  lvl <- paste0(pct(alpha), "%")
+  norm <- !is.na(asm$p_norm); hov <- !is.na(asm$p_hov)
+  hov_name <- sprintf("the test of equal variances (%s)", asm$hov_short)
+  if (norm && hov) sprintf("Neither the normality test nor %s finds a significant departure at the %s level", hov_name, lvl)
+  else if (norm) sprintf("The normality test finds no significant departure at the %s level, and equal variances could not be tested (%s)",
+                         lvl, asm$hov_why %||% "too few values")
+  else if (hov) sprintf("%s finds no significant departure at the %s level, and normality could not be tested (%s)",
+                        paste0(toupper(substr(hov_name, 1, 1)), substring(hov_name, 2)), lvl,
+                        asm$norm_why %||% "too few residuals")
+  else ""
 }
 
 suggest_transform <- function(res, asm, dtype = "auto") {
@@ -82,26 +229,49 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   looks_pct   <- in_pct_range && pct_name
   count_slope <- !is.na(b) && b >= 0.5 && b < 1.5
 
+  ## an exact fit leaves nothing unexplained for a transformation to correct
+  if (isTRUE(asm$exact))
+    return(list(method = "none", optional = FALSE,
+      why = paste("The model fits every value exactly, so there is no unexplained variation:",
+                  "no transformation can help, and none is needed.")))
+
   ok <- (is.na(pn) || pn > res$alpha) && (is.na(ph) || ph > res$alpha)
+  ## Equal variances are tested in full only when the verdict covers every
+  ## cell; Levene's on some cells alone leaves the others untested.
+  hov_full <- !is.na(ph) && !(identical(asm$hov_test, "Levene") && isTRUE(asm$levene$dropped > 0))
+  ## An assumption that could not be tested has not been passed: then a rise
+  ## of the variance with the mean decides instead, but only when the slope
+  ## is itself significant at the chosen level, since a slope from variances
+  ## of two values each is mostly noise.
+  slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p <= res$alpha)
+  if (ok && !hov_full && slope_evidence) ok <- FALSE
+  all_tested <- !is.na(pn) && hov_full
 
   ## When the diagnostics are satisfactory we still name the conventional
   ## transformation for data that are plainly counts or percentages, flagged as
   ## optional - agronomic convention transforms them, the diagnostics do not
-  ## demand it, and the analyst should decide knowingly.
+  ## demand it, and the analyst should decide knowingly. The opening sentence
+  ## names only the checks that could be run.
   if (ok && dtype == "auto") {
-    fine <- sprintf(paste0("Neither the normality test nor the test of equal variances ",
-                           "finds a significant departure at the %s%% level"), pct(res$alpha))
+    fine <- checks_text(asm, res$alpha)
+    so <- if (all_tested) paste0(fine, ", so no transformation is strictly required.")
+          else if (nzchar(fine)) paste0(fine, "; the checks that could be run give no reason for a transformation.")
+          else "Neither normality nor equal variances could be tested, so the checks give no reason for a transformation."
     if (looks_prop)
       return(list(method = "arcsine01", optional = TRUE,
-        why = paste0(fine, ", so no transformation is strictly required. The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.")))
-    if (looks_count && count_slope)
+        why = paste(so, "The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.")))
+    ## only a slope that is itself significant shows the variance rising
+    ## with the mean; otherwise the claim would rest on noise
+    if (looks_count && count_slope && slope_evidence)
       return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt", optional = TRUE,
-        why = sprintf("%s, so no transformation is strictly required. The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", fine, b)))
+        why = sprintf("%s The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", so, b)))
     if (looks_pct)
       return(list(method = "arcsine", optional = TRUE,
-        why = sprintf("%s, so no transformation is strictly required. '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", fine, nm)))
+        why = sprintf("%s '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", so, nm)))
     return(list(method = "none", optional = FALSE,
-      why = paste0(fine, " - no transformation is needed.")))
+      why = if (all_tested) paste0(fine, " - no transformation is needed.")
+            else if (nzchar(fine)) paste0(fine, "; the checks that could be run give no reason for a transformation.")
+            else "Neither normality nor equal variances could be tested, so there is no evidence for or against a transformation."))
   }
 
   ## user-declared data type wins over any guessing

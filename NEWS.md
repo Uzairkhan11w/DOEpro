@@ -48,6 +48,27 @@
   that rose where there were no points.
 * Numbers written back by the data-check corrections are never in scientific
   notation (400000, not 4e+05).
+* Levene's test no longer reports unequal variances whenever each cell has two
+  values (a CRD with two replications, an RCBD with two blocks). Before, F
+  came out near 1e28 and the false verdict drove the suggested
+  transformation. With two values both lie equally far from their median, so
+  such cells are left out of Levene's test. When any cell has fewer than
+  three values, the verdict on equal variances uses Bartlett's test, which
+  covers every cell, and says so. When neither test can be run, the
+  mean-variance slope decides the suggested transformation if it is itself
+  significant, and the advice no longer says that no transformation is
+  needed.
+* Levene's test can now find unequal variances with three values per cell.
+  In a cell with an odd number of values the median is one of them, so one
+  deviation is always zero; with three values per cell that capped F at 4,
+  and among four or fewer treatments the test could never reject. When every
+  cell has an odd number of values that zero is now left out (Hines and
+  O'Hara Hines, 2000), and the table says so.
+* An assumption test that could not be computed is reported as "not
+  available" with the reason, never as a significant departure. When the
+  model fits every value exactly, the app says so and does not run
+  Shapiro-Wilk, Levene, Bartlett or Box-Cox on rounding residue or draw it
+  in the residual plots.
 
 # DOEpro 2.0.1
 

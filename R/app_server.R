@@ -402,16 +402,25 @@ doepro_server <- function(input, output, session) {
   })
 
   output$bcPlot <- renderPlot({
-    p <- plot_boxcox(aFit()$asm)
+    a <- aFit()$asm
+    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no Box-Cox profile to draw."))
+    p <- plot_boxcox(a)
     validate(need(!is.null(p), "The Box-Cox profile needs a strictly positive response."))
     p })
   output$mvPlot <- renderPlot({
-    p <- plot_meanvar(aFit()$asm)
-    validate(need(!is.null(p), "Too few cells to estimate the mean-variance slope."))
+    a <- aFit()$asm
+    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no error variance to relate to the mean."))
+    p <- plot_meanvar(a)
+    validate(need(!is.null(p), "Too few cells with a positive mean and variance to estimate the mean-variance slope."))
     p })
   ## plot_diag() returns four plots; a single renderPlot() would print each in
-  ## turn and show only the last, so each gets its own output
-  diag_plots <- reactive(plot_diag(aFit()$final))
+  ## turn and show only the last, so each gets its own output. An exact fit has
+  ## only rounding residue for residuals, which is not drawn as if it were data.
+  diag_plots <- reactive({
+    f <- aFit()
+    validate(need(!isTRUE(f$asm$exact), "The model fits every value exactly, so there are no residuals to plot."))
+    plot_diag(f$final)
+  })
   output$diagFit   <- renderPlot(diag_plots()[[1]])
   output$diagQQ    <- renderPlot(diag_plots()[[2]])
   output$diagHist  <- renderPlot(diag_plots()[[3]])
