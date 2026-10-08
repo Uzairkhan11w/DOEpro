@@ -90,6 +90,7 @@ doepro_ui <- function() navbarPage(
         actionButton("loaddemo", "Load example")),
       mainPanel(width = 8,
         uiOutput("dataNote"),
+        uiOutput("dqOut"),
         h4("Data (click a cell to edit)"),
         DTOutput("tbl"),
         tags$hr(),

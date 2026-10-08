@@ -47,31 +47,65 @@ doepro_server <- function(input, output, session) {
     d <- tryCatch(read_pasted(txt, input$sep, input$header), error = function(e) NULL)
     if (is.null(d) || !ncol(d))
       showNotification("Could not read the pasted text - check the separator.", type = "error")
-    else { rv$data <- d; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
+    else { rv$data <- d; rv$dq_log <- NULL; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
   })
 
   observeEvent(input$file, {
-    d <- tryCatch(utils::read.csv(input$file$datapath, stringsAsFactors = FALSE),
-                  error = function(e) NULL)
-    if (is.null(d)) showNotification("Could not read that file.", type = "error")
-    else { rv$data <- d; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
+    d <- tryCatch(read_upload(input$file$datapath), error = function(e) conditionMessage(e))
+    if (is.character(d)) showNotification(paste("Could not read that file.", d), type = "error",
+                                          duration = NULL)
+    else { rv$data <- d; rv$dq_log <- NULL; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
   })
 
   observeEvent(input$loaddemo, {
-    rv$data <- demo_data(input$demo)
+    rv$data <- demo_data(input$demo); rv$dq_log <- NULL
     des <- switch(input$demo, POOLFACT = "POOLFRCBD", POOLFACTC = "POOLFCRD", input$demo)
     updateSelectInput(session, "design", selected = des)
     showNotification(paste("Loaded the", input$demo, "example."), type = "message")
   })
 
-  output$tbl <- renderDT(rv$data, editable = TRUE, rownames = FALSE,
+  ## Row numbers are shown, because every message from the data check and the
+  ## analysis names rows by them; they cannot be edited.
+  output$tbl <- renderDT(rv$data, rownames = TRUE,
+                         editable = list(target = "cell", disable = list(columns = 0)),
                          options = list(pageLength = 8, scrollX = TRUE))
+  tbl_proxy <- DT::dataTableProxy("tbl")
 
+  ## An edit to a column of numbers is read the way the data check reads
+  ## entries, so 5,6 becomes 5.6; anything whose meaning is not certain is
+  ## refused with a message, and the table shows the old value again, instead
+  ## of it quietly becoming a missing value. Clearing a cell leaves it empty.
   observeEvent(input$tbl_cell_edit, {
     info <- input$tbl_cell_edit
     d <- rv$data
-    j <- info$col + 1L
-    d[info$row, j] <- DT::coerceValue(info$value, d[info$row, j])
+    j <- info$col                        # column 0 holds the row numbers
+    if (j < 1 || j > ncol(d)) return()
+    val <- info$value
+    v <- names(d)[j]; rn <- rownames(d)[info$row]
+    if (!nzchar(trimws(val))) {
+      d[[j]][info$row] <- NA
+    } else if (is.numeric(d[[j]])) {
+      r <- read_entries(val)
+      if (r$kind %in% c("text", "ambiguous", "unit") || (r$kind == "mark")) {
+        msg <- if (r$kind == "ambiguous")
+          sprintf("'%s' could mean %s or %s, so row %s of '%s' was not changed. Type %s or %s, whichever you meant.",
+                  val, gsub(",", "", val, fixed = TRUE), sub(",", ".", val, fixed = TRUE), rn, v,
+                  gsub(",", "", val, fixed = TRUE), sub(",", ".", val, fixed = TRUE))
+        else if (r$kind == "mark")
+          sprintf("To leave row %s of '%s' empty, clear the cell. It was not changed.", rn, v)
+        else sprintf(paste0("'%s' is not a number, so row %s of '%s' was not changed. Type a number ",
+                            "such as 5.6, or clear the cell to leave it empty."), val, rn, v)
+        showNotification(msg, type = "warning")
+        DT::replaceData(tbl_proxy, d, resetPaging = FALSE, rownames = TRUE)
+        return()
+      }
+      d[[j]][info$row] <- r$value
+    } else {
+      ## a label column is edited as text: a new label in a factor column
+      ## would otherwise become a missing value without a word
+      if (is.factor(d[[j]]) || is.logical(d[[j]])) d[[j]] <- as.character(d[[j]])
+      d[[j]][info$row] <- val
+    }
     rv$data <- d
   })
 
@@ -80,14 +114,42 @@ doepro_server <- function(input, output, session) {
       "Paste your data, upload a CSV, or load one of the examples. ",
       "Data must be in long format: one row per plot, one column per variable. ",
       "You may analyse several response variables at once."))
-    div(class = "box", sprintf("%d rows x %d columns.", nrow(rv$data), ncol(rv$data)))
+    NULL
+  })
+
+  ## ------------------------------------------------------------ data check --
+  ## Every load is checked at once. Nothing is changed until the user presses
+  ## the button, and the log says exactly what was changed.
+  chk <- reactive({ d <- rv$data; req(d); check_data(d) })
+
+  output$dqOut <- renderUI({
+    d <- rv$data; req(d)
+    ck <- chk()
+    fixable <- any(vapply(ck$issues, function(z) isTRUE(z$fixable), logical(1)))
+    tagList(
+      if (length(rv$dq_log)) div(class = "sugbox", HTML(paste0(
+        "<b>Corrections made.</b><ul>", paste0("<li>", rv$dq_log, "</li>", collapse = ""), "</ul>"))),
+      HTML(check_html(ck, d)),
+      if (fixable) actionButton("dqFix", "Apply the corrections", class = "btn-primary btn-sm") else NULL)
+  })
+
+  observeEvent(input$dqFix, {
+    fx <- fix_data(rv$data)
+    changed <- !identical(fx$data, rv$data)
+    rv$data <- fx$data
+    rv$dq_log <- fx$log
+    showNotification(if (changed) "Corrections applied." else
+                     "Nothing could be corrected yet. See 'Needs you to decide' above.",
+                     type = if (changed) "message" else "warning")
   })
 
   ## ------------------------------------------------------- column mapping ---
   output$mapUI <- renderUI({
     d <- rv$data; req(d)
     cn  <- names(d)
-    num <- cn[vapply(d, is.numeric, logical(1))]
+    ## columns of numbers as the data check sees them, so a response still
+    ## written with decimal commas or "-" is suggested all the same
+    num <- intersect(cn, chk()$numeric)
     des <- input$design
     nf  <- input$nfac %||% 2
 
@@ -175,8 +237,8 @@ doepro_server <- function(input, output, session) {
     d <- rv$data; req(d)
     m <- mapping(); req(!is.null(m))
     used <- unlist(m[setdiff(names(m), "response")])
-    cand <- names(d)[vapply(d, function(z)
-      is.numeric(z) && length(unique(stats::na.omit(z))) > 2, logical(1))]
+    cand <- intersect(names(d), chk()$numeric)
+    cand <- cand[vapply(cand, function(v) length(unique(stats::na.omit(read_entries(d[[v]])$value))) > 2, logical(1))]
     cand <- setdiff(cand, used)
     req(length(cand) > 0)
     withProgress(message = "Screening the response variables", value = 0.5,
@@ -256,13 +318,24 @@ doepro_server <- function(input, output, session) {
 
   output$runNote <- renderUI({
     r <- res()
-    if (!is.null(r$err)) return(div(class = "err", r$err))
+    if (!is.null(r$err)) return(div(class = "err", r$err,
+      if (grepl("left out of this analysis", r$err, fixed = TRUE) &&
+          grepl("decimal comma|not a number|% sign|unit after|thousands separator|read two ways", r$err))
+        p("The data check on the Data tab lists these entries and corrects those it safely can; correct the others in the table, then run the analysis again.") else NULL))
     f1 <- r$fits[[1]]$final
     tagList(
       div(class = "box", HTML(sprintf(
         "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %d observations &nbsp;|&nbsp; %s",
         names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits), nrow(f1$data),
         paste(sprintf("%s = %s", names(f1$cv), fmt(f1$cv, 2)), collapse = " | ")))),
+      ## rows left out, response by response, so no plot disappears unnoticed
+      {
+        ex <- Filter(nzchar, vapply(r$fits, function(f) {
+          t <- excluded_text(f$final$excluded, html = TRUE, hint = TRUE)
+          if (nzchar(t)) sprintf("<b>%s:</b> %s", f$header, t) else ""
+        }, character(1)))
+        if (length(ex)) div(class = "warn", HTML(paste(ex, collapse = "<br>"))) else NULL
+      },
       if (!f1$balanced) div(class = "warn", HTML(paste0(
         "<b>The data are unbalanced</b>: ",
         switch(r$design,

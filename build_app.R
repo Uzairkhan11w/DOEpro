@@ -18,6 +18,7 @@
 ## helpers and the credits); the UI and server come last.
 ORDER <- c(
   "constants.R",       # constants, credits, logo, DESIGNS, helpers, demo_data
+  "data_quality.R",    # checks and corrections run on the data when it is loaded
   "analyze.R",         # the analysis engine
   "assumptions.R",     # assumption tests and transformations (defines TRANS)
   "tables_detail.R",   # integrated tables of means

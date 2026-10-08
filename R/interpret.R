@@ -26,8 +26,9 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
   adjusted <- isTRUE(res$adjusted_ss) &&
     any(vapply(res$effects, function(e) !is.null(e$means$Raw_mean), logical(1)))
 
-  p <- c(p, sprintf("<h4>1. What was analysed</h4><p>A <b>%s</b> was analysed with <b>%s</b> as the response (%d observations). Every test is at the %s significance level.%s%s%s</p>",
+  p <- c(p, sprintf("<h4>1. What was analysed</h4><p>A <b>%s</b> was analysed with <b>%s</b> as the response (%d observations). Every test is at the %s significance level.%s%s%s%s</p>",
     dn, res$resp, nrow(d), lvl,
+    if (is.null(res$excluded)) "" else paste0(" ", excluded_text(res$excluded, html = TRUE)),
     if (res$balanced) " The data are balanced."
     else sprintf(" The data are <b>unbalanced</b>: %s. Each mean therefore has its own standard error, and two means are compared using the standard error of that particular pair.", why_unbal),
     if (adjusted) " The means are adjusted (least-squares) means, and each term in the ANOVA is tested after allowing for every other term (Type III sums of squares, which need not add up to the total)."

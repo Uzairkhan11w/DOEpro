@@ -15,6 +15,21 @@
   T1, T2, ..., T10 rather than alphabetically. Interaction plots put a time
   factor (or, failing that, a quantitative one such as N0, N60, N120) on the
   X-axis by default, and the Plots tab lets you choose the X-axis factor.
+* A data check runs as soon as data are loaded. It finds decimal commas
+  (5,6), decimal points and commas mixed in one column, thousands separators,
+  per cent signs and units typed after numbers, numbers stored as text, entries
+  that are not numbers, no-value markers (including Excel's #DIV/0! and #N/A),
+  empty cells, labels that differ only in spacing, capitals or punctuation, and
+  empty or repeated rows. It says what is wrong and which rows are affected.
+  Corrections are applied only when asked, and only where the meaning is
+  certain; anything uncertain (12a, nil, 1,250, a % sign on some values only,
+  AA beside aa) is listed for the user and never changed, emptied or merged.
+  New exported functions `check_data()` and `fix_data()` do the same from R.
+  The data table now shows row numbers, which the messages use.
+* Rows left out of an analysis are listed with the reason, in the app and in
+  the report, instead of disappearing silently. Pasted "-" and "." are no
+  longer turned into missing values without notice, "#" is no longer read as
+  the start of a comment, and semicolon-separated CSV files are recognised.
 
 # DOEpro 2.0.1
 

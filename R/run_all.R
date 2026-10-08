@@ -55,13 +55,15 @@ run_all <- function(d, design, map, responses, alpha = 0.05,
     if (identical(tr, "none")) {
       fin <- base; asm <- asm0
     } else {
-      z <- suppressWarnings(TRANS[[tr]]$f(d[[v]], lam))
-      if (any(!is.finite(z[!is.na(d[[v]])])))
+      y <- response_values(d[[v]])
+      z <- suppressWarnings(TRANS[[tr]]$f(y, lam))
+      if (any(!is.finite(z[!is.na(y)])))   # entries that are not numbers are left out, not "out of range"
         stop(sprintf("The %s transformation is not defined for '%s' - the column has values outside its permitted range (e.g. zero or negative).",
                      TRANS[[tr]]$lab, v))
       d2 <- d; d2[[v]] <- z
       fin <- analyze(d2, design, mv, alpha)
       fin$trans <- tr; fin$lambda <- lam
+      fin$excluded <- base$excluded      # reasons in terms of the data as entered
       fin$effects <- lapply(fin$effects, function(e) {
         e$means$Mean_bt <- TRANS[[tr]]$b(e$means$Mean, lam); e
       })

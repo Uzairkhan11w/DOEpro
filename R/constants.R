@@ -243,10 +243,25 @@ read_pasted <- function(txt, sep = "\t", header = TRUE) {
   if (!nzchar(trimws(txt))) return(NULL)
   s <- switch(sep, "tab" = "\t", "comma" = ",", "semicolon" = ";",
               "space" = "", sep)
-  d <- utils::read.table(text = txt, header = header, sep = s,
+  ## only empty cells and NA count as missing here: markers such as "-" or
+  ## "n/a" are left as typed so the data check can show them and say what it
+  ## will do with them, rather than R changing them silently
+  ## Everything is read as text first and converted only where no information
+  ## is lost (convert_lossless), so codes such as 1.1 and 1.10 stay distinct.
+  rd <- function(q) utils::read.table(text = txt, header = header, sep = s,
                          stringsAsFactors = FALSE, check.names = FALSE,
-                         na.strings = c("NA", "", ".", "-"), fill = TRUE,
-                         strip.white = TRUE)
+                         na.strings = c("NA", ""), fill = TRUE, colClasses = "character",
+                         strip.white = TRUE, quote = q, comment.char = "")
+  ## quotes are honoured only when they are real quoting, not inch marks
+  ## (12" pot), which would swallow lines (see quote_char)
+  d <- rd(quote_char(strsplit(txt, "\n", fixed = TRUE)[[1]]))
+  ## a header one name short makes read.table use the first column as row
+  ## names; keep it as a column, so row numbers in messages stay the visible ones
+  if (!identical(rownames(d), as.character(seq_len(nrow(d))))) {
+    d <- cbind(Label = rownames(d), d, stringsAsFactors = FALSE)
+    rownames(d) <- NULL
+  }
+  d[] <- lapply(d, convert_lossless)
   names(d) <- make.names(names(d), unique = TRUE)
   d
 }
@@ -425,8 +440,12 @@ demo_data <- function(which) {
 ## ------------------------------------------------------------ ANOVA helpers
 tidy_aov <- function(fit) {
   a <- summary(fit)[[1]]
+  ## with no error degrees of freedom summary() has no F column; say so later
+  ## in words rather than fail here
   data.frame(Source = trimws(rownames(a)), Df = a[["Df"]], SS = a[["Sum Sq"]],
-             MS = a[["Mean Sq"]], F = a[["F value"]], p = a[["Pr(>F)"]],
+             MS = a[["Mean Sq"]],
+             F = if (is.null(a[["F value"]])) NA_real_ else a[["F value"]],
+             p = if (is.null(a[["Pr(>F)"]])) NA_real_ else a[["Pr(>F)"]],
              check.names = FALSE)
 }
 

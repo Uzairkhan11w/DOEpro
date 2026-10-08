@@ -87,7 +87,11 @@ analyze <- function(d, design, map, alpha = 0.05) {
       alpha <= 0 || alpha >= 0.5)
     stop("The significance level must be a single number between 0 and 0.5, such as 0.05.")
   resp <- map$response
-  d[[resp]] <- suppressWarnings(as.numeric(as.character(d[[resp]])))
+  raw <- d                                  # as supplied, for saying why rows were left out
+  ## the response is read the way the data check reads it, so an entry the
+  ## check calls "not a number" (0x10, 5,6, 45%) is left out here too, and a
+  ## number typed with an unusual minus sign is still read
+  d[[resp]] <- response_values(d[[resp]])
 
   facs <- switch(design,
     CRD = map$treat, RCBD = map$treat, LSD = map$treat,
@@ -110,17 +114,38 @@ analyze <- function(d, design, map, alpha = 0.05) {
       "than 'N') and run the analysis again."), join_and(sprintf("'%s'", clash))),
       call. = FALSE)
   keep <- unique(c(resp, facs, blks))
+  ## an empty label, or one such as "-" or "n/a" typed for no value, is a
+  ## missing factor, not a treatment or block of its own
+  for (v in c(facs, blks)) {
+    s <- trimws(as.character(d[[v]]))
+    gone <- is.na(s) | s == "" | tolower(s) %in% MISSING_MARKS
+    if (any(gone)) { x <- as.character(d[[v]]); x[gone] <- NA; d[[v]] <- x }
+  }
+  ## rows without a usable response or factor are left out, and recorded with
+  ## the reason, so the user is told rather than finding fewer plots
+  excluded <- excluded_rows(raw, d, keep)
   d <- d[stats::complete.cases(d[, keep, drop = FALSE]), keep, drop = FALSE]
-  if (nrow(d) < 3) stop("Not enough complete rows to analyse.")
+  why <- function() if (is.null(excluded)) "" else paste0(" ", excluded_text(excluded))
+  if (nrow(d) < 3)
+    stop(paste0(if (nrow(d) == 0) "No rows can be analysed." else
+                  sprintf("Only %d %s can be analysed; at least 3 are needed.", nrow(d),
+                          pl(nrow(d), "row", "rows")), why()), call. = FALSE)
   ## levels in natural order, so tables and plots run D0, D60, D120 and
   ## T1, T2, ..., T10 instead of alphabetically
   for (v in c(facs, blks)) d[[v]] <- factor(d[[v]], levels = natural_levels(d[[v]]))
 
-  lay <- check_layout(d, design, map, facs, blks)
+  ## a layout refused because rows were left out says so first: correcting
+  ## those entries may be all that is needed, before anything is deleted
+  lay <- tryCatch(check_layout(d, design, map, facs, blks), error = function(e) {
+    if (is.null(excluded)) stop(conditionMessage(e), call. = FALSE)
+    stop(paste0(excluded_text(excluded), " With those rows left out, the layout is ",
+                "incomplete. Correct those entries first if you can. ", conditionMessage(e)),
+         call. = FALSE)
+  })
   grand <- mean(d[[resp]])
   res <- list(design = design, resp = resp, data = d, facs = facs, blks = blks,
               alpha = alpha, grand = grand, balanced = lay$balanced,
-              reps = lay$reps, n_range = lay$n_range)
+              reps = lay$reps, n_range = lay$n_range, excluded = excluded)
 
   ## ------------------------------------------------- classic / factorial ----
   if (design %in% c("CRD", "RCBD", "LSD", "FCRD", "FRCBD")) {
@@ -130,7 +155,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
     an  <- tidy_aov(fit)
     mse <- an$MS[an$Source == "Residuals"]
     dfe <- an$Df[an$Source == "Residuals"]
-    if (!length(dfe) || dfe < 1) stop("Zero error degrees of freedom - you need replication.")
+    if (!length(dfe) || dfe < 1)
+      stop(paste0("There are too few rows to estimate the experimental error: each treatment ",
+                  "needs to appear more than once.", why()), call. = FALSE)
     lmfit <- stats::lm(form, data = d)
     if (!lay$balanced) an <- type3_anova(an, form, d, c(blks, facs))
 
