@@ -239,6 +239,35 @@ doepro_ui <- function() navbarPage(
           fluidRow(
             column(7, plotOutput("corHeat", height = "420px"), uiOutput("corHeatText")),
             column(5, plotOutput("corScatter", height = "420px"), uiOutput("corScatterText"))))
+      )),
+    tabPanel("Regression",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "A straight-line equation for predicting one numeric column from one or more others, fitted by least",
+            "squares. Only rows with every value are used; entries that are not plain numbers count as missing",
+            "until they are corrected on the Data tab.")),
+          uiOutput("regUI"),
+          selectInput("regAlpha", "Significance level", c(0.05, 0.01), selected = 0.05),
+          uiOutput("regShowUI"),
+          actionButton("dl_reg", "Coefficients (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("regEquation"),
+          uiOutput("regCoef"),
+          uiOutput("regModel"),
+          uiOutput("regText"),
+          uiOutput("regAnova"),
+          tags$hr(),
+          fluidRow(
+            column(7, plotOutput("regMain", height = "440px")),
+            column(5, uiOutput("regMainText"))),
+          tags$hr(),
+          h4("Checking the fit"),
+          uiOutput("regChecks"),
+          fluidRow(
+            column(4, plotOutput("regResid", height = "340px"), uiOutput("regResidText")),
+            column(4, plotOutput("regQQ", height = "340px"), uiOutput("regQQText")),
+            column(4, plotOutput("regObs", height = "340px"), uiOutput("regObsText"))))
       ))),
 
   ## ------------------------------------------------------------------ help --

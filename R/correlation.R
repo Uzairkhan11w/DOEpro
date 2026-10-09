@@ -146,13 +146,20 @@ fixed_terms <- function(x, method) {
 
 ## Run `expr` with a fixed seed and put the user's random number stream back
 ## afterwards, so an estimate is the same every time and nothing else changes.
+## The generator is fixed as well as the seed (R's defaults), so a user who
+## has chosen another kind of generator gets the same answer; the saved
+## stream carries the user's kind back with it. One thing R code cannot put
+## back: under Box-Muller normals, the second of a pair drawn but not yet
+## used is lost, so the user's next normal draw moves on by one.
 with_fixed_seed <- function(seed, expr) {
   had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
   old <- if (had) get(".Random.seed", envir = globalenv(), inherits = FALSE)
-  on.exit(if (had) assign(".Random.seed", old, envir = globalenv())
-          else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE))
-            rm(".Random.seed", envir = globalenv()))
-  set.seed(seed)
+  kinds <- RNGkind()
+  on.exit(if (had) assign(".Random.seed", old, envir = globalenv()) else {
+    RNGkind(kinds[1], kinds[2], kinds[3])
+    if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) rm(".Random.seed", envir = globalenv())
+  })
+  set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")
   expr
 }
 

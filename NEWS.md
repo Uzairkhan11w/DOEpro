@@ -55,10 +55,32 @@
   large-sample approximation. Strength uses Cohen's 0.1, 0.3 and 0.5 for r,
   carried to rho and tau through their relation to r for normal data. A
   result short of significance is reported as insufficient evidence of an
-  association, and
-  the reading warns about chance findings among many pairs and about
-  plot-level correlations mixing treatment effects. New exported function
-  `correlate_data()`.
+  association, and the reading warns about chance findings among many pairs
+  and about plot-level correlations mixing treatment effects. New exported
+  function `correlate_data()`.
+* Explore > Regression: simple and multiple linear regression of one numeric
+  column on one or more others, using the rows that have every value. The
+  fitted equation; each coefficient with its standard error, t, p-value,
+  significance mark and confidence interval at the chosen level, printed to
+  the precision its standard error supports (and, with several predictors,
+  its variance inflation factor); N, R-squared, adjusted R-squared, MSE,
+  RMSE, MAE and the F test of the model; and the regression's analysis of
+  variance. The main plot shows the rows, the fitted line, its confidence
+  band, the equation and R-squared (with several predictors, the line for
+  one predictor with the others at their means, and each row adjusted to
+  them). Residuals against fitted values, a normal Q-Q plot and observed
+  against predicted check the fit, with Shapiro-Wilk, Breusch-Pagan
+  (Koenker) and a test for a curve; with up to 200 rows the first two take
+  their p-values from normal data simulated on the same predictor values,
+  since with few rows the usual ones can be far off for residuals. Every
+  table and plot has a reading; a slope
+  short of significance is reported as insufficient evidence, and the
+  reading says when the intercept is an extrapolation and that the equation
+  holds only over the observed range. A predictor fitted with its powers
+  (Dose with Dose2, or Dose2 and Dose3) is drawn and read as one curve, and
+  a response surface (N, P, N2, P2 and NP) as one surface; a quadratic is
+  read with the dose at which it turns. New exported function
+  `regress_data()`.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve

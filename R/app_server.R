@@ -662,6 +662,94 @@ doepro_server <- function(input, output, session) {
     save_browser(paste0("DOEpro_correlation_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## ------------------------------------------------------------- regression --
+  ## The response starts as the analysed response when it is a measurement
+  ## column, else the last one (data are usually laid out with the response
+  ## last: Nitrogen, Rain, Yield), and the predictor as the first; a column that
+  ## labels rows (Rep, Plot No) or is mapped as a design factor is never
+  ## chosen for the user. Choices that still fit the data are kept when the
+  ## sidebar is drawn again.
+  reg_defaults <- reactive({
+    num <- chk()$numeric
+    m <- tryCatch(mapping(), error = function(e) list())
+    used <- unlist(m[setdiff(names(m), "response")])
+    def <- setdiff(num, used); def <- def[!is_id_name(def)]
+    resp <- c(intersect(m$response, def), rev(def))[1]
+    list(resp = if (is.na(resp)) "" else resp, pred = utils::head(setdiff(def, resp), 1))
+  })
+  output$regUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 2, "Regression needs at least two columns of numbers."))
+    def <- reg_defaults()
+    ky <- isolate(input$regY); kx <- isolate(input$regX)
+    ## with no measurement column left (only Rep, Plot and the like), nothing
+    ## is chosen for the user
+    y <- if (isTRUE(ky %in% num)) ky else def$resp
+    x <- intersect(kx, setdiff(num, y))
+    if (!length(x)) x <- setdiff(def$pred, y)
+    tagList(
+      selectInput("regY", "Response (to be predicted)", c("Choose a column" = "", num), selected = y),
+      selectizeInput("regX", "Predictors (one for a simple regression, more for a multiple one)",
+                     setdiff(num, y), selected = x, multiple = TRUE))
+  })
+  ## a response chosen from among the predictors leaves them
+  observeEvent(input$regY, {
+    num <- chk()$numeric
+    keep <- intersect(input$regX, setdiff(num, input$regY))
+    updateSelectizeInput(session, "regX", choices = setdiff(num, input$regY), selected = keep)
+  }, ignoreInit = TRUE)
+  reg_res <- reactive({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 2, "Regression needs at least two columns of numbers."))
+    y <- input$regY %||% ""
+    validate(need(y %in% num, "Choose a response."))
+    x <- intersect(input$regX, setdiff(num, y))
+    validate(need(length(x) >= 1, "Choose at least one predictor."))
+    r <- tryCatch(regress_data(d, y, x, as.numeric(input$regAlpha %||% "0.05")), error = function(e) e)
+    validate(need(!inherits(r, "error"), if (inherits(r, "error")) conditionMessage(r)))
+    r
+  })
+  output$regShowUI <- renderUI({
+    r <- tryCatch(reg_res(), error = function(e) NULL)
+    if (is.null(r) || r$k < 2) return(NULL)
+    keep <- isolate(input$regShow)
+    selectInput("regShow", "Predictor on the main plot", r$predictors,
+                selected = if (isTRUE(keep %in% r$predictors)) keep else r$predictors[1])
+  })
+  reg_note <- function(t) div(class = "note", HTML(if (nzchar(t$what))
+    paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading)) else esc(t$reading)))
+  output$regEquation <- renderUI(div(class = "box", HTML(paste0("<b>Fitted equation.</b> ", esc(reg_res()$equation)))))
+  output$regCoef  <- renderUI(HTML(reg_coef_html(reg_res())))
+  output$regModel <- renderUI(HTML(reg_model_html(reg_res())))
+  output$regText  <- renderUI(div(class = "box", HTML(paste0("<b>What the model shows.</b> ", esc(reg_text(reg_res()))))))
+  output$regAnova <- renderUI(HTML(reg_anova_html(reg_res())))
+  output$regChecks <- renderUI(HTML(reg_checks_html(reg_res())))
+  output$regMain <- renderPlot(plot_reg_main(reg_res(), input$regShow))
+  output$regMainText <- renderUI(reg_note(reg_main_text(reg_res(), input$regShow)))
+  output$regResid <- renderPlot({
+    r <- reg_res(); p <- plot_reg_resid(r)
+    validate(need(!is.null(p), reg_resid_text(r)$reading))
+    p
+  })
+  output$regResidText <- renderUI(reg_note(reg_resid_text(reg_res())))
+  output$regQQ <- renderPlot({
+    r <- reg_res(); p <- plot_reg_qq(r)
+    validate(need(!is.null(p), reg_qq_text(r)$reading))
+    p
+  })
+  output$regQQText <- renderUI(reg_note(reg_qq_text(reg_res())))
+  output$regObs <- renderPlot(plot_reg_obs(reg_res()))
+  output$regObsText <- renderUI(reg_note(reg_obs_text(reg_res())))
+
+  observeEvent(input$dl_reg, {
+    r <- tryCatch(reg_res(), error = function(e) NULL); req(r)
+    out <- r$coefficients
+    out$Response <- r$response; out$alpha <- r$alpha
+    save_browser(paste0("DOEpro_regression_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 
