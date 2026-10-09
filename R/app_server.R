@@ -913,6 +913,88 @@ doepro_server <- function(input, output, session) {
     save_browser(paste0("DOEpro_clusters_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## ------------------------------------------------------------ factor analysis --
+  ## The variables start as the measurement columns; the number of factors as
+  ## parallel analysis suggests. Choices that still fit the data are kept.
+  output$faUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 3, "Factor analysis needs at least three columns of numbers."))
+    keep <- isolate(intersect(input$faVars, num))
+    selectizeInput("faVars", "Variables", num, selected = if (length(keep) >= 3) keep else cor_default(), multiple = TRUE)
+  })
+  fa_vars <- reactive({
+    d <- rv$data; req(d)
+    validate(need(length(chk()$numeric) >= 3, "Factor analysis needs at least three columns of numbers."))
+    v <- intersect(input$faVars, chk()$numeric)
+    validate(need(length(v) >= 3, sprintf("%s; factor analysis needs at least three variables.",
+      if (length(v) == 0) "No variable is chosen" else sprintf("Only %s %s chosen", join_and(sprintf("'%s'", v)), pl(length(v), "is", "are")))))
+    v
+  })
+  fa_run <- function(k) {
+    r <- tryCatch(fa_data(rv$data, fa_vars(), factors = k, rotation = input$faRot %||% "varimax",
+                          alpha = as.numeric(input$faAlpha %||% "0.05")), error = function(e) e)
+    validate(need(!inherits(r, "error"), if (inherits(r, "error")) conditionMessage(r)))
+    r
+  }
+  ## the suggested number of factors, and the result for the number chosen
+  fa_auto <- reactive(fa_run(NULL))
+  fa_res <- reactive({
+    k <- input$faK %||% "auto"
+    if (identical(k, "auto") || !k %in% as.character(seq_len(fa_auto()$mmax))) fa_auto() else fa_run(as.integer(k))
+  })
+  output$faKUI <- renderUI({
+    a <- tryCatch(fa_auto(), error = function(e) NULL)
+    if (is.null(a)) return(NULL)
+    ks <- as.character(seq_len(a$mmax))
+    ch <- c(stats::setNames("auto", sprintf("Suggested (%d)", a$suggested)), stats::setNames(ks, ks))
+    keep <- isolate(input$faK %||% "auto")
+    selectInput("faK", "Number of factors", ch, selected = if (keep %in% ch) keep else "auto")
+  })
+  output$faAxesUI <- renderUI({
+    f <- tryCatch(fa_res(), error = function(e) NULL)
+    if (is.null(f) || f$factors < 3) return(NULL)
+    ch <- stats::setNames(seq_len(f$factors), colnames(f$loadings))
+    kx <- isolate(as.integer(input$faX %||% 1)); ky <- isolate(as.integer(input$faY %||% 2))
+    tagList(selectInput("faX", "Loading plot across", ch, selected = if (isTRUE(kx %in% ch)) kx else 1),
+            selectInput("faY", "Loading plot up", ch, selected = if (isTRUE(ky %in% ch)) ky else 2))
+  })
+  fa_ax <- reactive({
+    f <- fa_res()
+    a <- suppressWarnings(as.integer(input$faX %||% 1)); b <- suppressWarnings(as.integer(input$faY %||% 2))
+    okk <- function(v) length(v) == 1 && !is.na(v) && v >= 1 && v <= f$factors
+    a <- if (okk(a)) a else 1L
+    b <- if (okk(b) && b != a) b else if (a == 1L) 2L else 1L
+    c(a, b)
+  })
+  fa_note <- function(t) div(class = "note", HTML(paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading))))
+  output$faText <- renderUI(div(class = "box", HTML(paste0("<b>What the analysis shows.</b> ", esc(fa_text(fa_res()))))))
+  output$faAdequacy <- renderUI(HTML(fa_adequacy_html(fa_res())))
+  output$faLoadings <- renderUI(HTML(fa_loadings_html(fa_res())))
+  output$faVariance <- renderUI(HTML(fa_variance_html(fa_res())))
+  output$faPhi <- renderUI(HTML(fa_phi_html(fa_res())))
+  output$faScree <- renderPlot(plot_fa_scree(fa_res()))
+  output$faScreeText <- renderUI(fa_note(fa_scree_text(fa_res())))
+  output$faHeat <- renderPlot(plot_fa_heat(fa_res()))
+  output$faHeatText <- renderUI(fa_note(fa_heat_text(fa_res())))
+  output$faLoadPlot <- renderPlot({
+    f <- fa_res(); validate(need(f$factors >= 2, "With one factor there is no second axis to plot the loadings against."))
+    plot_fa_loadings(f, fa_ax())
+  })
+  output$faLoadText <- renderUI({ f <- fa_res(); req(f$factors >= 2); fa_note(fa_loadings_text(f, fa_ax())) })
+  output$faScores <- renderUI(HTML(fa_scores_html(fa_res())))
+  observeEvent(input$dl_fa_load, {
+    f <- tryCatch(fa_res(), error = function(e) NULL); req(f)
+    out <- data.frame(Variable = f$vars, round(f$loadings, 6), Communality = round(f$communality, 6),
+                      Uniqueness = round(f$uniqueness, 6), check.names = FALSE)
+    save_browser(paste0("DOEpro_factor_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+  observeEvent(input$dl_fa_scores, {
+    f <- tryCatch(fa_res(), error = function(e) NULL); req(f)
+    out <- data.frame(Row = f$rows, round(f$scores, 6), check.names = FALSE)
+    save_browser(paste0("DOEpro_factor_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 

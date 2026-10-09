@@ -20,6 +20,24 @@ PCA_PA_CELLS <- 1e8
 ## a loading of this size or more, as printed, counts as strong
 PCA_STRONG <- 0.5
 
+## Horn's parallel analysis: the 95th percentile of each eigenvalue of
+## random normal data with n rows and p variables (with the variances `sdv`
+## when the analysis is on covariances), from a fixed seed. Shared by the
+## principal component and factor analyses, so both give the same
+## thresholds for the same data.
+pca_parallel <- function(n, p, scale = TRUE, sdv = NULL) {
+  B <- as.integer(max(PCA_PA_MIN, min(PCA_PA_B, floor(PCA_PA_CELLS / (n * p^2)))))
+  th <- with_fixed_seed(COR_PERM_SEED + 11, {
+    sims <- vapply(seq_len(B), function(b) {
+      Z <- matrix(stats::rnorm(n * p), n)
+      if (!scale) Z <- sweep(Z, 2, sdv, "*")
+      eigen(if (scale) stats::cor(Z) else stats::cov(Z), symmetric = TRUE, only.values = TRUE)$values
+    }, numeric(p))
+    apply(matrix(sims, nrow = p), 1, stats::quantile, probs = 0.95, names = FALSE)
+  })
+  list(threshold = th, sets = B)
+}
+
 #' Principal component analysis of numeric variables
 #'
 #' Principal components of the chosen columns, from the rows with a value of
@@ -116,15 +134,8 @@ pca_data <- function(d, vars, scale = TRUE) {
   ## Horn's parallel analysis: eigenvalues of random normal data of the same
   ## size (with the same variances for a covariance analysis), 95th
   ## percentile at each position
-  B <- as.integer(max(PCA_PA_MIN, min(PCA_PA_B, floor(PCA_PA_CELLS / (n * p^2)))))
-  pa <- with_fixed_seed(COR_PERM_SEED + 11, {
-    sims <- vapply(seq_len(B), function(b) {
-      Z <- matrix(stats::rnorm(n * p), n)
-      if (!scale) Z <- sweep(Z, 2, sdv, "*")
-      eigen(if (scale) stats::cor(Z) else stats::cov(Z), symmetric = TRUE, only.values = TRUE)$values
-    }, numeric(p))
-    apply(matrix(sims, nrow = p), 1, stats::quantile, probs = 0.95, names = FALSE)
-  })
+  pp <- pca_parallel(n, p, scale, sdv)
+  pa <- pp$threshold; B <- pp$sets
   above <- ev[seq_len(m)] > pa[seq_len(m)]
   retained <- if (all(above)) m else which(!above)[1] - 1L
   avg <- sum(ev_all) / p

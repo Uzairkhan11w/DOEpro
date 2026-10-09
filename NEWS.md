@@ -103,6 +103,19 @@
   and the silhouette width by number of clusters. Each cluster is read from
   its means as printed, and the reading says that clustering is no test.
   New exported function `cluster_data()`.
+* Explore > Factor analysis: maximum-likelihood factor analysis
+  (`factanal()`) of the chosen numeric columns, with the Kaiser-Meyer-Olkin
+  measure (overall and for each variable, in Kaiser's words) and Bartlett's
+  test of sphericity; the number of factors from parallel analysis (the
+  same as on the principal components tab) or chosen; varimax, promax or no
+  rotation; the loadings with communalities and uniquenesses, the variance
+  each factor carries, the factor correlations after promax, the test that
+  the number of factors is enough, and the factor scores. A scree plot, a
+  heat map of the loadings and a loading plot, each with a reading. Each
+  factor is read from its loadings of 0.40 or more as printed; cross-loading
+  variables, low communalities and Heywood cases are named, and the reading
+  leaves naming the factors to the reader. New exported function
+  `fa_data()`.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve

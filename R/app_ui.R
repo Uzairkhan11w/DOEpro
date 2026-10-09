@@ -327,6 +327,35 @@ doepro_ui <- function() navbarPage(
             column(6, plotOutput("clPcs", height = "400px"), uiOutput("clPcsText")),
             column(6, plotOutput("clSil", height = "400px"), uiOutput("clSilText"))),
           uiOutput("clItems"))
+      )),
+    tabPanel("Factor analysis",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "Factor analysis (maximum likelihood): a few underlying factors that account for the correlations between",
+            "the chosen columns. Only rows with every value are used; entries that are not plain numbers count as",
+            "missing until they are corrected on the Data tab.")),
+          uiOutput("faUI"),
+          uiOutput("faKUI"),
+          selectInput("faRot", "Rotation", c("Varimax (factors uncorrelated)" = "varimax",
+                                             "Promax (factors may correlate)" = "promax", "None" = "none")),
+          selectInput("faAlpha", "Significance level", c(0.05, 0.01), selected = 0.05),
+          uiOutput("faAxesUI"),
+          actionButton("dl_fa_load", "Loadings (CSV)", icon = icon("download")),
+          actionButton("dl_fa_scores", "Scores (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("faText"),
+          uiOutput("faAdequacy"),
+          uiOutput("faLoadings"),
+          uiOutput("faVariance"),
+          uiOutput("faPhi"),
+          tags$hr(),
+          fluidRow(
+            column(6, plotOutput("faScree", height = "380px"), uiOutput("faScreeText")),
+            column(6, plotOutput("faHeat", height = "380px"), uiOutput("faHeatText"))),
+          fluidRow(
+            column(6, plotOutput("faLoadPlot", height = "420px"), uiOutput("faLoadText")),
+            column(6, uiOutput("faScores"))))
       ))),
 
   ## ------------------------------------------------------------------ help --

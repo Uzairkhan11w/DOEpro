@@ -29,6 +29,7 @@ ORDER <- c(
   "regression.R",      # simple and multiple linear regression
   "pca.R",             # principal component analysis
   "cluster.R",         # hierarchical cluster analysis
+  "factor.R",          # factor analysis
   "interpret.R",       # plain-English interpretation and the report CSS
   "tables_sketch.R",   # the tables of means shown in the app
   "report.R",          # the HTML report
