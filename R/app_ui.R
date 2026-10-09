@@ -296,6 +296,37 @@ doepro_ui <- function() navbarPage(
             column(6, plotOutput("pcaLoadPlot", height = "420px"), uiOutput("pcaLoadText")),
             column(6, plotOutput("pcaBiplot", height = "420px"), uiOutput("pcaBiplotText"))),
           uiOutput("pcaScoreTable"))
+      )),
+    tabPanel("Cluster analysis",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "Hierarchical clustering: rows, or the means of each level of a grouping column (varieties by their",
+            "trait means), joined step by step into a tree and cut into clusters of items alike in the chosen columns.",
+            "Only rows with every value are used.")),
+          uiOutput("clUI"),
+          uiOutput("clGroupUI"),
+          checkboxInput("clScale", "Standardise each variable (when units differ)", TRUE),
+          selectInput("clLink", "Linkage", c("Ward's method" = "ward", "Complete linkage" = "complete",
+                                             "Average linkage (UPGMA)" = "average", "Single linkage" = "single")),
+          conditionalPanel("input.clLink != 'ward'",
+            selectInput("clDist", "Distance", c("Euclidean" = "euclidean", "Manhattan" = "manhattan"))),
+          conditionalPanel("input.clLink == 'ward'",
+            div(class = "note", "Ward's method works on Euclidean distances.")),
+          uiOutput("clKUI"),
+          actionButton("dl_cl", "Clusters (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("clText"),
+          uiOutput("clMembers"),
+          uiOutput("clMeans"),
+          tags$hr(),
+          fluidRow(
+            column(7, plotOutput("clDendro", height = "440px")),
+            column(5, uiOutput("clDendroText"))),
+          fluidRow(
+            column(6, plotOutput("clPcs", height = "400px"), uiOutput("clPcsText")),
+            column(6, plotOutput("clSil", height = "400px"), uiOutput("clSilText"))),
+          uiOutput("clItems"))
       ))),
 
   ## ------------------------------------------------------------------ help --

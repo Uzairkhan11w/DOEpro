@@ -840,6 +840,79 @@ doepro_server <- function(input, output, session) {
     save_browser(paste0("DOEpro_pca_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## ----------------------------------------------------------- cluster analysis --
+  ## The variables start as the measurement columns; the items start as the
+  ## means of the mapped treatment (or first design factor), else the rows.
+  ## Choices that still fit the data are kept when the sidebar is drawn again.
+  output$clUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 2, "Cluster analysis needs at least two columns of numbers."))
+    keep <- isolate(intersect(input$clVars, num))
+    selectizeInput("clVars", "Variables", num, selected = if (length(keep) >= 2) keep else cor_default(), multiple = TRUE)
+  })
+  output$clGroupUI <- renderUI({
+    d <- rv$data; req(d)
+    grp <- group_choices(d)
+    m <- tryCatch(mapping(), error = function(e) list())
+    first <- c(intersect(c(m$treat, m$factors, m$main), grp), "")[1]
+    keep <- isolate(input$clGroup %||% NA)
+    selectInput("clGroup", "Items to cluster", c("Each row" = "", stats::setNames(grp, paste("The means of each level of", grp))),
+                selected = if (isTRUE(keep %in% c("", grp))) keep else first)
+  })
+  cl_vars <- reactive({
+    d <- rv$data; req(d)
+    validate(need(length(chk()$numeric) >= 2, "Cluster analysis needs at least two columns of numbers."))
+    v <- intersect(input$clVars, chk()$numeric)
+    validate(need(length(v) >= 2, if (length(v) == 1)
+      sprintf("Only '%s' is chosen; choose at least two variables.", v) else "Choose at least two variables."))
+    v
+  })
+  cl_args <- reactive({
+    link <- input$clLink %||% "ward"
+    g <- input$clGroup %||% ""
+    list(d = rv$data, vars = cl_vars(), group = if (nzchar(g) && g %in% names(rv$data)) g else NULL,
+         distance = if (identical(link, "ward")) "euclidean" else input$clDist %||% "euclidean",
+         linkage = link, scale = !isFALSE(input$clScale))
+  })
+  cl_run <- function(k) {
+    r <- tryCatch(do.call(cluster_data, c(cl_args(), list(k = k))), error = function(e) e)
+    validate(need(!inherits(r, "error"), if (inherits(r, "error")) conditionMessage(r)))
+    r
+  }
+  ## the suggested number of clusters, and the result for the number chosen
+  cl_auto <- reactive(cl_run(NULL))
+  cl_res <- reactive({
+    k <- input$clK %||% "auto"
+    if (identical(k, "auto") || !k %in% as.character(2:(cl_auto()$n - 1))) cl_auto() else cl_run(as.integer(k))
+  })
+  output$clKUI <- renderUI({
+    a <- tryCatch(cl_auto(), error = function(e) NULL)
+    if (is.null(a)) return(NULL)
+    ks <- as.character(2:min(a$n - 1, 20))
+    ch <- c(stats::setNames("auto", sprintf("Suggested (%d)", a$suggested)), stats::setNames(ks, ks))
+    keep <- isolate(input$clK %||% "auto")
+    selectInput("clK", "Number of clusters", ch, selected = if (keep %in% ch) keep else "auto")
+  })
+  cl_note <- function(t) div(class = "note", HTML(if (nzchar(t$what))
+    paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading)) else esc(t$reading)))
+  output$clText <- renderUI(div(class = "box", HTML(paste0("<b>What the clustering shows.</b> ", esc(cl_text(cl_res()))))))
+  output$clMembers <- renderUI(HTML(cl_members_html(cl_res())))
+  output$clMeans <- renderUI(HTML(cl_means_html(cl_res())))
+  output$clDendro <- renderPlot(plot_cl_dendro(cl_res()))
+  output$clDendroText <- renderUI(cl_note(cl_dendro_text(cl_res())))
+  output$clPcs <- renderPlot(plot_cl_pcs(cl_res()))
+  output$clPcsText <- renderUI(cl_note(cl_pcs_text(cl_res())))
+  output$clSil <- renderPlot(plot_cl_silhouette(cl_res()))
+  output$clSilText <- renderUI(cl_note(cl_silhouette_text(cl_res())))
+  output$clItems <- renderUI(HTML(cl_items_html(cl_res())))
+  observeEvent(input$dl_cl, {
+    cl <- tryCatch(cl_res(), error = function(e) NULL); req(cl)
+    out <- data.frame(Item = cl$items, Cluster = cl$cluster, Silhouette = round(cl$silhouette, 6))
+    names(out)[1] <- if (is.null(cl$group)) "Row" else cl$group
+    save_browser(paste0("DOEpro_clusters_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 

@@ -91,6 +91,18 @@
   with Kaiser's rule beside it. Each component is read from its strong
   loadings as printed, and the readings say only which variables rise and
   fall together, never what causes it. New exported function `pca_data()`.
+* Explore > Cluster analysis: hierarchical clustering of the rows, or of the
+  means of each level of a grouping column (varieties by their trait means),
+  on the chosen numeric columns, standardised by default, with Euclidean or
+  Manhattan distances and Ward's, complete, average or single linkage. The
+  number of clusters is suggested by the average silhouette width (and can
+  be chosen), read with Kaufman and Rousseeuw's bands; the cophenetic
+  correlation shows how faithfully the tree keeps the distances. Tables of
+  the clusters, their members, silhouettes and means; the dendrogram
+  coloured at the cut, the clusters on the first two principal components,
+  and the silhouette width by number of clusters. Each cluster is read from
+  its means as printed, and the reading says that clustering is no test.
+  New exported function `cluster_data()`.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve
