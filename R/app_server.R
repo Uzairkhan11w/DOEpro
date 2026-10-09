@@ -487,9 +487,7 @@ doepro_server <- function(input, output, session) {
     validate(need(length(num) > 0, "No column holds numbers."))
     used <- tryCatch({ m <- mapping(); unlist(m[setdiff(names(m), "response")]) },
                      error = function(e) character(0))
-    def <- setdiff(num, used)
-    def <- def[!is_id_name(def)]
-    if (!length(def)) def <- num
+    def <- explore_defaults(num, used)
     ## the sidebar is drawn again when the data or the design mapping change;
     ## choices the user has made that still fit the data are kept
     grp <- group_choices(d)
@@ -573,6 +571,95 @@ doepro_server <- function(input, output, session) {
   observeEvent(input$dl_desc, {
     tab <- tryCatch(desc_tab(), error = function(e) NULL); req(tab)
     save_browser(paste0("DOEpro_descriptives_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
+  })
+
+  ## ------------------------------------------------------------ correlation --
+  ## One default for the variables and the scatter pair, as on the
+  ## descriptives tab; choices that still fit the data are kept when the
+  ## sidebar is drawn again.
+  ## measurements only: a column that labels rows (Rep, Plot No) or is mapped
+  ## as a design factor is never chosen for the user, even when that leaves
+  ## fewer than two columns to start from
+  cor_default <- reactive({
+    num <- chk()$numeric
+    used <- tryCatch({ m <- mapping(); unlist(m[setdiff(names(m), "response")]) },
+                     error = function(e) character(0))
+    def <- setdiff(num, used)
+    def[!is_id_name(def)]
+  })
+  output$corUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 2, "Correlation needs at least two columns of numbers."))
+    keep <- isolate(intersect(input$corVars, num))
+    selectizeInput("corVars", "Variables to correlate", num,
+                   selected = if (length(keep) >= 2) keep else cor_default(), multiple = TRUE)
+  })
+  output$corPairUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric; req(length(num) >= 2)
+    v <- isolate(intersect(input$corVars, num)); if (length(v) < 2) v <- cor_default()
+    kx <- isolate(input$corX %||% ""); ky <- isolate(input$corY %||% "")
+    ## the two axes always differ, whatever survives from earlier data, and
+    ## neither falls back on a column the table leaves out
+    x <- if (kx %in% num) kx else if (length(v)) v[1] else ""
+    y <- if (ky %in% num && ky != x) ky else setdiff(v, x)[1]
+    pick <- c("Choose a column" = "", num)
+    tagList(tags$hr(), tags$b("Scatter plot of one pair"),
+      selectInput("corX", "Across (X axis)", pick, selected = x),
+      selectInput("corY", "Up (Y axis)", pick, selected = if (is.na(y)) "" else y))
+  })
+
+  cor_vars <- reactive({
+    d <- rv$data; req(d)
+    validate(need(length(chk()$numeric) >= 2, "Correlation needs at least two columns of numbers."))
+    v <- intersect(input$corVars, chk()$numeric)
+    validate(need(length(v) >= 2, if (length(v) == 1)
+      sprintf("Only '%s' is chosen; choose a second variable to correlate.", v)
+      else "Choose at least two variables to correlate."))
+    v
+  })
+  cor_method <- reactive(input$corMethod %||% "pearson")
+  cor_alpha <- reactive(as.numeric(input$corAlpha %||% "0.05"))
+  cor_tab <- reactive(correlate_data(rv$data, cor_vars(), cor_method(), cor_alpha()))
+
+  output$corMatrix <- renderUI({
+    tab <- cor_tab(); m <- cor_method()
+    HTML(paste0(cor_matrix_html(tab, cor_vars()), "<div class='note'>", esc(cor_key(cor_alpha())),
+      sprintf(" Strength of %s: %s (Cohen's 0.1, 0.3 and 0.5 for r%s).", COR_SYMBOL[[m]], cor_bands(m),
+              if (m == "pearson") "" else ", carried to this coefficient through its relation to r for normal data"),
+      "</div>"))
+  })
+  output$corText <- renderUI(div(class = "box", HTML(paste0("<b>What the table shows.</b> ", esc(cor_text(cor_tab()))))))
+  output$corPairs <- renderUI(HTML(cor_pairs_html(cor_tab())))
+  output$corHeat <- renderPlot(plot_cor_heat(cor_tab(), cor_vars()))
+  output$corHeatText <- renderUI({
+    t <- cor_heat_text(cor_tab(), length(cor_vars()))
+    div(class = "note", HTML(paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading))))
+  })
+  cor_xy <- reactive({
+    num <- chk()$numeric
+    req(input$corX %in% num, input$corY %in% num)
+    c(input$corX, input$corY)
+  })
+  output$corScatter <- renderPlot({
+    xy <- cor_xy()
+    p <- plot_cor_scatter(rv$data, xy[1], xy[2], cor_method(), cor_alpha())
+    validate(need(!is.null(p), cor_scatter_text(rv$data, xy[1], xy[2], cor_method(), cor_alpha())$reading))
+    p
+  })
+  output$corScatterText <- renderUI({
+    xy <- cor_xy()
+    t <- cor_scatter_text(rv$data, xy[1], xy[2], cor_method(), cor_alpha())
+    div(class = "note", HTML(if (nzchar(t$what))
+      paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading)) else esc(t$reading)))
+  })
+
+  observeEvent(input$dl_cor, {
+    tab <- tryCatch(cor_tab(), error = function(e) NULL); req(tab)
+    out <- tab; attr(out, "method") <- NULL; attr(out, "alpha") <- NULL
+    out$Method <- COR_NAMES[[cor_method()]]; out$alpha <- cor_alpha()
+    save_browser(paste0("DOEpro_correlation_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
   ## ------------------------------------------------------------------ plots --

@@ -42,6 +42,23 @@
   reading compares the bend at each end of the plot with what normal
   samples of the same size show. Values recorded in steps get histogram
   bars on their grid. New exported function `describe_data()`.
+* Explore > Correlation: Pearson's r, Spearman's rho or Kendall's tau-b for
+  every pair of the chosen numeric columns, each with N (the rows that have
+  both values), the p-value, a significance mark at the chosen level, a
+  confidence interval for r, and a one-line reading. A matrix, a heat map, a
+  scatter plot of any pair, and a reading of the whole table go with them.
+  Spearman's and Kendall's p-values are exact whenever the orderings of the
+  values can be counted (eight rows, and many more when values are tied, as
+  in sparse counts), estimated from random orderings when there are ties and
+  too many to count (Spearman's at any size, Kendall's up to 20 rows, with a
+  closer count near a significance threshold), and marked where they are a
+  large-sample approximation. Strength uses Cohen's 0.1, 0.3 and 0.5 for r,
+  carried to rho and tau through their relation to r for normal data. A
+  result short of significance is reported as insufficient evidence of an
+  association, and
+  the reading warns about chance findings among many pairs and about
+  plot-level correlations mixing treatment effects. New exported function
+  `correlate_data()`.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve

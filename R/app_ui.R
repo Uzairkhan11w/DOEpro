@@ -216,6 +216,29 @@ doepro_ui <- function() navbarPage(
           fluidRow(
             column(6, plotOutput("descBox", height = "320px"), uiOutput("descBoxText")),
             column(6, plotOutput("descQQ", height = "320px"), uiOutput("descQQText"))))
+      )),
+    tabPanel("Correlation",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "How each pair of numeric columns varies together. Each pair uses every row with both values;",
+            "entries that are not plain numbers count as missing until they are corrected on the Data tab.")),
+          uiOutput("corUI"),
+          radioButtons("corMethod", "Coefficient",
+            c("Pearson's r (straight-line association)" = "pearson",
+              "Spearman's rho (ranks)" = "spearman",
+              "Kendall's tau (ranks, pairs of rows)" = "kendall")),
+          selectInput("corAlpha", "Significance level", c(0.05, 0.01), selected = 0.05),
+          uiOutput("corPairUI"),
+          actionButton("dl_cor", "Pairs (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("corMatrix"),
+          uiOutput("corText"),
+          uiOutput("corPairs"),
+          tags$hr(),
+          fluidRow(
+            column(7, plotOutput("corHeat", height = "420px"), uiOutput("corHeatText")),
+            column(5, plotOutput("corScatter", height = "420px"), uiOutput("corScatterText"))))
       ))),
 
   ## ------------------------------------------------------------------ help --
