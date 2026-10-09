@@ -268,6 +268,34 @@ doepro_ui <- function() navbarPage(
             column(4, plotOutput("regResid", height = "340px"), uiOutput("regResidText")),
             column(4, plotOutput("regQQ", height = "340px"), uiOutput("regQQText")),
             column(4, plotOutput("regObs", height = "340px"), uiOutput("regObsText"))))
+      )),
+    tabPanel("Principal components",
+      sidebarLayout(
+        sidebarPanel(width = 3,
+          div(class = "note", paste(
+            "Principal component analysis: a few new variables, the components, that carry as much as possible of",
+            "how the chosen columns vary together. Only rows with every value are used; entries that are not plain",
+            "numbers count as missing until they are corrected on the Data tab.")),
+          uiOutput("pcaUI"),
+          radioButtons("pcaScale", "Analyse",
+            c("Correlations: each variable standardised (when units differ)" = "cor",
+              "Covariances: variables as measured (same units only)" = "cov")),
+          uiOutput("pcaAxesUI"),
+          uiOutput("pcaGroupUI"),
+          actionButton("dl_pca_load", "Loadings (CSV)", icon = icon("download")),
+          actionButton("dl_pca_scores", "Scores (CSV)", icon = icon("download"))),
+        mainPanel(width = 9,
+          uiOutput("pcaEigen"),
+          uiOutput("pcaText"),
+          uiOutput("pcaLoadings"),
+          tags$hr(),
+          fluidRow(
+            column(6, plotOutput("pcaScree", height = "380px"), uiOutput("pcaScreeText")),
+            column(6, plotOutput("pcaScores", height = "380px"), uiOutput("pcaScoresText"))),
+          fluidRow(
+            column(6, plotOutput("pcaLoadPlot", height = "420px"), uiOutput("pcaLoadText")),
+            column(6, plotOutput("pcaBiplot", height = "420px"), uiOutput("pcaBiplotText"))),
+          uiOutput("pcaScoreTable"))
       ))),
 
   ## ------------------------------------------------------------------ help --

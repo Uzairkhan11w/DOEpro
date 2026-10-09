@@ -81,6 +81,16 @@
   a response surface (N, P, N2, P2 and NP) as one surface; a quadratic is
   read with the dose at which it turns. New exported function
   `regress_data()`.
+* Explore > Principal components: principal component analysis of the
+  chosen numeric columns, on their correlations (each standardised) or their
+  covariances. The eigenvalues with the share of the variation each
+  component carries; the loadings (each variable's correlation with each
+  component) and communalities; the scores; and the scree plot, score plot
+  (coloured by a grouping column if chosen), loading plot and biplot. The
+  number of components worth keeping comes from Horn's parallel analysis,
+  with Kaiser's rule beside it. Each component is read from its strong
+  loadings as printed, and the readings say only which variables rise and
+  fall together, never what causes it. New exported function `pca_data()`.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve

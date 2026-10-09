@@ -750,6 +750,96 @@ doepro_server <- function(input, output, session) {
     save_browser(paste0("DOEpro_regression_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
+  ## -------------------------------------------------------- principal components --
+  ## The variables start as the measurement columns (as on the correlation
+  ## tab); the grouping for the plots starts as the treatment, or the first
+  ## design factor, when one is mapped. Choices that still fit the data are
+  ## kept when the sidebar is drawn again.
+  output$pcaUI <- renderUI({
+    d <- rv$data; req(d)
+    num <- chk()$numeric
+    validate(need(length(num) >= 2, "Principal components need at least two columns of numbers."))
+    keep <- isolate(intersect(input$pcaVars, num))
+    selectizeInput("pcaVars", "Variables", num, selected = if (length(keep) >= 2) keep else cor_default(), multiple = TRUE)
+  })
+  output$pcaGroupUI <- renderUI({
+    d <- rv$data; req(d)
+    grp <- group_choices(d)
+    m <- tryCatch(mapping(), error = function(e) list())
+    ## intersect() gives NULL when nothing is mapped yet, so the first match
+    ## is taken with a fallback rather than indexed
+    first <- c(intersect(c(m$treat, m$factors, m$main), grp), "")[1]
+    keep <- isolate(input$pcaGroup %||% NA)
+    selectInput("pcaGroup", "Colour the points by (optional)", c("Nothing" = "", grp),
+                selected = if (isTRUE(keep %in% c("", grp))) keep else first)
+  })
+  pca_vars <- reactive({
+    d <- rv$data; req(d)
+    validate(need(length(chk()$numeric) >= 2, "Principal components need at least two columns of numbers."))
+    v <- intersect(input$pcaVars, chk()$numeric)
+    validate(need(length(v) >= 2, if (length(v) == 1)
+      sprintf("Only '%s' is chosen; choose at least two variables.", v) else "Choose at least two variables."))
+    v
+  })
+  pca_res <- reactive({
+    r <- tryCatch(pca_data(rv$data, pca_vars(), scale = !identical(input$pcaScale, "cov")), error = function(e) e)
+    validate(need(!inherits(r, "error"), if (inherits(r, "error")) conditionMessage(r)))
+    r
+  })
+  output$pcaAxesUI <- renderUI({
+    p <- tryCatch(pca_res(), error = function(e) NULL)
+    if (is.null(p) || p$m < 2) return(NULL)
+    ch <- stats::setNames(seq_len(p$m), paste0("PC", seq_len(p$m)))
+    kx <- isolate(as.integer(input$pcaX %||% 1)); ky <- isolate(as.integer(input$pcaY %||% 2))
+    ax <- pca_axes(p, kx, ky)
+    tagList(selectInput("pcaX", "Plot across", ch, selected = ax[1]),
+            selectInput("pcaY", "Plot up", ch, selected = ax[2]))
+  })
+  pca_ax <- reactive({
+    p <- pca_res()
+    pca_axes(p, suppressWarnings(as.integer(input$pcaX %||% 1)), suppressWarnings(as.integer(input$pcaY %||% 2)))
+  })
+  ## the grouping for the rows used, or none
+  pca_grp <- reactive({
+    p <- pca_res(); g <- input$pcaGroup %||% ""
+    if (!nzchar(g) || !g %in% names(rv$data)) return(NULL)
+    lab <- trimws(as.character(rv$data[[g]]))[p$pos]
+    lab[is.na(lab) | lab == ""] <- "(no label)"
+    factor(lab, levels = natural_levels(lab))
+  })
+  pca_note <- function(t) div(class = "note", HTML(if (nzchar(t$what))
+    paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading)) else esc(t$reading)))
+  output$pcaEigen <- renderUI(HTML(pca_eigen_html(pca_res())))
+  output$pcaText <- renderUI(div(class = "box", HTML(paste0("<b>What the analysis shows.</b> ", esc(pca_text(pca_res()))))))
+  output$pcaLoadings <- renderUI(HTML(pca_loadings_html(pca_res())))
+  output$pcaScree <- renderPlot(plot_pca_scree(pca_res()))
+  output$pcaScreeText <- renderUI(pca_note(pca_scree_text(pca_res())))
+  output$pcaScores <- renderPlot({
+    p <- pca_res(); validate(need(p$m >= 2, "Only one component has any variance, so there is nothing to plot against it."))
+    plot_pca_scores(p, pca_ax(), pca_grp())
+  })
+  output$pcaScoresText <- renderUI({
+    p <- pca_res(); req(p$m >= 2)
+    pca_note(pca_scores_text(p, pca_ax(), pca_grp(), input$pcaGroup))
+  })
+  output$pcaLoadPlot <- renderPlot({ p <- pca_res(); req(p$m >= 2); plot_pca_loadings(p, pca_ax()) })
+  output$pcaLoadText <- renderUI({ p <- pca_res(); req(p$m >= 2); pca_note(pca_loadings_text(p, pca_ax())) })
+  output$pcaBiplot <- renderPlot({ p <- pca_res(); req(p$m >= 2); plot_pca_biplot(p, pca_ax(), pca_grp()) })
+  output$pcaBiplotText <- renderUI({ p <- pca_res(); req(p$m >= 2); pca_note(pca_biplot_text(p, pca_ax())) })
+  output$pcaScoreTable <- renderUI(HTML(pca_scores_html(pca_res())))
+  observeEvent(input$dl_pca_load, {
+    p <- tryCatch(pca_res(), error = function(e) NULL); req(p)
+    out <- data.frame(Variable = p$vars, round(p$loadings, 6), check.names = FALSE)
+    names(out)[-1] <- paste0(colnames(p$loadings), "_loading")
+    out <- cbind(out, stats::setNames(as.data.frame(round(p$vectors, 6)), paste0(colnames(p$vectors), "_eigenvector")))
+    save_browser(paste0("DOEpro_pca_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+  observeEvent(input$dl_pca_scores, {
+    p <- tryCatch(pca_res(), error = function(e) NULL); req(p)
+    out <- data.frame(Row = p$rows, round(p$scores, 6), check.names = FALSE)
+    save_browser(paste0("DOEpro_pca_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+  })
+
   ## ------------------------------------------------------------------ plots --
   output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
 

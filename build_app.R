@@ -27,6 +27,7 @@ ORDER <- c(
   "descriptives.R",    # descriptive statistics and distribution plots
   "correlation.R",     # correlation between pairs of variables
   "regression.R",      # simple and multiple linear regression
+  "pca.R",             # principal component analysis
   "interpret.R",       # plain-English interpretation and the report CSS
   "tables_sketch.R",   # the tables of means shown in the app
   "report.R",          # the HTML report
