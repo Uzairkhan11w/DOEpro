@@ -29,6 +29,7 @@ ORDER <- c(
   "assumptions.R",     # assumption tests and transformations (defines TRANS)
   "tables_detail.R",   # integrated tables of means
   "posthoc.R",         # post-hoc procedures
+  "dunnett.R",         # Dunnett's test against a control
   "plots.R",           # plots
   "descriptives.R",    # descriptive statistics and distribution plots
   "correlation.R",     # correlation between pairs of variables

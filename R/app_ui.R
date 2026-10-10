@@ -156,6 +156,12 @@ doepro_ui <- function() navbarPage(
       sidebarPanel(width = 3,
         uiOutput("aRespUI2"), uiOutput("phEffectUI"),
         selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
+        ## a control means something only to Dunnett's test
+        conditionalPanel("input.phMethod == 'Dunnett'",
+          uiOutput("phControlUI"),
+          radioButtons("phAlt", "Compare each treatment with the control",
+            c("Does it differ? (two-sided)" = "two.sided", "Is it higher? (one-sided)" = "greater",
+              "Is it lower? (one-sided)" = "less"))),
         actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
         tags$br(), tags$br(),
         actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),

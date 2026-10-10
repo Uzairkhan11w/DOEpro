@@ -426,7 +426,65 @@ PH_WHAT <- c(
     "each span; it is usually more cautious than Duncan's test and less cautious than Tukey's."),
   "Scheffe" = paste(
     "Scheffe's test allows for every possible comparison among the means, not only pairs, so for pairs it is usually",
-    "the most cautious of these tests."))
+    "the most cautious of these tests."),
+  "Dunnett" = paste(
+    "Dunnett's test compares each treatment with the control and with nothing else. Because it makes only those",
+    "comparisons, it can keep the chance of declaring any difference from the control that is not real within the",
+    "chosen level while staying more sensitive than a test of every pair. The one-sided forms ask only whether",
+    "treatments are higher, or only whether they are lower, than the control."))
+
+## The reading of Dunnett's test: in each family, which treatments are
+## significantly higher or lower than the control, and which are not, in
+## the terms of the question asked (two-sided or one side)
+dunnett_groups_text <- function(x, e, tr = "none") {
+  lvl <- rd_lvl(x$alpha); alt <- x$dunnett$alternative
+  one <- function(fm, where = "") {
+    pr <- fmt(fm$mu, 3); oth <- fm$others; ctrl <- fm$lab[fm$ctrl]
+    up <- oth[fm$sig & fm$d > 0]; down <- oth[fm$sig & fm$d < 0]; ns <- oth[!fm$sig]
+    named <- function(ix) rd_named(fm$lab[ix], pr[ix])
+    lead <- sprintf("%sompared with the control, %s (%s), by Dunnett's test at the %s level", if (nzchar(where)) paste0(where, ", c") else "C",
+                    ctrl, pr[fm$ctrl], lvl)
+    parts <- switch(alt,
+      two.sided = c(if (length(up)) sprintf("%s %s significantly higher", named(up), pl(length(up), "is", "are")),
+                    if (length(down)) sprintf("%s %s significantly lower", named(down), pl(length(down), "is", "are")),
+                    if (length(ns)) sprintf("%s %s not differ significantly from it", named(ns), pl(length(ns), "does", "do"))),
+      greater = c(if (length(up)) sprintf("%s %s significantly higher", named(up), pl(length(up), "is", "are")),
+                  if (length(ns)) sprintf("for %s there is insufficient evidence that %s higher", named(ns), pl(length(ns), "it is", "they are"))),
+      less = c(if (length(down)) sprintf("%s %s significantly lower", named(down), pl(length(down), "is", "are")),
+               if (length(ns)) sprintf("for %s there is insufficient evidence that %s lower", named(ns), pl(length(ns), "it is", "they are"))))
+    paste0(lead, ": ", join_and(parts), ".")
+  }
+  fams <- x$families
+  out <- if (length(fams) == 1 && is.null(fams[[1]]$within)) one(fams[[1]])
+         else paste(vapply(fams, function(fm) one(fm, sprintf("At %s", fm$within)), ""), collapse = " ")
+  if (identical(tr, "none")) out else paste(out, sprintf("The means here are on the transformed scale (%s).", TRANS[[tr]]$lab))
+}
+
+## The reading of Dunnett's comparisons: how many are significant, the one
+## critical value they share, and, two-sided, the count Fisher's protected
+## LSD gives for the same comparisons
+dunnett_pairs_text <- function(x, lsd = NULL) {
+  lvl <- rd_lvl(x$alpha); p <- x$pairs; m <- nrow(p); k <- sum(p$Significant == "Yes")
+  cv <- x$dunnett$crit
+  count <- if (m == 1) sprintf("The comparison with the control is %s", if (k) "significant" else "not significant")
+           else if (k == 0) sprintf("None of the %d comparisons with the control is significant", m)
+           else if (k == m) sprintf("All %d comparisons with the control are significant", m)
+           else sprintf("%d of the %d comparisons with the control %s significant", k, m, pl(k, "is", "are"))
+  out <- c(sprintf("%s by this test at the %s level.", count, lvl),
+           if (length(unique(signif(cv, 10))) == 1)
+             sprintf("Every comparison is judged against the same critical value, %s%s.", fmt(cv[1]),
+                     if (diff(range(p$`Critical difference`)) > 1e-9 * max(p$`Critical difference`))
+                       ", times its own standard error of a difference, so the critical differences differ" else "")
+           else sprintf("The critical value differs between the levels compared within (%s to %s).", fmt(min(cv)), fmt(max(cv))))
+  if (!is.null(lsd) && x$dunnett$alternative == "two.sided") {
+    kl <- sum(vapply(seq_along(x$families), function(f) {
+      fm <- x$families[[f]]; sum(lsd$families[[f]]$sig[fm$ctrl, fm$others])
+    }, 0))
+    out <- c(out, sprintf("Fisher's protected LSD, which the letters in the tables of means use, finds %s of these comparisons significant.",
+                          if (kl == k) "the same number" else as.character(kl)))
+  }
+  paste(out, collapse = " ")
+}
 
 ## The reading of the post-hoc groups: in each family of means, the highest
 ## and lowest mean, and which means this test finds do not differ from them.
@@ -435,11 +493,12 @@ PH_WHAT <- c(
 posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
   if (exact) return(RD_EXACT)
   lvl <- rd_lvl(x$alpha)
+  if (!is.null(x$dunnett) && isTRUE(x$f_sig)) return(dunnett_groups_text(x, e, tr))
   scale <- if (identical(tr, "none")) "" else
     sprintf(" The means here are on the transformed scale (%s).", TRANS[[tr]]$lab)
   if (!isTRUE(x$f_sig))
-    return(paste0(sprintf("Because the F-test for %s is not significant at the %s level, this test declares no pair different and gives no letters: there is insufficient evidence that the means differ.",
-                          e$label, lvl), scale))
+    return(paste0(sprintf("Because the F-test for %s is not significant at the %s level, this test declares %s: there is insufficient evidence that the means differ.",
+                          e$label, lvl, if (is.null(x$dunnett)) "no pair different and gives no letters" else "no treatment different from the control"), scale))
   ## the means are compared as the groups table prints them (three decimals)
   one <- function(fm, where = "") {
     pr <- fmt(fm$mu, 3); k <- length(pr)
@@ -492,7 +551,9 @@ posthoc_pairs_text <- function(x, e, method, lsd = NULL, exact = FALSE) {
   if (exact) return(RD_EXACT)
   lvl <- rd_lvl(x$alpha)
   if (!isTRUE(x$f_sig))
-    return(sprintf("The F-test is not significant at the %s level, so no pair is declared different.", lvl))
+    return(sprintf("The F-test is not significant at the %s level, so no %s declared different.", lvl,
+                   if (is.null(x$dunnett)) "pair is" else "treatment is"))
+  if (!is.null(x$dunnett)) return(dunnett_pairs_text(x, lsd))
   p <- x$pairs; m <- nrow(p)
   yes <- p$Significant == "Yes"; held <- grepl("inside a non-significant range", p$Significant, fixed = TRUE)
   k <- sum(yes)

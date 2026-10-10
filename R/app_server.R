@@ -444,8 +444,25 @@ doepro_server <- function(input, output, session) {
   ph <- reactive({
     f <- pFit(); req(input$phEff)
     validate(need(input$phEff %in% names(f$final$effects), "Choose an effect."))
-    tryCatch(gate_posthoc(posthoc(f$final, input$phEff, input$phMethod, f$final$alpha)),
+    ## just after the effect changes the control can still name a level of
+    ## the previous one; the first level stands in until the selector updates
+    ctrl <- NULL
+    if (identical(input$phMethod, "Dunnett")) {
+      lv <- dunnett_levels(f$final$effects[[input$phEff]])
+      ctrl <- if (isTRUE(input$phControl %in% lv)) input$phControl else lv[1]
+    }
+    tryCatch(gate_posthoc(posthoc(f$final, input$phEff, input$phMethod, f$final$alpha,
+                                  control = ctrl, alternative = input$phAlt %||% "two.sided")),
              error = function(e) list(err = conditionMessage(e)))
+  })
+
+  ## the control is chosen from the levels the comparisons run over; a level
+  ## with no number (Control, Check) comes first in their natural order
+  output$phControlUI <- renderUI({
+    f <- pFit(); req(input$phEff %in% names(f$final$effects))
+    lv <- dunnett_levels(f$final$effects[[input$phEff]])
+    keep <- isolate(input$phControl %||% "")
+    selectInput("phControl", "Control", lv, selected = if (keep %in% lv) keep else lv[1])
   })
 
   output$phNote <- renderUI({

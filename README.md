@@ -190,6 +190,11 @@ Student–Newman–Keuls, and Scheffé. Each is computed from the error mean squ
 of freedom of the effect you select, so in a split or strip plot they automatically use the
 right error stratum. Duncan and SNK report the full table of critical ranges *R*ₚ.
 
+Dunnett's test compares every treatment with a control you choose, two-sided or one-sided
+(higher, or lower, than the control). Its critical value is the quantile of the comparisons'
+joint multivariate *t* distribution, computed exactly for equal and unequal replication; it
+reproduces Dunnett's (1955) tables.
+
 ---
 
 ## Report

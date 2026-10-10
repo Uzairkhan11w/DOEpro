@@ -196,7 +196,8 @@ test_that("the tables of means carry their readings in the app and not in the re
 test_that("the post-hoc readings count what the tables declare", {
   for (des in c("CRD", "RCBD", "LSD", "FRCBD", "SPLIT", "STRIP", "POOLRCBD")) {
     r <- rd_run(des)$fits$Yield$final
-    for (en in names(r$effects)) for (meth in PH_METHODS) {
+    ## Dunnett's test compares with a control, not every pair: test-dunnett.R
+    for (en in names(r$effects)) for (meth in setdiff(PH_METHODS, "Dunnett")) {
       x <- tryCatch(gate_posthoc(posthoc(r, en, meth, r$alpha)), error = function(e) NULL)
       if (is.null(x) || !x$f_sig) next
       e <- r$effects[[en]]

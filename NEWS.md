@@ -133,6 +133,18 @@
   significance is insufficient evidence of a difference, at the level chosen;
   an exact fit is said to make the verdicts meaningless rather than read as
   findings.
+* Dunnett's test joins the post-hoc procedures: each treatment against a
+  control chosen in the post-hoc panel from the levels of the effect (a level
+  with no number, such as Control, is offered first), two-sided or one-sided
+  (higher, or lower, than the control). The critical value is the quantile of
+  the comparisons' joint multivariate t distribution, computed exactly with
+  equal or unequal replication and with one missing plot: it reproduces
+  Dunnett's (1955) tables, and Student's t for a single comparison. With two
+  or more missing plots in a blocked design the correlations are given the
+  nearest exact form, and the output says it is an approximation. Within a
+  split, strip or pooled interaction the treatments are compared with the
+  control within each level of the slicing factor. As for every other test,
+  nothing is declared under a non-significant F-test.
 * The browser version opens with a StatLabX loading screen instead of an
   unexplained spinner. It says what is happening (R loading, R starting, the
   packages loading and installing, the app starting), and its bar counts the

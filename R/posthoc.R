@@ -9,9 +9,10 @@
 ## and the two multiple-range tests use Kramer's (1956) pairwise adjustment;
 ## the output says which. Interaction effects of split plots, strip plots and
 ## pooled analyses are compared within one level of their slicing factor, the
-## only comparisons that share one error term.
+## only comparisons that share one error term. Dunnett's test compares every
+## mean with a control instead of every pair (R/dunnett.R).
 PH_METHODS <- c("LSD (Fisher's protected)", "LSD (Bonferroni-adjusted)",
-                "Tukey HSD", "Duncan's DMRT", "Student-Newman-Keuls", "Scheffe")
+                "Tukey HSD", "Duncan's DMRT", "Student-Newman-Keuls", "Scheffe", "Dunnett")
 
 ## what each method is called wherever it is shown to the user
 PH_LABELS <- c(
@@ -20,9 +21,12 @@ PH_LABELS <- c(
   "Tukey HSD"                 = "Tukey's honestly significant difference (HSD)",
   "Duncan's DMRT"             = "Duncan's multiple range test (DMRT)",
   "Student-Newman-Keuls"      = "Student-Newman-Keuls (SNK) test",
-  "Scheffe"                   = "Scheffe's test")
+  "Scheffe"                   = "Scheffe's test",
+  "Dunnett"                   = "Dunnett's test (each treatment against a control)")
 
-posthoc <- function(res, effect, method, alpha = res$alpha) {
+## `control` (a level as dunnett_levels() lists it) and `alternative`
+## ("two.sided", "greater" or "less") are used by Dunnett's test only.
+posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alternative = "two.sided") {
   e <- res$effects[[effect]]
   if (is.null(e)) stop("Unknown effect.")
   if (!method %in% PH_METHODS) stop("Unknown method")
@@ -32,6 +36,7 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
           else unname(split(seq_len(nrow(m)), factor(m[[e$slice]], levels = unique(m[[e$slice]]))))
   fams <- fams[lengths(fams) >= 2]
   if (!length(fams)) stop("This effect has fewer than two means.")
+  if (method == "Dunnett") return(posthoc_notes(posthoc_dunnett(e, fams, alpha, control, alternative), e, method, alpha))
   df <- e$df
   ranged <- method %in% c("Student-Newman-Keuls", "Duncan's DMRT")
   if (method %in% c("Tukey HSD", "Student-Newman-Keuls", "Duncan's DMRT") && df < 2)
@@ -190,7 +195,9 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
 ## DOEpro. posthoc() itself keeps them, as an effect keeps its letters.
 gate_posthoc <- function(x) {
   if (isTRUE(x$f_sig)) return(x)
-  x$groups$Group <- ""
+  if ("Group" %in% names(x$groups)) x$groups$Group <- ""
+  if ("Versus the control" %in% names(x$groups))
+    x$groups$`Versus the control`[x$groups$`Versus the control` != "Control"] <- ""
   x$pairs$Significant <- sprintf("Not declared (F-test not significant at %s%%)", pct(x$alpha))
   x
 }
