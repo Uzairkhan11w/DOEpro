@@ -42,6 +42,7 @@ ORDER <- c(
   "tables_sketch.R",   # the tables of means shown in the app
   "report.R",          # the HTML report
   "run_all.R",         # the multi-response driver and the help text
+  "guides.R",          # the guidance folded into the tabs
   "app_ui.R",          # the user interface
   "app_server.R"       # the server logic
 )

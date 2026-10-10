@@ -133,6 +133,12 @@
   significance is insufficient evidence of a difference, at the level chosen;
   an exact fit is said to make the verdicts meaningless rather than read as
   findings.
+* The Help tab is gone; its guidance now sits, folded until opened, in the
+  tab where it is needed: how to start on the Data tab, the designs and their
+  error terms (and the pooled analysis, when a pooled design is chosen) on the
+  Design tab, how SE(m), SE(d) and the C.D. are worked out on the Means tab,
+  choosing a transformation on the Assumptions tab, and which post-hoc test
+  to choose, now including Dunnett's, on the Post-hoc tab.
 * A new look for the app, branded StatLabX. It runs on Bootstrap 5 through
   bslib's precompiled theme, so the browser compiles nothing (a theme with
   changed Sass variables took 5.3 s to compile natively, and would have been

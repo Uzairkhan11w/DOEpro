@@ -97,6 +97,14 @@ sup{color:var(--slx-blue-dark);font-weight:600}
 .slx-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .slx-section{background:#fff;border:1px solid var(--slx-line);border-radius:16px;padding:18px 22px;margin:0 0 16px}
 .slx-section h3{font-size:19px;margin-top:0}
+
+/* ---- guides folded into the tabs ---- */
+.slx-guide{background:#fff;border:1px solid var(--slx-line);border-radius:12px;padding:0 16px;margin:12px 0}
+.slx-guide>summary{cursor:pointer;padding:10px 0;font-weight:600;color:var(--slx-blue-dark)}
+.slx-guide[open]>summary{border-bottom:1px solid var(--slx-line);margin-bottom:10px}
+.slx-guide>*:last-child{margin-bottom:12px}
+.slx-guide table.doe{font-size:13px}
+.slx-guide table.doe th,.slx-guide table.doe td{text-align:left}
 "
 
 ## The choices for the transformation menus. This is a function, not a stored
@@ -166,6 +174,7 @@ doepro_ui <- function() navbarPage(
         actionButton("loaddemo", "Load example")),
       mainPanel(width = 8,
         uiOutput("dataNote"),
+        tab_guide("How to start", GUIDE_START),
         uiOutput("dqOut"),
         h4("Data (click a cell to edit)"),
         DTOutput("tbl"),
@@ -199,7 +208,10 @@ doepro_ui <- function() navbarPage(
         actionButton("dl_anova", "ANOVA (CSV)", icon = icon("download"))),
       mainPanel(width = 8,
         uiOutput("runNote"),
-        uiOutput("anovaOut"))
+        uiOutput("anovaOut"),
+        tab_guide("The designs and their error terms", GUIDE_DESIGNS),
+        conditionalPanel("['POOLRCBD', 'POOLCRD', 'POOLFRCBD', 'POOLFCRD'].indexOf(input.design) >= 0",
+          tab_guide("Pooled (combined) analysis over environments", GUIDE_POOLED)))
     )),
 
   ## ----------------------------------------------------------------- means --
@@ -210,7 +222,8 @@ doepro_ui <- function() navbarPage(
       column(3, numericInput("digits", "Decimal places", 2, 0, 5, 1)),
       column(3, actionButton("dl_means", "Means (CSV)", icon = icon("download")))),
     tags$hr(),
-    uiOutput("meansOut")),
+    uiOutput("meansOut"),
+    tab_guide("How SE(m), SE(d) and the C.D. are worked out", GUIDE_ERRORS)),
 
   ## ----------------------------------------------------------- assumptions --
   tabPanel("4. Assumptions",
@@ -218,6 +231,7 @@ doepro_ui <- function() navbarPage(
     uiOutput("assumtxt"),
     uiOutput("asmText"),
     uiOutput("sugbox"),
+    tab_guide("Choosing a transformation", GUIDE_TRANSFORM),
     fluidRow(column(6, plotOutput("bcPlot", height = "300px"), uiOutput("bcText")),
              column(6, plotOutput("mvPlot", height = "300px"), uiOutput("mvText"))),
     tags$hr(), h4("Residual diagnostics"),
@@ -250,7 +264,8 @@ doepro_ui <- function() navbarPage(
         div(class = "note", paste(
           "Every pair of means: their difference, the standard error of that difference,",
           "the critical value and critical difference it is judged against, and the verdict.")),
-        DTOutput("phPairs"), uiOutput("phPairsText"))
+        DTOutput("phPairs"), uiOutput("phPairsText"),
+        tab_guide("Which test to choose", GUIDE_POSTHOC))
     )),
 
   ## ----------------------------------------------------------------- plots --
@@ -442,7 +457,6 @@ doepro_ui <- function() navbarPage(
       ))),
 
   ## ------------------------------------------------------------------ help --
-  tabPanel("Help", htmlOutput("help")),
 
   ## ----------------------------------------------------------------- about --
   tabPanel("About", htmlOutput("about"))
