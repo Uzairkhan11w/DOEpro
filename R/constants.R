@@ -40,7 +40,7 @@ utils::globalVariables(c("Mean", ".se", "Letter", "fit", "res", "std",
 
 ## ------------------------------------------------------------------ credits --
 APP_NAME    <- "DOEpro"
-APP_VERSION <- "2.0.0"
+APP_VERSION <- "2.0.1"
 AUTHORS <- list(
   list(name = "Dr. Immad A. Shah", role = "Scientist (Statistics)",
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",

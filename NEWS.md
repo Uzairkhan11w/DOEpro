@@ -133,6 +133,15 @@
   significance is insufficient evidence of a difference, at the level chosen;
   an exact fit is said to make the verdicts meaningless rather than read as
   findings.
+* A new look for the app, branded StatLabX. It runs on Bootstrap 5 through
+  bslib's precompiled theme, so the browser compiles nothing (a theme with
+  changed Sass variables took 5.3 s to compile natively, and would have been
+  compiled in the browser on every visit); the styling is plain CSS. A
+  floating pill-shaped navigation bar carries the logo and the name, the
+  side panels, tables, plots and readings sit on white cards, numbers line up
+  in tables, and red marks significance only (NS is grey). The About page
+  opens with a headline, a short summary and the app's facts as chips. The
+  version shown is now the package's, 2.0.1.
 * Dunnett's test joins the post-hoc procedures: each treatment against a
   control chosen in the post-hoc panel from the levels of the effect (a level
   with no number, such as Control, is offered first), two-sided or one-sided

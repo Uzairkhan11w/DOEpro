@@ -155,6 +155,7 @@ table.doe tfoot td{background:#FAFCFF;font-size:12px}
 td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12px}
 table.foot{font-size:12px;margin-top:0;background:#FAFCFF}
 span.sig{color:#C0392B;font-weight:600}
+span.ns{color:#7A889E}
 sup{color:#1B4F9C;font-weight:600}
 .block{margin-bottom:26px}
 .note{font-size:12px;color:#555;font-style:italic;margin:2px 0 14px 0}

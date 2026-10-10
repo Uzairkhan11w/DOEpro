@@ -1326,16 +1326,39 @@ effects.</p>
       sprintf("<li><b>%s</b><br>%s, %s%s%s</li>", a$name, a$role, a$aff, orc, eml)
     }, character(1)), collapse = "")
 
+    ## counts as words, as running text writes them
+    words <- c("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+    n_des <- length(DESIGNS); n_ph <- length(PH_METHODS)
     HTML(sprintf("
-<h2>%s <small>v%s</small></h2>
+<div class='slx-hero'>
+  <span class='slx-chip'><span class='slx-dot'></span>Free, open source, and runs in your browser</span>
+  <h1 class='slx-h1'>Statistics for agricultural research,<br><span class='slx-grad'>right in your browser</span></h1>
+  <p class='slx-lead'>Analysis of variance for %s experimental designs, with means, critical differences and
+  post-hoc tests, and regression, correlation, principal components, cluster and factor analysis.
+  R runs on your own computer, so your data never leave it.</p>
+  <div class='slx-chips'>
+    <span class='slx-chip'>%d designs</span>
+    <span class='slx-chip'>%d post-hoc tests</span>
+    <span class='slx-chip'>Checked against Gomez &amp; Gomez (1984)</span>
+    <span class='slx-chip'>Readings in plain language</span>
+    <span class='slx-chip'>Powered by the %s R package, v%s</span>
+  </div>
+</div>
+
+<div class='slx-section'>
+<h3>About StatLabX</h3>
 <p>A free and open tool for the analysis of designed agricultural experiments. It brings the
 standard analyses used in field and horticultural research together in one accessible
 interface, and serves as a free, self-contained option for the kind of analysis researchers
-carry out in tools such as OPSTAT.</p>
+carry out in tools such as OPSTAT. It is the browser version of the %s package for R.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Developed by</h3>
 <ol>%s</ol>
+</div>
 
+<div class='slx-section'>
 <h3>Feedback and correspondence</h3>
 <p>Suggestions, bug reports and relevant correspondence are welcome. Please write to:</p>
 <ul>
@@ -1343,29 +1366,37 @@ carry out in tools such as OPSTAT.</p>
 <li><b>Mr. Uzair Javid Khan</b> <i>(maintainer)</i> &mdash; <a href='mailto:uzairkhan11w@gmail.com'>uzairkhan11w@gmail.com</a></li>
 </ul>
 <p>You may also open an issue in the project repository.</p>
+</div>
 
+<div class='slx-section'>
 <h3>How to cite</h3>
 <div class='box'>Shah, I. A., Khan, U. J. and Jeelani, M. I. (%s).
 <i>%s: analysis of designed agricultural experiments.</i> Version %s. Zenodo.
 doi:<a href='https://doi.org/%s' target='_blank'>%s</a></div>
 <p class='note'>This is the concept DOI: it always resolves to the most recent release.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Licence and source</h3>
 <p>Released under the GPL-3 licence. Source code and issue tracker:
 <a href='https://github.com/Uzairkhan11w/DOEpro' target='_blank'>github.com/Uzairkhan11w/DOEpro</a>.
 Run it in your browser at <a href='%s' target='_blank'>%s</a>.
 Every release is archived on Zenodo and carries a DOI.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Statistical methods</h3>
 <p>The analysis of variance is fitted with <code>stats::aov</code>, using
 <code>Error(Rep/Main)</code> for split plots and <code>Error(Rep/(A+B))</code> for strip
-plots. Levene's test, the Box-Cox profile likelihood and all six multiple-comparison
-procedures are implemented directly in the app, so it depends only on <b>shiny</b>,
-<b>DT</b> and <b>ggplot2</b>.</p>
-<p class='note'>%s</p>",
-      APP_NAME, APP_VERSION, author_li,
+plots. Levene's test, the Box-Cox profile likelihood and all %s multiple-comparison
+procedures, Dunnett's critical values among them, are implemented directly in the package,
+so it depends only on <b>shiny</b>, <b>DT</b>, <b>ggplot2</b> and <b>rlang</b> (with
+<b>bslib</b>, which shiny itself uses).</p>
+<p class='note'>%s</p>
+</div>",
+      words[n_des], n_des, n_ph, APP_NAME, APP_VERSION, APP_NAME, author_li,
       format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
-      APP_URL, APP_URL, CREDIT_LONG))
+      APP_URL, APP_URL, words[n_ph], CREDIT_LONG))
   })
 }
 

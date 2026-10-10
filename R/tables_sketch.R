@@ -297,7 +297,9 @@ combined_anova_html <- function(rr) {
       vapply(fits, function(f) {
         an <- f$final$anova
         if (is.na(an$MS[i])) "-" else
-          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i], rr$alpha), "</span>")
+          ## red marks significance only; NS stays grey
+          sprintf("%s <span class='%s'>%s</span>", fmt(an$MS[i], 3),
+                  if (identical(star(an$p[i], rr$alpha), "NS")) "ns" else "sig", star(an$p[i], rr$alpha))
       }, character(1))))
   paste0(raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
                    body, caption = "Analysis of variance &mdash; mean squares",

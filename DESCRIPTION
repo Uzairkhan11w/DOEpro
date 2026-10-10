@@ -26,7 +26,7 @@ Description: A 'shiny' application and supporting functions for the analysis of
 License: GPL (>= 3)
 Encoding: UTF-8
 Depends: R (>= 4.0)
-Imports: shiny, DT, ggplot2, rlang, stats, utils, graphics, grDevices
+Imports: shiny, bslib, DT, ggplot2, rlang, stats, utils, graphics, grDevices
 Suggests: pagedown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 URL: https://github.com/Uzairkhan11w/DOEpro, https://doepro.pages.dev

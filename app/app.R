@@ -64,7 +64,7 @@ utils::globalVariables(c("Mean", ".se", "Letter", "fit", "res", "std",
 
 ## ------------------------------------------------------------------ credits --
 APP_NAME    <- "DOEpro"
-APP_VERSION <- "2.0.0"
+APP_VERSION <- "2.0.1"
 AUTHORS <- list(
   list(name = "Dr. Immad A. Shah", role = "Scientist (Statistics)",
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
@@ -7863,6 +7863,7 @@ table.doe tfoot td{background:#FAFCFF;font-size:12px}
 td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12px}
 table.foot{font-size:12px;margin-top:0;background:#FAFCFF}
 span.sig{color:#C0392B;font-weight:600}
+span.ns{color:#7A889E}
 sup{color:#1B4F9C;font-weight:600}
 .block{margin-bottom:26px}
 .note{font-size:12px;color:#555;font-style:italic;margin:2px 0 14px 0}
@@ -9103,7 +9104,9 @@ combined_anova_html <- function(rr) {
       vapply(fits, function(f) {
         an <- f$final$anova
         if (is.na(an$MS[i])) "-" else
-          paste0(fmt(an$MS[i], 3), " ", "<span class='sig'>", star(an$p[i], rr$alpha), "</span>")
+          ## red marks significance only; NS stays grey
+          sprintf("%s <span class='%s'>%s</span>", fmt(an$MS[i], 3),
+                  if (identical(star(an$p[i], rr$alpha), "NS")) "ns" else "sig", star(an$p[i], rr$alpha))
       }, character(1))))
   paste0(raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
                    body, caption = "Analysis of variance &mdash; mean squares",
@@ -9539,33 +9542,100 @@ pdf_plain <- function(rr, file, letters_on = TRUE) {
 ###############################################################################
 
 APP_CSS <- "
-.navbar-default{background:#1B4F9C;border-color:#173F7D}
-.navbar-default .navbar-brand,.navbar-default .navbar-nav>li>a{color:#fff}
-.navbar-default .navbar-nav>.active>a{background:#3B7DD8;color:#fff}
-h4{color:#1B4F9C}
-.box{background:#F5F8FD;border:1px solid #D5E2F3;border-radius:5px;padding:10px 14px;margin-bottom:12px}
-.sugbox{background:#EAF7EE;border-left:4px solid #38A169;padding:8px 12px;margin:8px 0}
-.warn{background:#FFF6E5;border-left:4px solid #E8A33D;padding:8px 12px;margin:8px 0}
-.err{background:#FDECEA;border-left:4px solid #C0392B;padding:8px 12px;margin:8px 0}
-.appfoot{position:fixed;right:10px;bottom:6px;font-size:10px;color:#8b98a8;
-  background:rgba(255,255,255,.9);padding:2px 8px;border-radius:3px;z-index:1000;
-  border:1px solid #e3e3e3}
-.doe-logo-chip{position:fixed;top:6px;right:12px;z-index:1100;background:#fff;
-  border-radius:8px;padding:3px 8px;box-shadow:0 1px 4px rgba(0,0,0,.25);
-  display:flex;align-items:center}
-.doe-logo-chip img{display:block}
-@media (max-width:900px){.doe-logo-chip{display:none}}
-table.doe{border-collapse:collapse;margin:8px 0 4px 0;font-size:13px}
-table.doe th,table.doe td{border:1px solid #b9c6d6;padding:5px 10px;text-align:right}
-table.doe th{background:#EAF1FB;text-align:center}
+/* StatLabX on Bootstrap 5. The theme is bslib's precompiled default, so the
+   browser compiles no Sass; everything below is plain CSS, much of it set
+   through Bootstrap's own variables. The analysis screens stay calm: one
+   accent colour, white cards, lines that guide the eye. The gradient belongs
+   to the brand and to the About page only. */
+:root{
+  --slx-ink:#1C2B4A; --slx-navy:#14284B; --slx-muted:#5B6B86; --slx-line:#E2E8F2;
+  --slx-blue:#3B7DD8; --slx-blue-dark:#1B4F9C; --slx-violet:#7C4DFF; --slx-bg:#F5F7FB;
+  --bs-body-font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;
+  --bs-body-font-size:15px; --bs-body-color:#1C2B4A; --bs-body-bg:#F5F7FB;
+  --bs-primary:#3B7DD8; --bs-primary-rgb:59,125,216;
+  --bs-link-color:#1B4F9C; --bs-link-color-rgb:27,79,156; --bs-link-hover-color:#3B7DD8;
+  --bs-border-color:#E2E8F2; --bs-border-radius:10px;
+}
+body{background:var(--slx-bg);color:var(--slx-ink)}
+h1,h2,h3,h4,h5{color:var(--slx-navy);font-weight:650;letter-spacing:-.005em}
+h4{font-size:17px;margin-top:14px}
+
+/* ---- navigation: a floating pill ---- */
+.navbar.navbar-default{background:rgba(255,255,255,.94);border:1px solid var(--slx-line);border-radius:28px;
+  margin:12px 16px 22px;padding:6px 10px 6px 14px;box-shadow:0 8px 28px rgba(20,40,75,.08);
+  position:sticky;top:10px;z-index:1030;-webkit-backdrop-filter:saturate(1.4) blur(10px);backdrop-filter:saturate(1.4) blur(10px)}
+.navbar.navbar-default .container-fluid{padding:0;flex-wrap:wrap}
+.navbar .navbar-brand{display:flex;align-items:center;gap:10px;padding:2px 0;margin-right:16px;
+  color:var(--slx-navy);text-decoration:none;white-space:nowrap}
+.navbar .navbar-brand img{height:32px;width:auto}
+.slx-word{font-size:20px;font-weight:800;letter-spacing:-.015em;line-height:1.05;color:var(--slx-navy)}
+.slx-x{background:linear-gradient(90deg,#3B7DD8,#7C4DFF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.slx-sub{display:block;font-size:11px;font-weight:500;color:var(--slx-muted);letter-spacing:0}
+.navbar .navbar-nav{gap:2px;flex-wrap:wrap}
+.navbar .nav-link{color:var(--slx-ink) !important;border-radius:999px;padding:7px 13px !important;
+  font-weight:500;font-size:14px;border:0 !important}
+.navbar .nav-link:hover,.navbar .nav-link:focus{background:#EEF3FB;color:var(--slx-blue-dark) !important}
+.navbar .nav-link.active,.navbar .nav-item.show>.nav-link{background:var(--slx-blue);color:#fff !important}
+.navbar .dropdown-menu{border-radius:14px;border:1px solid var(--slx-line);box-shadow:0 12px 32px rgba(20,40,75,.12);padding:6px}
+.navbar .dropdown-item{border-radius:10px;padding:7px 12px;font-size:14px}
+.navbar .dropdown-item.active,.navbar .dropdown-item:active{background:var(--slx-blue);color:#fff}
+.navbar .navbar-toggle,.navbar .navbar-toggler{border:1px solid var(--slx-line);border-radius:999px;margin-left:auto}
+@media (max-width:767.98px){.navbar.navbar-default{border-radius:22px;position:static}}
+
+/* ---- panels and content ---- */
+.tab-content{padding:0 4px 48px}
+.well{background:#fff;border:1px solid var(--slx-line);border-radius:16px;box-shadow:0 1px 2px rgba(20,40,75,.04);padding:18px}
+.well h4:first-child{margin-top:0}
+.control-label{font-weight:600;font-size:13.5px;color:var(--slx-navy)}
+.form-control,.selectize-input{border-radius:10px !important;border-color:var(--slx-line) !important;box-shadow:none !important}
+.selectize-input.focus,.form-control:focus{border-color:var(--slx-blue) !important;box-shadow:0 0 0 3px rgba(59,125,216,.15) !important}
+.btn{border-radius:999px;font-weight:500;padding:7px 16px}
+.btn-primary{background:var(--slx-blue);border-color:var(--slx-blue)}
+.btn-primary:hover,.btn-primary:focus{background:var(--slx-blue-dark);border-color:var(--slx-blue-dark)}
+.btn-default{background:#fff;border:1px solid var(--slx-line);color:var(--slx-ink)}
+.btn-default:hover{background:#EEF3FB;border-color:#CDDAEE;color:var(--slx-blue-dark)}
+.btn-lg{padding:10px 24px;font-size:16px}
+.shiny-plot-output{background:#fff;border:1px solid var(--slx-line);border-radius:14px;overflow:hidden}
+.dataTables_wrapper{background:#fff;border:1px solid var(--slx-line);border-radius:14px;padding:10px 12px;margin:6px 0 12px}
+table.dataTable{font-size:13.5px;font-variant-numeric:tabular-nums}
+hr{border-color:var(--slx-line);opacity:1}
+
+/* ---- messages: colour carries meaning, not decoration ---- */
+.box{background:#fff;border:1px solid var(--slx-line);border-left:4px solid var(--slx-blue);border-radius:12px;padding:12px 16px;margin:12px 0}
+.sugbox{background:#EEF8F1;border:1px solid #CBE9D4;border-left:4px solid #2F9E5B;border-radius:12px;padding:10px 14px;margin:10px 0}
+.warn{background:#FFF7EA;border:1px solid #F3DEB8;border-left:4px solid #E09A2C;border-radius:12px;padding:10px 14px;margin:10px 0}
+.err{background:#FDEEEC;border:1px solid #F3CBC6;border-left:4px solid #C0392B;border-radius:12px;padding:10px 14px;margin:10px 0}
+.note{font-size:12.5px;color:var(--slx-muted);margin:4px 0 14px 0;line-height:1.5}
+.authors{font-size:12.5px;color:var(--slx-muted)}
+.appfoot{position:fixed;right:12px;bottom:8px;font-size:10.5px;color:var(--slx-muted);
+  background:rgba(255,255,255,.92);padding:3px 10px;border-radius:999px;z-index:1000;border:1px solid var(--slx-line)}
+
+/* ---- tables of the analysis: numbers that line up ---- */
+table.doe{border-collapse:collapse;margin:10px 0 6px 0;font-size:13.5px;background:#fff;font-variant-numeric:tabular-nums}
+table.doe th,table.doe td{border:1px solid #D6E0EE;padding:6px 11px;text-align:right}
+table.doe th{background:#EEF3FA;color:var(--slx-navy);font-weight:600;text-align:center}
 table.doe td:first-child,table.doe th:first-child{text-align:left}
-table.doe caption{caption-side:top;text-align:left;font-weight:600;padding:6px 0;color:#1B4F9C}
-table.doe tfoot td{background:#FAFCFF;font-size:12px}
-td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12px}
+table.doe caption{caption-side:top;text-align:left;font-weight:600;padding:6px 0;color:var(--slx-navy)}
+table.doe tfoot td{background:#FAFCFF;font-size:12.5px}
+td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12.5px}
 span.sig{color:#C0392B;font-weight:600}
-sup{color:#1B4F9C;font-weight:600}
-.note{font-size:12px;color:#555;font-style:italic;margin:2px 0 14px 0}
-.authors{font-size:12px;color:#444}
+span.ns{color:#7A889E}
+sup{color:var(--slx-blue-dark);font-weight:600}
+
+/* ---- About: the one landing page ---- */
+.slx-hero{text-align:center;padding:44px 16px 36px;margin:0 0 28px;border-radius:24px;
+  background:radial-gradient(900px 380px at 20% 0%,#E4EEFD 0%,rgba(228,238,253,0) 65%),
+             radial-gradient(800px 360px at 100% 100%,#EFE7FD 0%,rgba(239,231,253,0) 60%),#FBFCFF;
+  border:1px solid var(--slx-line)}
+.slx-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;
+  background:#fff;border:1px solid var(--slx-line);font-size:13px;color:var(--slx-ink);font-weight:500}
+.slx-dot{width:8px;height:8px;border-radius:50%;background:#2F9E5B;box-shadow:0 0 0 3px rgba(47,158,91,.18)}
+.slx-h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin:18px auto 14px;max-width:880px;color:var(--slx-navy)}
+.slx-grad{background:linear-gradient(90deg,#3B7DD8,#6C63FF 55%,#7C4DFF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.slx-lead{font-size:16.5px;color:var(--slx-muted);max-width:720px;margin:0 auto 22px;line-height:1.6}
+.slx-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.slx-section{background:#fff;border:1px solid var(--slx-line);border-radius:16px;padding:18px 22px;margin:0 0 16px}
+.slx-section h3{font-size:19px;margin-top:0}
 "
 
 ## The choices for the transformation menus. This is a function, not a stored
@@ -9573,6 +9643,13 @@ sup{color:#1B4F9C;font-weight:600}
 ## assumptions.R) does not yet exist while this file is being loaded.
 trans_choices <- function()
   stats::setNames(names(TRANS), vapply(TRANS, `[[`, character(1), "lab"))
+
+## The brand at the left of the navigation bar: the logo, the platform's
+## name and the package that powers it
+nav_brand <- function()
+  tagList(tags$img(src = LOGO_URI, alt = ""),
+          tags$span(tags$span(class = "slx-word", HTML("StatLab<span class='slx-x'>X</span>")),
+                    tags$span(class = "slx-sub", sprintf("powered by %s %s", APP_NAME, APP_VERSION))))
 
 #' The DOEpro user interface
 #'
@@ -9582,7 +9659,11 @@ trans_choices <- function()
 #' @return A Shiny UI definition.
 #' @keywords internal
 doepro_ui <- function() navbarPage(
-  title = paste0(APP_NAME, " v", APP_VERSION),
+  title = nav_brand(), windowTitle = "StatLabX",
+  ## bslib's precompiled Bootstrap 5: a theme with changed variables would be
+  ## compiled from Sass in the browser on every visit (5 s natively), so the
+  ## look is set in APP_CSS instead
+  theme = bslib::bs_theme(version = 5),
   id = "nav", collapsible = TRUE,
   header = tagList(tags$head(tags$style(HTML(paste0(APP_CSS, MEANS_CSS))),
                    tags$script(HTML(
@@ -9596,8 +9677,6 @@ doepro_ui <- function() navbarPage(
                      "  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);",
                      " } catch(e){ alert('Download failed: ' + e.message); }",
                      "});"))),
-                   tags$div(class = "doe-logo-chip",
-                            tags$img(src = LOGO_URI, alt = "DOEpro", height = "34")),
                    tags$div(class = "appfoot", CREDIT_SHORT)),
 
   ## ------------------------------------------------------------------ data --
@@ -11237,16 +11316,39 @@ effects.</p>
       sprintf("<li><b>%s</b><br>%s, %s%s%s</li>", a$name, a$role, a$aff, orc, eml)
     }, character(1)), collapse = "")
 
+    ## counts as words, as running text writes them
+    words <- c("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+    n_des <- length(DESIGNS); n_ph <- length(PH_METHODS)
     HTML(sprintf("
-<h2>%s <small>v%s</small></h2>
+<div class='slx-hero'>
+  <span class='slx-chip'><span class='slx-dot'></span>Free, open source, and runs in your browser</span>
+  <h1 class='slx-h1'>Statistics for agricultural research,<br><span class='slx-grad'>right in your browser</span></h1>
+  <p class='slx-lead'>Analysis of variance for %s experimental designs, with means, critical differences and
+  post-hoc tests, and regression, correlation, principal components, cluster and factor analysis.
+  R runs on your own computer, so your data never leave it.</p>
+  <div class='slx-chips'>
+    <span class='slx-chip'>%d designs</span>
+    <span class='slx-chip'>%d post-hoc tests</span>
+    <span class='slx-chip'>Checked against Gomez &amp; Gomez (1984)</span>
+    <span class='slx-chip'>Readings in plain language</span>
+    <span class='slx-chip'>Powered by the %s R package, v%s</span>
+  </div>
+</div>
+
+<div class='slx-section'>
+<h3>About StatLabX</h3>
 <p>A free and open tool for the analysis of designed agricultural experiments. It brings the
 standard analyses used in field and horticultural research together in one accessible
 interface, and serves as a free, self-contained option for the kind of analysis researchers
-carry out in tools such as OPSTAT.</p>
+carry out in tools such as OPSTAT. It is the browser version of the %s package for R.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Developed by</h3>
 <ol>%s</ol>
+</div>
 
+<div class='slx-section'>
 <h3>Feedback and correspondence</h3>
 <p>Suggestions, bug reports and relevant correspondence are welcome. Please write to:</p>
 <ul>
@@ -11254,29 +11356,37 @@ carry out in tools such as OPSTAT.</p>
 <li><b>Mr. Uzair Javid Khan</b> <i>(maintainer)</i> &mdash; <a href='mailto:uzairkhan11w@gmail.com'>uzairkhan11w@gmail.com</a></li>
 </ul>
 <p>You may also open an issue in the project repository.</p>
+</div>
 
+<div class='slx-section'>
 <h3>How to cite</h3>
 <div class='box'>Shah, I. A., Khan, U. J. and Jeelani, M. I. (%s).
 <i>%s: analysis of designed agricultural experiments.</i> Version %s. Zenodo.
 doi:<a href='https://doi.org/%s' target='_blank'>%s</a></div>
 <p class='note'>This is the concept DOI: it always resolves to the most recent release.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Licence and source</h3>
 <p>Released under the GPL-3 licence. Source code and issue tracker:
 <a href='https://github.com/Uzairkhan11w/DOEpro' target='_blank'>github.com/Uzairkhan11w/DOEpro</a>.
 Run it in your browser at <a href='%s' target='_blank'>%s</a>.
 Every release is archived on Zenodo and carries a DOI.</p>
+</div>
 
+<div class='slx-section'>
 <h3>Statistical methods</h3>
 <p>The analysis of variance is fitted with <code>stats::aov</code>, using
 <code>Error(Rep/Main)</code> for split plots and <code>Error(Rep/(A+B))</code> for strip
-plots. Levene's test, the Box-Cox profile likelihood and all six multiple-comparison
-procedures are implemented directly in the app, so it depends only on <b>shiny</b>,
-<b>DT</b> and <b>ggplot2</b>.</p>
-<p class='note'>%s</p>",
-      APP_NAME, APP_VERSION, author_li,
+plots. Levene's test, the Box-Cox profile likelihood and all %s multiple-comparison
+procedures, Dunnett's critical values among them, are implemented directly in the package,
+so it depends only on <b>shiny</b>, <b>DT</b>, <b>ggplot2</b> and <b>rlang</b> (with
+<b>bslib</b>, which shiny itself uses).</p>
+<p class='note'>%s</p>
+</div>",
+      words[n_des], n_des, n_ph, APP_NAME, APP_VERSION, APP_NAME, author_li,
       format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
-      APP_URL, APP_URL, CREDIT_LONG))
+      APP_URL, APP_URL, words[n_ph], CREDIT_LONG))
   })
 }
 
