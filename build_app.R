@@ -12,6 +12,12 @@
 ##      Rscript build_app.R
 ##  or, in RStudio:
 ##      source("build_app.R")
+##  and then, to compile the browser build into docs/:
+##      export_app()
+##
+##  export_app() runs shinylive::export() and then adds the StatLabX loading
+##  screen from site/. The export rewrites docs/ from scratch, so the loading
+##  screen has to be added again after every export; build docs/ only this way.
 ###############################################################################
 
 ## Dependency order. constants.R must come first (it defines DESIGNS, the
@@ -140,4 +146,81 @@ n <- length(readLines(out))
 message(sprintf("Wrote %s", out))
 message(sprintf("  %d lines, %.0f KB, %d expressions from %d source files - verified complete.",
                 n, file.size(out) / 1024, length(gen), length(ORDER)))
-message("Next: unlink(\"docs\", recursive = TRUE); shinylive::export(\"app\", \"docs\")")
+message("Next, for the browser build: export_app()")
+
+## ------------------------------------------------------ the browser build ---
+## shinylive::export() compiles app/ into docs/, writing every file afresh,
+## including index.html and its service worker. The StatLabX loading screen
+## (site/) replaces shinylive's unexplained spinner, so it is put back after
+## every export here rather than by hand.
+export_app <- function(app = "app", out = "docs") {
+  unlink(out, recursive = TRUE)
+  shinylive::export(app, out)
+  brand_site(out)
+  invisible(out)
+}
+
+## The loading screen: a branded page shown until Shiny connects, with the
+## real progress of the download of R and its packages. The files the first
+## visit downloads are listed here with their sizes in this build, so the
+## bar measures the bytes received against the true total. If shinylive
+## changes the files it writes, this stops rather than ship a wrong total
+## or an unbranded page.
+brand_site <- function(out = "docs", site = "site") {
+  index <- file.path(out, "index.html")
+  sw <- file.path(out, "shinylive-sw.js")
+  stopifnot(file.exists(index), file.exists(sw), dir.exists(site))
+  html <- paste(readLines(index, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  if (grepl("slx-loading", html, fixed = TRUE))
+    stop(index, " already has the loading screen; run export_app() for a fresh export.", call. = FALSE)
+  read <- function(f) paste(readLines(file.path(site, f), warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  ## what the first visit downloads: R and its built-in library, the
+  ## package list and every package, and R's other libraries
+  webr <- file.path(out, "shinylive", "webr")
+  core <- file.path(webr, c("webr-worker.js", "R.js", "R.wasm", "libRblas.so", "libRlapack.so",
+                            "library.js.metadata", "library.data.gz"))
+  pkgs <- list.files(file.path(webr, "packages"), "[.]tgz$", recursive = TRUE, full.names = TRUE)
+  libs <- list.files(file.path(webr, "vfs", "usr", "lib", "R", "library"), "[.](data[.]gz|js[.]metadata)$",
+                     full.names = TRUE)
+  files <- c(core, file.path(webr, "packages", "metadata.rds"), pkgs, libs)
+  gone <- files[!file.exists(files)]
+  if (length(gone) || !length(pkgs))
+    stop("The export no longer has the files the loading screen counts (", paste(basename(gone), collapse = ", "),
+         "). Check what a first visit downloads and update brand_site().", call. = FALSE)
+  rel <- substring(normalizePath(files, "/"), nchar(normalizePath(out, "/")) + 2)
+  sizes <- sprintf('"%s": %.0f', rel, file.size(files))
+  js <- sub("/*FILES*/{}", paste0("{", paste(sizes, collapse = ", "), "}"), read("loading.js"), fixed = TRUE)
+  if (!grepl('"shinylive/webr/R.wasm"', js, fixed = TRUE))
+    stop("site/loading.js lost its /*FILES*/{} placeholder.", call. = FALSE)
+
+  ## the logo, as the page and the browser tab show it, taken from the
+  ## package so that there is one copy
+  src <- paste(readLines(file.path("R", "constants.R"), warn = FALSE), collapse = "\n")
+  b64 <- regmatches(src, regexpr("LOGO_URI <- \"data:image/png;base64,[A-Za-z0-9+/=]+", src))
+  if (!length(b64)) stop("LOGO_URI not found in R/constants.R.", call. = FALSE)
+  png <- jsonlite::base64_dec(sub(".*base64,", "", b64))
+  writeBin(png, file.path(out, "logo.png"))
+  writeBin(png, file.path(out, "favicon.ico"))
+
+  ## one insertion each, or nothing is written
+  put <- function(x, pattern, with) {
+    if (lengths(regmatches(x, gregexpr(pattern, x, fixed = TRUE))) != 1)
+      stop("index.html from shinylive no longer has exactly one ", pattern, call. = FALSE)
+    sub(pattern, with, x, fixed = TRUE)
+  }
+  head <- paste0(
+    "<title>StatLabX - statistics for agricultural and allied research</title>\n",
+    "    <meta name=\"description\" content=\"Free analysis of designed agricultural experiments and ",
+    "of agricultural data: ANOVA, means and C.D., post-hoc tests, regression, correlation, principal ",
+    "components, clustering and factor analysis. R runs in your browser.\" />\n",
+    "    <link rel=\"icon\" type=\"image/png\" href=\"logo.png\" />\n",
+    "    <style>\n", read("loading.css"), "\n    </style>")
+  html <- put(html, "<title>Shiny App</title>", head)
+  html <- put(html, "<body>", paste0("<body>\n", read("loading.html"), "\n<script>\n", js, "\n</script>"))
+  writeLines(html, index, useBytes = TRUE)
+  cat(read("sw-progress.js"), file = sw, sep = "\n", append = TRUE)
+  message(sprintf("Added the loading screen to %s: %d files, %.1f MB on a first visit.",
+                  out, length(files), sum(file.size(files)) / 1048576))
+  invisible(out)
+}

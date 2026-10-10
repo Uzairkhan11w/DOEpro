@@ -133,6 +133,13 @@
   significance is insufficient evidence of a difference, at the level chosen;
   an exact fit is said to make the verdicts meaningless rather than read as
   findings.
+* The browser version opens with a StatLabX loading screen instead of an
+  unexplained spinner. It says what is happening (R loading, R starting, the
+  packages loading and installing, the app starting), and its bar counts the
+  real bytes of R and its packages as they arrive, against the true total for
+  the build (about 59 MB); nothing is estimated and no percentage is printed.
+  It also says that R runs in the browser, so data never leave the computer,
+  and that only the first visit downloads R.
 * The residual plot is now of standardised residuals, with lines at -3 and 3
   and the points beyond them labelled with their row numbers.
 * Possible outliers are named by their row numbers in the data. Before, they

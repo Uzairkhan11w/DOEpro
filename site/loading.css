@@ -1,0 +1,53 @@
+/* StatLabX loading screen, shown while R and its packages load in the
+   browser. build_app.R puts this into docs/index.html after every export.
+   Colours follow the app: blue #3B7DD8, navy #1B4F9C, with violet only in
+   the wordmark and the bar. No web fonts, so nothing more to download. */
+#slx-loading {
+  position: fixed; inset: 0; z-index: 2147483000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px; box-sizing: border-box; overflow: auto;
+  background:
+    radial-gradient(1100px 560px at 15% -10%, #E4EEFD 0%, rgba(228, 238, 253, 0) 62%),
+    radial-gradient(900px 520px at 105% 110%, #EFE7FD 0%, rgba(239, 231, 253, 0) 58%),
+    #FAFCFF;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #1C2B4A; transition: opacity .35s ease;
+}
+#slx-loading.slx-done { opacity: 0; pointer-events: none; }
+#slx-loading * { box-sizing: border-box; }
+.slx-card { width: 100%; max-width: 440px; text-align: center; }
+.slx-logo { width: 84px; height: auto; display: block; margin: 0 auto 14px; }
+.slx-name { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+.slx-name span {
+  background: linear-gradient(90deg, #3B7DD8, #7C4DFF);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.slx-tag { margin: 6px 0 30px; color: #5B6B86; font-size: 15px; }
+.slx-bar { position: relative; height: 10px; border-radius: 999px; background: #E2E9F5; overflow: hidden; }
+.slx-fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, #3B7DD8, #7C4DFF); transition: width .25s ease;
+}
+/* after the downloads, or when they cannot be counted, the bar shows that
+   work is going on without claiming how much is left */
+.slx-bar.slx-working .slx-fill { opacity: .55; }
+.slx-bar.slx-working::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .75) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-100%); animation: slx-sweep 1.5s ease-in-out infinite;
+}
+@keyframes slx-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .slx-fill { transition: none; }
+  .slx-bar.slx-working::after { animation: none; }
+}
+.slx-status { margin: 14px 0 2px; font-size: 15px; font-weight: 600; min-height: 1.4em; }
+.slx-amount { margin: 0; font-size: 13px; color: #5B6B86; min-height: 1.3em; font-variant-numeric: tabular-nums; }
+.slx-note { margin: 24px 0 0; font-size: 13.5px; color: #41526E; line-height: 1.55; }
+.slx-slow {
+  margin: 16px 0 0; font-size: 13px; line-height: 1.5; color: #7A4B00;
+  background: #FFF4E0; border-radius: 10px; padding: 8px 12px;
+}
+.slx-foot { margin: 28px 0 0; font-size: 12px; color: #7A889E; }
+/* shinylive's own spinner sits underneath; its error panel must still show */
+.shinylive-viewer .loading-wrapper:not(.loading-wrapper-error) { visibility: hidden; }

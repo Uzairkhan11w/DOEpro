@@ -3,7 +3,64 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shiny App</title>
+    <title>StatLabX - statistics for agricultural and allied research</title>
+    <meta name="description" content="Free analysis of designed agricultural experiments and of agricultural data: ANOVA, means and C.D., post-hoc tests, regression, correlation, principal components, clustering and factor analysis. R runs in your browser." />
+    <link rel="icon" type="image/png" href="logo.png" />
+    <style>
+/* StatLabX loading screen, shown while R and its packages load in the
+   browser. build_app.R puts this into docs/index.html after every export.
+   Colours follow the app: blue #3B7DD8, navy #1B4F9C, with violet only in
+   the wordmark and the bar. No web fonts, so nothing more to download. */
+#slx-loading {
+  position: fixed; inset: 0; z-index: 2147483000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px; box-sizing: border-box; overflow: auto;
+  background:
+    radial-gradient(1100px 560px at 15% -10%, #E4EEFD 0%, rgba(228, 238, 253, 0) 62%),
+    radial-gradient(900px 520px at 105% 110%, #EFE7FD 0%, rgba(239, 231, 253, 0) 58%),
+    #FAFCFF;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #1C2B4A; transition: opacity .35s ease;
+}
+#slx-loading.slx-done { opacity: 0; pointer-events: none; }
+#slx-loading * { box-sizing: border-box; }
+.slx-card { width: 100%; max-width: 440px; text-align: center; }
+.slx-logo { width: 84px; height: auto; display: block; margin: 0 auto 14px; }
+.slx-name { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+.slx-name span {
+  background: linear-gradient(90deg, #3B7DD8, #7C4DFF);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.slx-tag { margin: 6px 0 30px; color: #5B6B86; font-size: 15px; }
+.slx-bar { position: relative; height: 10px; border-radius: 999px; background: #E2E9F5; overflow: hidden; }
+.slx-fill {
+  height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, #3B7DD8, #7C4DFF); transition: width .25s ease;
+}
+/* after the downloads, or when they cannot be counted, the bar shows that
+   work is going on without claiming how much is left */
+.slx-bar.slx-working .slx-fill { opacity: .55; }
+.slx-bar.slx-working::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .75) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-100%); animation: slx-sweep 1.5s ease-in-out infinite;
+}
+@keyframes slx-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .slx-fill { transition: none; }
+  .slx-bar.slx-working::after { animation: none; }
+}
+.slx-status { margin: 14px 0 2px; font-size: 15px; font-weight: 600; min-height: 1.4em; }
+.slx-amount { margin: 0; font-size: 13px; color: #5B6B86; min-height: 1.3em; font-variant-numeric: tabular-nums; }
+.slx-note { margin: 24px 0 0; font-size: 13.5px; color: #41526E; line-height: 1.55; }
+.slx-slow {
+  margin: 16px 0 0; font-size: 13px; line-height: 1.5; color: #7A4B00;
+  background: #FFF4E0; border-radius: 10px; padding: 8px 12px;
+}
+.slx-foot { margin: 28px 0 0; font-size: 12px; color: #7A889E; }
+/* shinylive's own spinner sits underneath; its error panel must still show */
+.shinylive-viewer .loading-wrapper:not(.loading-wrapper-error) { visibility: hidden; }
+    </style>
     <script
       src="./shinylive/load-shinylive-sw.js"
       type="module"
@@ -21,6 +78,146 @@
     
   </head>
   <body>
+<div id="slx-loading">
+  <div class="slx-card">
+    <img class="slx-logo" src="logo.png" alt="" width="84" height="81">
+    <h1 class="slx-name">StatLab<span>X</span></h1>
+    <p class="slx-tag">Statistics for agricultural and allied research</p>
+    <div class="slx-bar" id="slx-bar" role="progressbar" aria-label="Loading R and its packages"
+         aria-valuemin="0" aria-valuemax="100"><div class="slx-fill" id="slx-fill"></div></div>
+    <p class="slx-status" id="slx-status" aria-live="polite">Getting ready</p>
+    <p class="slx-amount" id="slx-amount"></p>
+    <p class="slx-note">StatLabX runs R inside your browser, so your data never leave this computer.
+      Only the first visit downloads R; your browser usually keeps a copy, so later visits skip the
+      download, though R still takes a little while to start.</p>
+    <p class="slx-slow" id="slx-slow" hidden>Still working. On a slow connection or an older computer this
+      can take a minute or two; please keep this tab open.</p>
+    <p class="slx-foot">Powered by the DOEpro R package</p>
+  </div>
+</div>
+<script>
+/* StatLabX loading screen. build_app.R puts this into docs/index.html after
+   every shinylive export, and fills in FILES with the size of every file the
+   first visit downloads (R, its built-in library and the packages), read
+   from docs/ itself, so the total is the real one for this build.
+
+   webR downloads those files from its own worker, where the page's fetch
+   cannot see them. The service worker sees every request, so the addition
+   to it (sw-progress.js) counts the bytes of each file as they arrive and
+   reports them on the "statlabx-loading" channel. The bar shows those bytes
+   against the total; no percentage is printed, and nothing is estimated. The
+   stages are read from which files have arrived: R itself, then R starting
+   (webR asks for the package list once R runs), then the packages, then R
+   installing and loading them, then the app's own page loading in its
+   frame, which ends when Shiny connects. The words say "loading", not
+   "downloading": on later visits the same bytes come from the browser's
+   copy, and the screen cannot tell the two apart. */
+(function () {
+  "use strict";
+  var FILES = {"shinylive/webr/webr-worker.js": 134029, "shinylive/webr/R.js": 785856, "shinylive/webr/R.wasm": 18062845, "shinylive/webr/libRblas.so": 198205, "shinylive/webr/libRlapack.so": 1769888, "shinylive/webr/library.js.metadata": 181616, "shinylive/webr/library.data.gz": 15057328, "shinylive/webr/packages/metadata.rds": 1767, "shinylive/webr/packages/bookdown/bookdown_0.46.tgz": 952864, "shinylive/webr/packages/crosstalk/crosstalk_1.2.2.tgz": 346096, "shinylive/webr/packages/DT/DT_0.34.0.tgz": 1729331, "shinylive/webr/packages/evaluate/evaluate_1.0.5.tgz": 72262, "shinylive/webr/packages/farver/farver_2.1.2.tgz": 1317442, "shinylive/webr/packages/ggplot2/ggplot2_4.0.3.tgz": 7481119, "shinylive/webr/packages/gtable/gtable_0.3.6.tgz": 184798, "shinylive/webr/packages/highr/highr_0.12.tgz": 30097, "shinylive/webr/packages/htmlwidgets/htmlwidgets_1.6.4.tgz": 83849, "shinylive/webr/packages/isoband/isoband_0.3.0.tgz": 1627614, "shinylive/webr/packages/knitr/knitr_1.51.tgz": 768447, "shinylive/webr/packages/labeling/labeling_0.4.3.tgz": 42861, "shinylive/webr/packages/lazyeval/lazyeval_0.2.3.tgz": 141949, "shinylive/webr/packages/pagedown/pagedown_0.24.tgz": 290540, "shinylive/webr/packages/processx/processx_3.9.0.tgz": 254118, "shinylive/webr/packages/ps/ps_1.9.3.tgz": 276822, "shinylive/webr/packages/RColorBrewer/RColorBrewer_1.1-3.tgz": 26996, "shinylive/webr/packages/rmarkdown/rmarkdown_2.31.tgz": 2395148, "shinylive/webr/packages/S7/S7_0.2.2.tgz": 225283, "shinylive/webr/packages/scales/scales_1.4.0.tgz": 620880, "shinylive/webr/packages/servr/servr_0.32.tgz": 69771, "shinylive/webr/packages/tinytex/tinytex_0.59.tgz": 93093, "shinylive/webr/packages/vctrs/vctrs_0.7.3.tgz": 1433335, "shinylive/webr/packages/viridisLite/viridisLite_0.4.3.tgz": 1295884, "shinylive/webr/packages/xfun/xfun_0.57.tgz": 408478, "shinylive/webr/packages/yaml/yaml_2.3.12.tgz": 88482, "shinylive/webr/vfs/usr/lib/R/library/parallel.data.gz": 349042, "shinylive/webr/vfs/usr/lib/R/library/parallel.js.metadata": 1238, "shinylive/webr/vfs/usr/lib/R/library/tcltk.data.gz": 132160, "shinylive/webr/vfs/usr/lib/R/library/tcltk.js.metadata": 2019, "shinylive/webr/vfs/usr/lib/R/library/translations.data.gz": 3061528, "shinylive/webr/vfs/usr/lib/R/library/translations.js.metadata": 35184};
+  var total = 0, f;
+  for (f in FILES) total += FILES[f];
+
+  var screen = document.getElementById("slx-loading");
+  if (!screen) return;
+  var bar = document.getElementById("slx-bar");
+  var fill = document.getElementById("slx-fill");
+  var status = document.getElementById("slx-status");
+  var amount = document.getElementById("slx-amount");
+  var slow = document.getElementById("slx-slow");
+
+  var got = {}, ended = {}, heard = false, appStarting = false, lastNews = Date.now(), shown = "";
+
+  function mb(bytes) { return (bytes / 1048576).toFixed(1); }
+  // R itself and its built-in library sit directly in shinylive/webr/ and
+  // arrive before R starts; the package list (metadata.rds) is asked for
+  // once R runs, and the packages and R's other libraries (vfs/) after it
+  function isCore(file) { return /^shinylive\/webr\/[^/]+$/.test(file); }
+  function isList(file) { return /\/packages\/metadata\.rds$/.test(file); }
+
+  function say(text) {
+    if (text !== shown) { shown = text; status.textContent = text; lastNews = Date.now(); }
+  }
+
+  // the bar and the line under it, from the bytes counted so far
+  function draw() {
+    var received = 0, coreDone = true, laterDone = true, listSeen = false;
+    for (f in FILES) {
+      if (got[f] !== undefined) received += Math.min(got[f], FILES[f]);
+      if (isList(f)) listSeen = got[f] !== undefined;
+      else if (isCore(f)) { if (!ended[f]) coreDone = false; }
+      else if (!ended[f]) laterDone = false;
+    }
+    if (coreDone && listSeen && laterDone) {
+      fill.style.width = "100%";
+      bar.classList.add("slx-working");
+      bar.removeAttribute("aria-valuenow");
+      amount.textContent = mb(total) + " MB of R and its packages in place";
+      say(appStarting ? "Starting StatLabX" : "Installing and loading the packages");
+      return;
+    }
+    fill.style.width = (100 * received / total).toFixed(2) + "%";
+    bar.setAttribute("aria-valuenow", Math.floor(100 * received / total));
+    amount.textContent = mb(received) + " of " + mb(total) + " MB";
+    if (!coreDone) say("Loading R");
+    else if (!listSeen) say("Starting R in your browser");
+    else say("Loading the packages the analyses use");
+  }
+
+  // without the channel, or if no file is reported (an old service worker
+  // still in charge on the first load after an update), the bar says only
+  // that work is going on
+  function unknown() {
+    fill.style.width = "100%";
+    bar.classList.add("slx-working");
+    bar.removeAttribute("aria-valuenow");
+    amount.textContent = "";
+    say("Loading R and its packages");
+  }
+
+  var channel = null;
+  if (typeof BroadcastChannel === "function" && total > 0) {
+    channel = new BroadcastChannel("statlabx-loading");
+    channel.onmessage = function (e) {
+      var m = e.data || {};
+      if (!m.file || !(m.file in FILES)) return;
+      heard = true;
+      got[m.file] = Math.max(got[m.file] || 0, m.bytes || 0);
+      if (m.done) ended[m.file] = true;
+      lastNews = Date.now();
+      draw();
+    };
+  } else unknown();
+
+  function finish() {
+    clearInterval(timer);
+    if (channel) channel.close();
+    screen.classList.add("slx-done");
+    setTimeout(function () { if (screen.parentNode) screen.parentNode.removeChild(screen); }, 400);
+  }
+
+  var started = Date.now();
+  var timer = setInterval(function () {
+    // the app is ready once Shiny in the app frame has connected
+    var frame = document.querySelector("#root iframe");
+    var ready = false;
+    try {
+      var w = frame && frame.contentWindow;
+      ready = !!(w && w.Shiny && w.Shiny.shinyapp && w.Shiny.shinyapp.isConnected());
+    } catch (err) { ready = false; }
+    if (ready) return finish();
+    // the app's page is given its address once R has started the app
+    if (!appStarting && frame && /app_/.test(frame.getAttribute("src") || "")) {
+      appStarting = true;
+      if (heard) draw(); else say("Starting StatLabX");
+    }
+    // shinylive's error panel must be seen, so the screen steps aside
+    if (document.querySelector(".loading-wrapper-error")) return finish();
+    if (!heard && !appStarting && Date.now() - started > 15000) unknown();
+    if (Date.now() - lastNews > 45000) slow.hidden = false;
+  }, 250);
+})();
+</script>
     
     <div style="height: 100vh; width: 100vw" id="root"></div>
     
