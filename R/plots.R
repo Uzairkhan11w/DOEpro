@@ -140,12 +140,20 @@ plot_main <- function(res, effect, type = "bar", show_letters = TRUE, x_var = NU
   if (type == "heat") p + labs(fill = paste("Mean", resp), y = f2) else p + labs(fill = f2)
 }
 
+## The residuals are standardised (divided by their standard deviation), the
+## scale on which the assumption checks flag a value beyond -3 or 3; those
+## points are labelled with their row numbers in the data table.
 plot_diag <- function(res) {
   df <- data.frame(fit = res$fitted, res = res$resid,
-                   std = res$resid / stats::sd(res$resid))
-  p1 <- ggplot(df, aes(fit, res)) + geom_hline(yintercept = 0, lty = 2) +
-    geom_point(colour = "#3B7DD8") + labs(title = "Residuals vs fitted",
-    x = "Fitted", y = "Residual") + theme_doe()
+                   std = res$resid / stats::sd(res$resid), row = row_ids(res$data))
+  far <- df[reg_far(df$std), , drop = FALSE]
+  p1 <- ggplot(df, aes(fit, std)) + geom_hline(yintercept = 0, lty = 2) +
+    geom_hline(yintercept = c(-3, 3), linetype = 3, colour = "grey45") +
+    geom_point(colour = "#3B7DD8") +
+    (if (nrow(far)) geom_text(data = far, aes(label = paste("row", .data$row), vjust = ifelse(.data$std > 0, -0.8, 1.8)),
+                              size = 3.4, colour = "#C0392B")) +
+    scale_y_continuous(expand = expansion(mult = 0.12)) +
+    labs(title = "Residuals against fitted values", x = "Fitted", y = "Standardised residual") + theme_doe()
   p2 <- ggplot(df, aes(sample = std)) + stat_qq(colour = "#3B7DD8") + stat_qq_line() +
     labs(title = "Normal Q-Q plot", x = "Theoretical", y = "Standardised residual") + theme_doe()
   p3 <- ggplot(df, aes(res)) + geom_histogram(bins = 12, fill = "#BBD3F2", colour = "white") +

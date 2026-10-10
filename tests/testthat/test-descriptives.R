@@ -510,7 +510,7 @@ test_that("the Assumptions tab shows all four residual plots", {
     p <- diag_plots()
     expect_length(p, 4)
     titles <- vapply(p, function(g) g$labels$title, character(1))
-    expect_identical(titles, c("Residuals vs fitted", "Normal Q-Q plot",
+    expect_identical(titles, c("Residuals against fitted values", "Normal Q-Q plot",
                                "Histogram of residuals", "Scale-location"))
     for (o in c("diagFit", "diagQQ", "diagHist", "diagScale"))
       expect_match(output[[o]]$src, "^data:image/png")

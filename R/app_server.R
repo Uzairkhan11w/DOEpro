@@ -364,12 +364,13 @@ doepro_server <- function(input, output, session) {
     r <- ok()
     anv <- combined_anova_html(r)
     tagList(
-      if (!is.null(anv)) HTML(anv) else NULL,
+      if (!is.null(anv)) HTML(paste0(anv, rd_html(anova_combined_text(r)))) else NULL,
       tags$hr(),
       HTML(paste(vapply(names(r$fits), function(nm) paste0(
         "<h4>", r$fits[[nm]]$header, "</h4>",
         df_html(anova_display(r$fits[[nm]]$final$anova, r$alpha)),
-        anova_note(r$fits[[nm]]$final)), character(1)), collapse = "")))
+        anova_note(r$fits[[nm]]$final),
+        rd_html(anova_text(r$fits[[nm]]$final, r$fits[[nm]]$trans))), character(1)), collapse = "")))
   })
 
   ## ------------------------------------------------------------------ means --
@@ -377,7 +378,7 @@ doepro_server <- function(input, output, session) {
     r <- ok()
     HTML(means_section_html(r, digits = input$digits %||% 2,
                             letters_on = isTRUE(input$letters),
-                            detailed = isTRUE(input$detailed)))
+                            detailed = isTRUE(input$detailed), readings = TRUE))
   })
 
   ## --------------------------------------------------- per-response pickers --
@@ -391,6 +392,14 @@ doepro_server <- function(input, output, session) {
 
   ## ------------------------------------------------------------ assumptions --
   output$assumtxt <- renderUI(HTML(assum_table_html(aFit()$asm)))
+  output$asmText <- renderUI({ f <- aFit(); HTML(rd_html(assum_text(f$final, f$asm, f$trans), "What the checks show.")) })
+  ## each plot's note, empty when the plot cannot be drawn (it says why)
+  output$bcText <- renderUI({ f <- aFit(); HTML(rd_note(boxcox_text(f$asm, f$trans))) })
+  output$mvText <- renderUI({ f <- aFit(); HTML(rd_note(meanvar_text(f$final, f$asm))) })
+  output$diagFitText   <- renderUI({ f <- aFit(); HTML(rd_note(resid_text(f$final, f$asm))) })
+  output$diagQQText    <- renderUI({ f <- aFit(); HTML(rd_note(qq_aov_text(f$final, f$asm))) })
+  output$diagHistText  <- renderUI({ f <- aFit(); HTML(rd_note(hist_aov_text(f$final, f$asm))) })
+  output$diagScaleText <- renderUI({ f <- aFit(); HTML(rd_note(scale_text(f$final, f$asm))) })
 
   output$sugbox <- renderUI({
     f <- aFit()
@@ -467,6 +476,21 @@ doepro_server <- function(input, output, session) {
   output$phStats <- renderDT({
     x <- ph(); validate(need(is.null(x$err), x$err))
     datatable(x$stats, rownames = FALSE, options = list(dom = "t", ordering = FALSE))
+  })
+
+  ## what the chosen test does, and what it finds here
+  output$phText <- renderUI({
+    x <- ph(); req(is.null(x$err))
+    f <- pFit(); e <- f$final$effects[[input$phEff]]
+    HTML(sprintf("<div class='box'><b>What the test does.</b> %s<br><b>Here.</b> %s</div>",
+                 esc(PH_WHAT[[input$phMethod]]), esc(posthoc_groups_text(x, e, f$trans, isTRUE(f$asm$exact)))))
+  })
+  output$phPairsText <- renderUI({
+    x <- ph(); req(is.null(x$err))
+    f <- pFit(); e <- f$final$effects[[input$phEff]]
+    lsd <- if (isTRUE(x$f_sig) && input$phMethod != PH_METHODS[1])
+      tryCatch(posthoc(f$final, input$phEff, PH_METHODS[1], f$final$alpha), error = function(err) NULL)
+    HTML(rd_html(posthoc_pairs_text(x, e, input$phMethod, lsd, isTRUE(f$asm$exact))))
   })
 
   output$phRangesUI <- renderUI({
@@ -1021,6 +1045,12 @@ doepro_server <- function(input, output, session) {
     plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv)
   })
   output$mainPlot <- renderPlot(mp())
+  output$mainPlotText <- renderUI({
+    f <- gFit(); req(input$plEff %in% names(f$final$effects))
+    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
+    HTML(rd_note(main_plot_text(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv,
+                                input$digits %||% 2)))
+  })
 
   ## -------------------------------------------------------- interpretation --
   output$interpOut <- renderUI({

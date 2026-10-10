@@ -221,17 +221,25 @@ means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE) {
          paste(items, collapse = "</li><li>"), "</li></ul></div>")
 }
 
-## everything the Means tab (and the report) shows
-means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FALSE) {
+## everything the Means tab (and the report) shows; with `readings`, each
+## table is followed by a reading of what it shows
+means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FALSE, readings = FALSE) {
   fits <- rr$fits
   f1 <- rr$facs
   any_trans <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
 
   out <- c("<div class='means-wrap'>", means_summary_card(rr, digits))
 
-  ## Section A: main-effect (treatment) means, every response side by side
-  mains <- vapply(f1, function(fac)
-    sketch_main_html(fits, fac, digits, letters_on), character(1))
+  ## Section A: main-effect (treatment) means, every response side by side,
+  ## read one response at a time
+  mains <- vapply(f1, function(fac) {
+    tab <- sketch_main_html(fits, fac, digits, letters_on)
+    if (!readings || !nzchar(tab)) return(tab)
+    paste0(tab, rd_html(vapply(fits, function(f) {
+      e <- f$final$effects[[fac]]
+      if (is.null(e)) "" else paste0(f$header, ": ", means_text(e, digits, f$trans, f$final))
+    }, character(1))))
+  }, character(1))
   mains <- mains[nzchar(mains)]
   if (length(mains)) {
     lead <- if (length(f1) >= 2)
@@ -244,8 +252,12 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
 
   ## Section B: two-way tables, one per response
   if (length(f1) >= 2) {
-    twoways <- vapply(names(fits), function(nm)
-      sketch_twoway_html(fits[[nm]], f1[1], f1[2], digits, letters_on), character(1))
+    twoways <- vapply(names(fits), function(nm) {
+      tab <- sketch_twoway_html(fits[[nm]], f1[1], f1[2], digits, letters_on)
+      if (!readings || !nzchar(tab)) return(tab)
+      r <- fits[[nm]]$final
+      paste0(tab, rd_html(twoway_text(r, r$effects[[paste0(f1[1], ":", f1[2])]], f1[1], f1[2], digits, fits[[nm]]$trans)))
+    }, character(1))
     twoways <- twoways[nzchar(twoways)]
     if (length(twoways)) {
       lead <- sprintf("<p class='ms-lead'>Cell (interaction) means of %s &times; %s, with marginal means in the last row and column. One table per response variable.</p>",
@@ -263,7 +275,7 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
   if (detailed) {
     det <- vapply(names(fits), function(nm) paste0(
       "<div class='ms-detail-block'><div class='ms-detail-name'>", fits[[nm]]$header, "</div>",
-      as.character(integrated_means_html(fits[[nm]]$final, digits)), "</div>"), character(1))
+      as.character(integrated_means_html(fits[[nm]]$final, digits, readings)), "</div>"), character(1))
     out <- c(out,
       "<div class='ms-section'><div class='ms-h'><span class='ms-badge'>C</span>Detailed tables (every effect)</div>",
       det, "</div>")

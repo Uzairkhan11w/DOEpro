@@ -87,12 +87,20 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
       Significant = ifelse(sig[ij], "Yes",
                     ifelse(raw[ij], "No (inside a non-significant range)", "No")),
       check.names = FALSE, stringsAsFactors = FALSE)
-    list(lets = lets, pairs = pairs, k = k, crit = crit[upper.tri(crit)])
+    list(lets = lets, pairs = pairs, k = k, crit = crit[upper.tri(crit)], sig = sig)
   }
   out <- lapply(fams, run)
 
   within <- if (is.null(e$slice)) NULL else
     vapply(fams, function(ix) as.character(m[[e$slice]][ix[1]]), character(1))
+  ## each family's means and the pairs this test declares, for the reading;
+  ## the labels name only the levels that vary within the family
+  vary <- setdiff(e$vars, e$slice)
+  families <- lapply(seq_along(fams), function(f) {
+    ix <- fams[[f]]
+    list(lab = apply(m[ix, vary, drop = FALSE], 1, function(z) paste(trimws(z), collapse = " : ")),
+         mu = m$Mean[ix], sig = out[[f]]$sig, within = if (is.null(within)) NULL else within[f])
+  })
   groups <- do.call(rbind, lapply(seq_along(fams), function(f) {
     ix <- fams[[f]]
     g <- data.frame(Treatment = lab[ix], Mean = m$Mean[ix], row.names = NULL, check.names = FALSE)
@@ -174,7 +182,7 @@ posthoc <- function(res, effect, method, alpha = res$alpha) {
 
   list(groups = groups, stats = st, ranges = ranges, pairs = pairs,
        note = if (length(note)) note else NULL, f_sig = f_sig, alpha = alpha,
-       method = PH_LABELS[[method]])
+       method = PH_LABELS[[method]], families = families)
 }
 
 ## What the user sees and exports: the procedure's letters and verdicts only

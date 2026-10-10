@@ -87,7 +87,8 @@ gxe_env_tables <- function(e, digits, grand) {
   paste0("<div class='ms-env-wrap'>", paste(out, collapse = ""), "</div>")
 }
 
-integrated_means_html <- function(res, digits = 2) {
+## With `readings`, each table is followed by a reading of what it shows.
+integrated_means_html <- function(res, digits = 2, readings = FALSE) {
   d <- res$data; resp <- res$resp
   h <- c(sprintf("<p><b>Response:</b> %s &nbsp; | &nbsp; <b>Grand mean:</b> %s &nbsp; | &nbsp; <b>%s</b></p>",
                  resp, fmt(res$grand),
@@ -157,7 +158,8 @@ integrated_means_html <- function(res, digits = 2) {
         "</table>")
     if (!isTRUE(e$is_gxe) && length(e$notes) && nzchar(e$notes[1]))
       note <- paste0("<p class='note'>", e$notes, "</p>")
-    h <- c(h, "<div class='block'>", body, foot, extra, note, "</div>")
+    rd <- if (readings) rd_html(detail_text(res, e, digits, res$trans %||% "none")) else ""
+    h <- c(h, "<div class='block'>", body, foot, extra, note, rd, "</div>")
   }
   HTML(paste(h, collapse = "\n"))
 }

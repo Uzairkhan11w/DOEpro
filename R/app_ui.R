@@ -140,14 +140,15 @@ doepro_ui <- function() navbarPage(
   tabPanel("4. Assumptions",
     fluidRow(column(4, uiOutput("aRespUI"))),
     uiOutput("assumtxt"),
+    uiOutput("asmText"),
     uiOutput("sugbox"),
-    fluidRow(column(6, plotOutput("bcPlot", height = "300px")),
-             column(6, plotOutput("mvPlot", height = "300px"))),
+    fluidRow(column(6, plotOutput("bcPlot", height = "300px"), uiOutput("bcText")),
+             column(6, plotOutput("mvPlot", height = "300px"), uiOutput("mvText"))),
     tags$hr(), h4("Residual diagnostics"),
-    fluidRow(column(6, plotOutput("diagFit", height = "300px")),
-             column(6, plotOutput("diagQQ", height = "300px"))),
-    fluidRow(column(6, plotOutput("diagHist", height = "300px")),
-             column(6, plotOutput("diagScale", height = "300px")))),
+    fluidRow(column(6, plotOutput("diagFit", height = "300px"), uiOutput("diagFitText")),
+             column(6, plotOutput("diagQQ", height = "300px"), uiOutput("diagQQText"))),
+    fluidRow(column(6, plotOutput("diagHist", height = "300px"), uiOutput("diagHistText")),
+             column(6, plotOutput("diagScale", height = "300px"), uiOutput("diagScaleText")))),
 
   ## --------------------------------------------------------------- posthoc --
   tabPanel("5. Post-hoc",
@@ -160,14 +161,14 @@ doepro_ui <- function() navbarPage(
         actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
       mainPanel(width = 9,
         uiOutput("phNote"),
-        h4("Treatment groups"), DTOutput("phTab"),
+        h4("Treatment groups"), DTOutput("phTab"), uiOutput("phText"),
         h4("Test parameters"), DTOutput("phStats"),
         uiOutput("phRangesUI"),
         h4("Pairwise comparisons"),
         div(class = "note", paste(
           "Every pair of means: their difference, the standard error of that difference,",
           "the critical value and critical difference it is judged against, and the verdict.")),
-        DTOutput("phPairs"))
+        DTOutput("phPairs"), uiOutput("phPairsText"))
     )),
 
   ## ----------------------------------------------------------------- plots --
@@ -180,7 +181,7 @@ doepro_ui <- function() navbarPage(
             "Heat map" = "heat", "Box plot" = "box")),
         checkboxInput("plLetters", "Show grouping letters", TRUE),
         downloadButton("dl_plot", "Plot (PNG)")),
-      mainPanel(width = 9, plotOutput("mainPlot", height = "560px")))
+      mainPanel(width = 9, plotOutput("mainPlot", height = "560px"), uiOutput("mainPlotText")))
     ),
 
   ## -------------------------------------------------------------- interpret --

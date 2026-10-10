@@ -31,6 +31,7 @@ ORDER <- c(
   "cluster.R",         # hierarchical cluster analysis
   "factor.R",          # factor analysis
   "interpret.R",       # plain-English interpretation and the report CSS
+  "readings.R",        # readings after the ANOVA tables and plots
   "tables_sketch.R",   # the tables of means shown in the app
   "report.R",          # the HTML report
   "run_all.R",         # the multi-response driver and the help text

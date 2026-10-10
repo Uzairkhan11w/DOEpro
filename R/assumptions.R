@@ -131,8 +131,13 @@ check_assumptions <- function(res) {
   cells <- interaction(d[res$facs], drop = TRUE)
   exact <- exact_fit(res)
 
-  sw <- if (!exact && length(r) >= 3 && length(r) <= 5000) stats::shapiro.test(r) else NULL
+  ## With one error degree of freedom the residuals are one fixed pattern,
+  ## set by the layout, scaled up or down: in a 2 x 2 RCBD Shapiro-Wilk gives
+  ## p = 0.024 whatever the data, a verdict about the layout, not the errors.
+  one_df <- isTRUE(res$dfe < 2)
+  sw <- if (!exact && !one_df && length(r) >= 3 && length(r) <= 5000) stats::shapiro.test(r) else NULL
   norm_why <- if (exact) "the model fits every value exactly, so the residuals are all zero"
+              else if (one_df) "with one error degree of freedom the residuals take the same pattern whatever the data, so their shape says nothing about normality"
               else if (is.null(sw)) "Shapiro-Wilk needs between 3 and 5000 residuals" else NULL
   lev  <- levene_test(d[[resp]], cells)
   bart <- bartlett_cells(d[[resp]], cells)
@@ -185,7 +190,9 @@ check_assumptions <- function(res) {
   bc <- if (exact) NULL else tryCatch(boxcox_profile(d[[resp]], res$X, level = 1 - alpha),
                                       error = function(e) NULL)
 
-  outliers <- if (exact) integer(0) else which(abs(r / stats::sd(r)) > 3)
+  ## named by the row numbers of the data table, which differ from positions
+  ## among the analysed rows once any row has been left out
+  outliers <- if (exact) integer(0) else rd_far_rows(res)
 
   list(alpha = alpha, exact = exact, strata = isTRUE(res$design %in% c("SPLIT", "STRIP")),
        shapiro = sw, norm_why = norm_why,

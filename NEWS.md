@@ -116,6 +116,32 @@
   variables, low communalities and Heywood cases are named, and the reading
   leaves naming the factors to the reader. New exported function
   `fa_data()`.
+* Every table and plot of the analysis of variance now has a reading after
+  it. The ANOVA table: each row's verdict in the terms of the design (blocks,
+  rows and columns, an interaction as one factor's effect depending on
+  another), which error each row is tested against in split plots, strip
+  plots and pooled analyses, and the CV against the usual guide. The tables
+  of means: the highest and lowest means and the means that do not differ
+  significantly from them, exactly as the letters and C.D.s decide; how a
+  significant interaction changes the pattern from row to row; a caution on
+  main-effect means when an interaction involving the factor is significant.
+  The post-hoc tab: what the chosen test does, what it finds, how many pairs
+  it declares, those the step-down rule holds back, and the count Fisher's
+  protected LSD gives. The assumption checks, the Box-Cox profile, the
+  mean-variance plot and the four residual plots, and the main plot on the
+  Plots tab, including whether interaction lines cross. A result short of
+  significance is insufficient evidence of a difference, at the level chosen;
+  an exact fit is said to make the verdicts meaningless rather than read as
+  findings.
+* The residual plot is now of standardised residuals, with lines at -3 and 3
+  and the points beyond them labelled with their row numbers.
+* Possible outliers are named by their row numbers in the data. Before, they
+  were their positions among the analysed rows, which point at the wrong row
+  once any row has been left out.
+* With one error degree of freedom the residuals take the same pattern
+  whatever the data (in a 2 x 2 RCBD, Shapiro-Wilk gave p = 0.024 every
+  time), so normality is reported as not testable instead of as a
+  significant departure.
 * The Assumptions tab now shows all four residual plots. Before, only the
   scale-location plot appeared. With few distinct fitted values (a CRD), its
   trend line joins the mean at each fitted value instead of a loess curve
