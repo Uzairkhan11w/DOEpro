@@ -24,6 +24,7 @@ plain-English interpretation, and a report you can download as HTML or PDF.
 1. **Dr. Immad A. Shah** — Scientist (Statistics), Division of Agricultural Statistics, SKUAST-Kashmir. [ORCID 0000-0003-2761-5112](https://orcid.org/0000-0003-2761-5112) · immad11w@skuastkashmir.ac.in
 2. **Mr. Uzair Javid Khan** *(maintainer)* — UG Research Student, Statistics, AAAMDC Bemina, Cluster University Srinagar. [ORCID 0009-0001-6368-0977](https://orcid.org/0009-0001-6368-0977) · uzairkhan11w@gmail.com
 3. **Dr. M. Iqbal Jeelani** — Scientist (Statistics), Division of Agricultural Statistics, SKUAST-Kashmir. [ORCID 0000-0002-2974-2871](https://orcid.org/0000-0002-2974-2871)
+4. **Dr. Imran Khan** *(contributor)* — Division of Agricultural Statistics, SKUAST-Kashmir · imrankhan@skuastkashmir.ac.in
 
 Suggestions and feedback are welcome — write to the maintainer (uzairkhan11w@gmail.com) or open an issue in the repository.
 

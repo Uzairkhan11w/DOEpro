@@ -10,7 +10,7 @@
 ## cannot support. The readings are plain text, escaped where they are shown.
 
 ## "p = 0.0216" or "p < 0.0001", as the tables print it
-rd_p <- function(p) gsub("&lt;", "<", p_eq(p), fixed = TRUE)
+rd_p <- function(p, alpha) gsub("&lt;", "<", p_eq(p, alpha), fixed = TRUE)
 
 ## "5%"
 rd_lvl <- function(alpha) paste0(pct(alpha), "%")
@@ -19,7 +19,7 @@ rd_lvl <- function(alpha) paste0(pct(alpha), "%")
 ## the level of the double star, is reported at that level.
 rd_sig <- function(p, alpha)
   sprintf("%s at the %s level (%s)", if (p < alpha) "significant" else "not significant",
-          rd_lvl(if (p < alpha / 5) alpha / 5 else alpha), rd_p(p))
+          rd_lvl(if (p < alpha / 5) alpha / 5 else alpha), rd_p(p, alpha))
 
 ## "the effect of Nitrogen depends on the level of Variety"; with three or
 ## more factors, "the interaction of A and B differs between the levels of C"
@@ -290,7 +290,7 @@ means_body <- function(e, digits, tr) {
   sig <- effect_sig(e)
   verdict <- if (is.na(e$p)) "" else if (sig) "" else
     sprintf(paste("The F-test for %s is not significant at the %s level (%s), so no C.D. is quoted and no letters are given:",
-                  "there is insufficient evidence that the %s means differ."), v, lvl, rd_p(e$p), v)
+                  "there is insufficient evidence that the %s means differ."), v, lvl, rd_p(e$p, a), v)
   if (length(top) == k)
     return(paste0(sprintf("All %d %s means print as %s.", k, v, pr[1]), if (nzchar(verdict)) paste0(" ", verdict) else ""))
   ends <- if (k == 2) sprintf("%s has the higher mean (%s) and %s the lower (%s).", lab[top], pr[top], lab[bot], pr[bot])
@@ -338,13 +338,13 @@ twoway_text <- function(res, e, f1, f2, digits = 2, tr = "none", cd_digits = dig
     return(sprintf(paste("The %s x %s interaction is not significant at the %s level (%s): there is insufficient evidence that the",
                          "differences between the %s means change with %s, so the marginal means (the last row and column) can",
                          "be read on their own, each with its own factor's F-test and C.D. A small interaction may have gone undetected."),
-                   f1, f2, lvl, rd_p(e$p), f2, f1))
+                   f1, f2, lvl, rd_p(e$p, a), f2, f1))
   m <- e$means; shown <- rd_shown(e, tr); pr <- fmt(shown, digits)
   l1 <- levels(res$data[[f1]]); l1 <- l1[l1 %in% as.character(m[[f1]])]
   rows <- lapply(l1, function(x) which(as.character(m[[f1]]) == x))
   best <- vapply(rows, function(i) join_and(as.character(m[[f2]][i][at_extreme(pr[i], max)])), "")
   out <- sprintf("The %s x %s interaction is significant at the %s level (%s): there is evidence that the differences between the %s means are not the same at every level of %s.",
-                 f1, f2, rd_lvl(if (e$p < a / 5) a / 5 else a), rd_p(e$p), f2, f1)
+                 f1, f2, rd_lvl(if (e$p < a / 5) a / 5 else a), rd_p(e$p, a), f2, f1)
   n2 <- length(unique(as.character(m[[f2]])))
   if (length(unique(best)) == 1) {
     ## the same level is highest everywhere: say whether the order of the
@@ -616,11 +616,11 @@ assum_text <- function(res, asm, tr = "none") {
   out <- if (identical(tr, "none")) character(0)
          else sprintf("These checks are of the analysis of the transformed values (%s).", TRANS[[tr]]$lab)
   norm <- if (is.na(asm$p_norm)) sprintf("Normality could not be tested: %s.", asm$norm_why %||% "too few residuals")
-    else if (asm$p_norm < a) sprintf("The Shapiro-Wilk test finds that the residuals depart from a normal distribution, significant at the %s level (%s); the Q-Q plot below shows where.", lvl, rd_p(asm$p_norm))
-    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals depart from a normal distribution (%s).", lvl, rd_p(asm$p_norm))
+    else if (asm$p_norm < a) sprintf("The Shapiro-Wilk test finds that the residuals depart from a normal distribution, significant at the %s level (%s); the Q-Q plot below shows where.", lvl, rd_p(asm$p_norm, asm$alpha))
+    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals depart from a normal distribution (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
   hov <- if (is.na(asm$p_hov)) sprintf("Equal variances could not be tested: %s.", asm$hov_why %||% "too few values")
-    else if (asm$p_hov < a) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
-    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
+    else if (asm$p_hov < a) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
+    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
   far <- rd_far_rows(res)
   outl <- if (length(far)) sprintf("%s %s a standardised residual beyond -3 or 3; check %s for a recording error.",
                                    cap1(rows_text(far)), pl(length(far), "has", "have"), pl(length(far), "it", "them"))
@@ -677,7 +677,7 @@ meanvar_text <- function(res, asm) {
                 "root helps; about 2, as the square of the mean, where the logarithm helps.")
   if (isTRUE(asm$exact) || nrow(asm$mv) < 3) return(NULL)
   lvl <- rd_lvl(asm$alpha); b <- as.numeric(sprintf("%.2f", asm$slope))
-  cells <- table(interaction(res$data[res$facs], drop = TRUE))
+  cells <- table(hov_cells(res))
   left <- length(cells) - nrow(asm$mv)
   how <- if (b < 0) "falls as the mean rises"
          else if (b < 0.5) "rises with the mean, though more slowly than in proportion to it"
@@ -688,8 +688,8 @@ meanvar_text <- function(res, asm) {
     if (left > 0) sprintf("%d %s not drawn, because %s mean is not positive or %s no variance (a single value, or values all equal).",
                           left, pl(left, "cell is", "cells are"), pl(left, "its", "their"), pl(left, "it has", "they have")),
     if (is.na(asm$slope_p)) sprintf("The slope is b = %.2f; with only three points it cannot be tested.", asm$slope)
-    else if (asm$slope_p < asm$alpha) sprintf("The slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s.", asm$slope, lvl, rd_p(asm$slope_p), how)
-    else sprintf("The slope, b = %.2f, does not differ significantly from 0 at the %s level (%s): insufficient evidence that the variance changes with the mean.", asm$slope, lvl, rd_p(asm$slope_p)),
+    else if (asm$slope_p < asm$alpha) sprintf("The slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s.", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha), how)
+    else sprintf("The slope, b = %.2f, does not differ significantly from 0 at the %s level (%s): insufficient evidence that the variance changes with the mean.", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha)),
     if (min(cells) <= 3) sprintf("Each variance rests on only %s values, so the points scatter widely and the slope is uncertain.",
                                  if (min(cells) == max(cells)) min(cells) else sprintf("%d to %d", min(cells), max(cells))))
   list(what = what, reading = paste(out, collapse = " "))
@@ -717,8 +717,8 @@ resid_text <- function(res, asm) {
   far <- rd_far_rows(res)
   hov <- if (is.na(asm$p_hov)) sprintf("Equal variances could not be tested: %s.", asm$hov_why %||% "too few values")
     else if (asm$p_hov < asm$alpha) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s): look for the band to widen towards one side.",
-                                           rd_hov_name(asm), lvl, rd_p(asm$p_hov))
-    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
+                                           rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
+    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
   out <- c(hov,
     if (length(far)) sprintf("%s %s beyond -3 or 3, which normal residuals seldom are; check %s for a recording error.",
                              cap1(rows_text(far)), pl(length(far), "lies", "lie"), pl(length(far), "it", "them"))
@@ -760,8 +760,8 @@ qq_aov_text <- function(res, asm) {
   ## with one error degree of freedom the plot's reading has already said why
   test <- if (identical(pattern, "one") && isTRUE(res$dfe < 2)) NULL
     else if (is.na(asm$p_norm)) sprintf("Normality could not be tested: %s.", asm$norm_why %||% "too few residuals")
-    else if (asm$p_norm < asm$alpha) sprintf("The Shapiro-Wilk test finds a significant departure from normal at the %s level (%s).", lvl, rd_p(asm$p_norm))
-    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals are not normal (%s).", lvl, rd_p(asm$p_norm))
+    else if (asm$p_norm < asm$alpha) sprintf("The Shapiro-Wilk test finds a significant departure from normal at the %s level (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
+    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals are not normal (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
   calm <- identical(pattern, "ok ok")
   clash <- !is.na(asm$p_norm) && read && ((asm$p_norm < asm$alpha && calm) || (asm$p_norm >= asm$alpha && !calm))
   out <- c(plot_read, test,
@@ -816,9 +816,9 @@ scale_text <- function(res, asm) {
   out <- if (is.na(asm$slope)) "The mean-variance slope could not be estimated, so the line is the only guide here."
     else if (is.na(asm$slope_p)) sprintf("The mean-variance slope (b = %.2f) rests on three treatments and cannot be tested, so the line is the main guide here.", asm$slope)
     else if (asm$slope_p < asm$alpha) sprintf("The mean-variance slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s with the mean, so look for the line to %s.",
-                                              asm$slope, lvl, rd_p(asm$slope_p), if (asm$slope > 0) "rises" else "falls",
+                                              asm$slope, lvl, rd_p(asm$slope_p, asm$alpha), if (asm$slope > 0) "rises" else "falls",
                                               if (asm$slope > 0) "climb" else "fall")
-    else sprintf("The mean-variance slope, b = %.2f, gives insufficient evidence at the %s level that the variance changes with the mean (%s).", asm$slope, lvl, rd_p(asm$slope_p))
+    else sprintf("The mean-variance slope, b = %.2f, gives insufficient evidence at the %s level that the variance changes with the mean (%s).", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha))
   list(what = what, reading = out)
 }
 

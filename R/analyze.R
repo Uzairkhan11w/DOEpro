@@ -455,6 +455,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
                        `Rep within env` = if (!is.null(RE)) RE else NULL)
     res$homogeneity <- hom
     res$pooled <- TRUE
+    res$env <- E
   }
 
   ## ------------------------------ factorial pooled / combined over envs ------
@@ -580,6 +581,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
                        `Rep within env` = if (!is.null(RE)) RE else NULL)
     res$homogeneity <- hom
     res$pooled <- TRUE
+    res$env <- E
   }
   res$resid  <- stats::residuals(res$lm)
   res$fitted <- stats::fitted(res$lm)

@@ -45,5 +45,10 @@ Authors:
   \item M. Iqbal Jeelani (\href{https://orcid.org/0000-0002-2974-2871}{ORCID})
 }
 
+Other contributors:
+\itemize{
+  \item Imran Khan \email{imrankhan@skuastkashmir.ac.in} [contributor]
+}
+
 }
 \keyword{internal}

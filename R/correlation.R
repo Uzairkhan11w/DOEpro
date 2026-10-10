@@ -43,23 +43,6 @@ cor_strength <- function(coef, method) {
          ifelse(a < k[3], "moderate", "strong"))))
 }
 
-## A p-value as printed, with enough figures that one below a threshold the
-## marks use (alpha, alpha / 5) never prints at or above it: 0.049973 prints
-## as 0.04997, not 0.05, beside its star.
-p_show <- function(p, alpha) {
-  if (is.na(p)) return("-")
-  s <- p_text(p)
-  if (p < 1e-4) return(s)
-  for (cut in c(alpha / 5, alpha)) {
-    d <- 3
-    while (p < cut && as.numeric(s) >= cut && d < 12) {
-      d <- d + 1
-      s <- trimws(formatC(signif(p, d), format = "fg", digits = d))
-    }
-  }
-  s
-}
-
 ## ------------------------------------------------- rank p-values ----
 ## Spearman's and Kendall's p-values. If the two variables are unrelated,
 ## every ordering of one variable's values against the other's is equally

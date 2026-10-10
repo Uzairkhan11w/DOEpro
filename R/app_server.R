@@ -349,10 +349,10 @@ doepro_server <- function(input, output, session) {
         else ""))) else NULL,
       if (isTRUE(f1$pooled) && !is.null(f1$homogeneity)) {
         h <- f1$homogeneity
-        homog <- isTRUE(h$p > r$alpha)
+        homog <- isTRUE(h$p >= r$alpha)
         div(class = if (homog) "sugbox" else "warn", HTML(sprintf(
           "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
-          fmt(h$chisq, 3), h$df, p_eq(h$p),
+          fmt(h$chisq, 3), h$df, p_eq(h$p, r$alpha),
           if (homog)
             sprintf("There is insufficient evidence at the %s%% level that the environments' error variances differ, so pooling the errors is reasonable; a small difference may have gone undetected.", pct(r$alpha))
           else

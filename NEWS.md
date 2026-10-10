@@ -203,6 +203,30 @@
   model fits every value exactly, the app says so and does not run
   Shapiro-Wilk, Levene, Bartlett or Box-Cox on rounding residue or draw it
   in the residual plots.
+* In designs with blocks (RCBD, Latin square, split and strip plots, pooled
+  analyses) Levene's and Bartlett's tests now compare each plot's residual,
+  recentred on its treatment's mean, rather than the raw values. The raw
+  values still carry the block effects, which the error variance does not:
+  with block differences larger than the error the tests almost never found
+  anything (0.1-1.5% at 5% when variances were equal, and 3% for a treatment
+  three times as variable in a simulated 5 x 5 RCBD). On the residuals they
+  hold 2-5% and find that treatment 18-33% of the time. The table says which
+  values were used. The Taylor slope still uses the values themselves, since
+  residuals flatten it (about 0.3 where it should be 2).
+* Pooled factorial analyses test equal variances within each environment.
+  The cells used to be the treatment combinations pooled across
+  environments, so a treatment-by-environment pattern in the means was
+  reported as unequal variances and drove the suggested transformation.
+* The exact-fit check judges the residuals against the spread of the values,
+  with a floor for rounding, rather than against their size: a response near
+  2e9 that varies by 1 was called an exact fit and its checks were skipped.
+* A p-value below a threshold no longer prints at it. The ANOVA tables, the
+  readings, the interpretation, the assumption table and the captions of the
+  tables of means printed p = 0.049973 as "0.05" beside a star meaning
+  p < 0.05; it now prints as 0.04997, as the correlation and regression
+  tables already did. A p-value exactly at the level is not significant
+  everywhere, as the stars have it.
+* Dr. Imran Khan (SKUAST-Kashmir) is listed as a contributor.
 
 # DOEpro 2.0.1
 

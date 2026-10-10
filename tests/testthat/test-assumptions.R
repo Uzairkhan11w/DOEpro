@@ -86,7 +86,10 @@ test_that("two values per cell: no false verdict of unequal variances", {
     expect_no_warning(a <- check_assumptions(r))
     # the verdict comes from Bartlett's test, which works with two values per cell
     expect_identical(a$hov_test, "Bartlett", info = design)
-    expect_equal(a$p_hov, bartlett.test(r$data[[r$resp]], interaction(r$data[r$facs], drop = TRUE))$p.value)
+    # with blocks, on the residuals recentred on each treatment's mean
+    y <- r$data[[r$resp]]; g <- interaction(r$data[r$facs], drop = TRUE)
+    if (design == "RCBD") y <- residuals(lm(y ~ r$data$Block + g)) + ave(y, g)
+    expect_equal(a$p_hov, bartlett.test(y, g)$p.value, info = design)
     h <- assum_table_html(a)
     expect_match(h, "not available: no cell has three or more values", fixed = TRUE)
     expect_match(h, "Levene's test needs at least three values in a cell.", fixed = TRUE)
@@ -212,10 +215,10 @@ test_that("Levene's test is not given the verdict on treatments it left out", {
 })
 
 test_that("an untested assumption is not treated as passed", {
-  # two blocks, and a treatment with no insects in either: neither test runs
-  ins <- data.frame(Block = rep(c("B1", "B2"), 5), Trt = rep(paste0("T", 1:5), each = 2),
+  # two plots each, and a treatment with no insects in either: neither test runs
+  ins <- data.frame(Trt = rep(paste0("T", 1:5), each = 2),
                     Insects = c(0, 0, 3, 5, 10, 16, 30, 52, 90, 150))
-  r <- analyze(ins, "RCBD", list(response = "Insects", block = "Block", treat = "Trt"))
+  r <- analyze(ins, "CRD", list(response = "Insects", treat = "Trt"))
   a <- check_assumptions(r)
   expect_true(is.na(a$p_hov))
   expect_gt(a$slope, 1.5)
@@ -337,9 +340,9 @@ test_that("the disagreement note does not blame non-normality without cause", {
 })
 
 test_that("a slope from variances of two values each does not order a transformation", {
-  d <- data.frame(Block = rep(c("B1", "B2"), 6), Var = rep(paste0("V", 1:6), each = 2),
+  d <- data.frame(Var = rep(paste0("V", 1:6), each = 2),
                   Days = c(39, 40, 41, 46, 47, 44, 50, 50, 53, 51, 58, 56))
-  r <- analyze(d, "RCBD", list(response = "Days", block = "Block", treat = "Var"))
+  r <- analyze(d, "CRD", list(response = "Days", treat = "Var"))
   a <- check_assumptions(r)
   expect_true(is.na(a$p_hov))
   expect_gt(a$slope, 0.5)

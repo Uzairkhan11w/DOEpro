@@ -32,7 +32,7 @@ test_that("every row with an F-test is read, in order, at the chosen level", {
         expect_match(txt[i], sprintf(": not significant at the %s%% level (", pct(a)), fixed = TRUE)
         expect_match(txt[i], "insufficient evidence", fixed = TRUE)
       }
-      expect_match(txt[i], rd_p(p[i]), fixed = TRUE)
+      expect_match(txt[i], rd_p(p[i], a), fixed = TRUE)
       expect_no_match(txt[i], "no difference|no effect|are equal")
     }
   }

@@ -87,9 +87,9 @@ auto_scan <- function(d, design, map, candidates, alpha = 0.05, dtype = "auto") 
       data.frame(Variable = v,
                  Key = s$method,
                  Optional = isTRUE(s$optional),
-                 `Shapiro-Wilk p` = fmt(a$p_norm, 3),
+                 `Shapiro-Wilk p` = p_text(a$p_norm, a$alpha),
                  `Equal variances p` = if (is.na(a$p_hov)) "-" else
-                   paste0(fmt(a$p_hov, 3), if (identical(a$hov_test, "Bartlett")) " (Bartlett)"
+                   paste0(p_text(a$p_hov, a$alpha), if (identical(a$hov_test, "Bartlett")) " (Bartlett)"
                           else if (a$levene$dropped > 0) " (Levene, some cells)" else ""),
                  `Taylor b` = fmt(a$slope, 2),
                  `Box-Cox lambda` = fmt(a$lambda, 2),

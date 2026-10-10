@@ -105,7 +105,7 @@ integrated_means_html <- function(res, digits = 2, readings = FALSE) {
     e <- res$effects[[nm]]
     sig <- effect_sig(e)
     ttl <- sprintf("Table of means: <b>%s</b> &nbsp;(F = %s, %s, %s)",
-                   e$label, fmt(e$F, 2), p_eq(e$p), star(e$p, e$alpha))
+                   e$label, fmt(e$F, 2), p_eq(e$p, e$alpha), star(e$p, e$alpha))
     unequal <- !isTRUE(e$equal_rep)
     m <- gate_letters(e)          # letters blanked when the F-test is NS
     foot <- ""; extra <- ""; note <- ""

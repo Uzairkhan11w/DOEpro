@@ -37,6 +37,8 @@ authors:
     given-names: "M. Iqbal"
     affiliation: "Division of Agricultural Statistics, SKUAST-Kashmir, Shalimar, India"
     orcid: "https://orcid.org/0000-0002-2974-2871"
+# Contributor, not cited (so not among the authors above): Imran Khan,
+# Division of Agricultural Statistics, SKUAST-Kashmir, imrankhan@skuastkashmir.ac.in
 doi: "10.5281/zenodo.21399570"
 identifiers:
   - type: doi

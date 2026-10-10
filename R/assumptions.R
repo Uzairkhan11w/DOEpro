@@ -86,18 +86,20 @@ bartlett_cells <- function(y, g) {
 }
 
 ## An exact fit: every observation equals its fitted value, so the residuals
-## are only the rounding left by the arithmetic (about 1e-16 of the data).
-## There is then no error variation to test, transform or plot, and treating
-## the rounding as residuals would give verdicts about nothing.
-## The rounding grows with the size of the values (10000.001 carries more
-## than 0.001), so the tolerance is set against their magnitude; real
-## residuals are never within a billionth of the values themselves.
+## are only the rounding left by the arithmetic. There is then no error
+## variation to test, transform or plot, and treating the rounding as
+## residuals would give verdicts about nothing. Residuals are judged against
+## the spread of the values (within a billionth of it), with a floor for the
+## rounding that the values' size leaves (1000 times the machine precision of
+## the largest), as the regression judges them. Judging against the size
+## alone called a response near 2e9 that scatters by 1 an exact fit.
 exact_fit <- function(res) {
   y <- res$data[[res$resp]]
   size <- max(abs(y), na.rm = TRUE)
   spread <- max(abs(y - mean(y, na.rm = TRUE)), na.rm = TRUE)
   r <- res$resid
-  !length(r) || !is.finite(size) || spread == 0 || all(abs(r) <= 1e-9 * size, na.rm = TRUE)
+  !length(r) || !is.finite(size) || spread == 0 ||
+    all(abs(r) <= max(1e-9 * spread, 1e3 * .Machine$double.eps * size), na.rm = TRUE)
 }
 
 ## Box-Cox log-likelihood profile.  For a positive response y and design matrix X,
@@ -122,13 +124,35 @@ boxcox_profile <- function(y, X, level, lambda = seq(-2, 2, 0.02)) {
   list(x = lambda, y = ll, lambda = best, ci = range(inside), level = level)
 }
 
+## The cells that should share one error variance: the treatment
+## combinations, and in a pooled analysis the treatment combinations within
+## each environment, so that a treatment-by-environment pattern in the means
+## is not read as a difference in variance (a pooled factorial's res$facs
+## leaves the environment out).
+hov_cells <- function(res) interaction(res$data[unique(c(res$env, res$facs))], drop = TRUE)
+
+## The values the equal-variance checks compare. In a design with blocks
+## (rows and columns, replications) each value still carries its block's
+## effect, which the error variance does not include: compared raw, the
+## tests held only 0.1-1.5% at the 5% level and found a treatment with three
+## times the spread 3% of the time (RCBD, 5 x 5, simulated). The residuals,
+## recentred on their cell's mean, vary within a cell as the error does:
+## Levene's held 2-5% and Bartlett's 1.5-4%, and they found that treatment
+## 18% and 33% of the time. Without blocks these are the values themselves.
+hov_values <- function(res, cells) {
+  y <- res$data[[res$resp]]
+  if (!length(res$blks)) return(y)
+  res$resid + stats::ave(y, cells)
+}
+
 ## The assumption tests are judged at the analysis's own significance level, so
 ## a user who chose 1% is not told about departures at 5%.
 check_assumptions <- function(res) {
   alpha <- res$alpha
   r <- res$resid
   d <- res$data; resp <- res$resp
-  cells <- interaction(d[res$facs], drop = TRUE)
+  cells <- hov_cells(res)
+  yv <- hov_values(res, cells)
   exact <- exact_fit(res)
 
   ## With one error degree of freedom the residuals are one fixed pattern,
@@ -139,8 +163,8 @@ check_assumptions <- function(res) {
   norm_why <- if (exact) "the model fits every value exactly, so the residuals are all zero"
               else if (one_df) "with one error degree of freedom the residuals take the same pattern whatever the data, so their shape says nothing about normality"
               else if (is.null(sw)) "Shapiro-Wilk needs between 3 and 5000 residuals" else NULL
-  lev  <- levene_test(d[[resp]], cells)
-  bart <- bartlett_cells(d[[resp]], cells)
+  lev  <- levene_test(yv, cells)
+  bart <- bartlett_cells(yv, cells)
   if (exact) {
     why <- "the model fits every value exactly"
     lev[c("F", "p")] <- NA_real_; lev$why <- why
@@ -171,7 +195,12 @@ check_assumptions <- function(res) {
     else if (identical(lev$why, bart$why)) lev$why
     else sprintf("for Levene's test, %s; for Bartlett's test, %s", lev$why, bart$why)
 
-  ## mean-variance relationship -> Taylor's power law slope
+  ## mean-variance relationship -> Taylor's power law slope, from each
+  ## cell's own values even in a blocked design. Residuals share the block
+  ## means, which carry every treatment's noise into every cell, so their
+  ## slope came out near 0.3 where it should be 2 (lognormal, blocks acting
+  ## in proportion) and 0.6 where it should be 1 (counts, no blocks), in
+  ## 6 x 4 RCBDs simulated; the values themselves gave 2.0 and 1.0.
   mv <- data.frame(m = tapply(d[[resp]], cells, mean),
                    v = tapply(d[[resp]], cells, stats::var))
   mv <- mv[stats::complete.cases(mv) & mv$m > 0 & mv$v > 0, ]
@@ -195,6 +224,7 @@ check_assumptions <- function(res) {
   outliers <- if (exact) integer(0) else rd_far_rows(res)
 
   list(alpha = alpha, exact = exact, strata = isTRUE(res$design %in% c("SPLIT", "STRIP")),
+       on_residuals = length(res$blks) > 0,
        shapiro = sw, norm_why = norm_why,
        levene = lev, bartlett = bart, hov_test = hov_test, hov_label = hov_label, hov_short = hov_short,
        hov_why = hov_why, slope = slope, slope_p = slope_p,
@@ -242,7 +272,7 @@ suggest_transform <- function(res, asm, dtype = "auto") {
       why = paste("The model fits every value exactly, so there is no unexplained variation:",
                   "no transformation can help, and none is needed.")))
 
-  ok <- (is.na(pn) || pn > res$alpha) && (is.na(ph) || ph > res$alpha)
+  ok <- (is.na(pn) || pn >= res$alpha) && (is.na(ph) || ph >= res$alpha)
   ## Equal variances are tested in full only when the verdict covers every
   ## cell; Levene's on some cells alone leaves the others untested.
   hov_full <- !is.na(ph) && !(identical(asm$hov_test, "Levene") && isTRUE(asm$levene$dropped > 0))
@@ -250,7 +280,7 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   ## of the variance with the mean decides instead, but only when the slope
   ## is itself significant at the chosen level, since a slope from variances
   ## of two values each is mostly noise.
-  slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p <= res$alpha)
+  slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p < res$alpha)
   if (ok && !hov_full && slope_evidence) ok <- FALSE
   all_tested <- !is.na(pn) && hov_full
 

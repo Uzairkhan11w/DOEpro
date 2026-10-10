@@ -53,7 +53,12 @@ AUTHORS <- list(
   list(name = "Dr. M. Iqbal Jeelani", role = "Scientist (Statistics)",
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
        email = NA_character_,
-       orcid = "0000-0002-2974-2871"))
+       orcid = "0000-0002-2974-2871"),
+  ## a contributor: listed with the developers, not in the citation
+  list(name = "Dr. Imran Khan", role = "Contributor",
+       aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
+       email = "imrankhan@skuastkashmir.ac.in",
+       orcid = NA_character_))
 APP_DOI     <- "10.5281/zenodo.21399570"   # concept DOI: always the latest release
 APP_URL     <- "https://doepro.pages.dev"
 CREDIT_SHORT <- "DOEpro \u00b7 Shah, Khan & Jeelani"
@@ -119,13 +124,29 @@ err_text <- function(e, what, digits = 2, html = TRUE) {
   paste0(fmt(rg[1], dg), if (html) "&ndash;" else " to ", fmt(rg[2], dg))
 }
 
-## a p-value for reading: never in scientific notation, never "= <0.0001"
-p_text <- function(p) ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
-                             trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
-pval <- function(p) gsub("<", "&lt;", p_text(p), fixed = TRUE)
+## a p-value for reading: never in scientific notation, never "= <0.0001".
+## Given alpha, a p below one of the thresholds the marks use (alpha,
+## alpha / 5) gains figures until it no longer prints at or above it:
+## 0.049973 prints as 0.04997, not 0.05, beside its star.
+p_text <- function(p, alpha = NULL) {
+  s <- ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
+              trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
+  for (cut in alpha / c(5, 1)) {
+    for (i in which(!is.na(p) & p >= 1e-4 & p < cut)) {
+      d <- 3
+      while (as.numeric(s[i]) >= cut && d < 12) {
+        d <- d + 1
+        s[i] <- trimws(formatC(signif(p[i], d), format = "fg", digits = d))
+      }
+    }
+  }
+  s
+}
+p_show <- function(p, alpha) p_text(p, alpha)
+pval <- function(p, alpha = NULL) gsub("<", "&lt;", p_text(p, alpha), fixed = TRUE)
 
 ## "p = 0.0373" or "p &lt; 0.0001", for running text
-p_eq <- function(p) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p)))
+p_eq <- function(p, alpha = NULL) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p, alpha)))
 
 ## Significance marks at the level the user chose: one star at alpha, two at
 ## alpha / 5. At alpha = 0.05 that is the familiar 5% and 1% pair; at any other
@@ -290,7 +311,7 @@ anova_display <- function(an, alpha) {
   data.frame(Source = an$Source, Df = an$Df,
              `Sum of squares` = an$SS, `Mean square` = an$MS,
              `F value` = an$F,
-             `p value` = p_text(an$p),
+             `p value` = p_text(an$p, alpha),
              Signif = star(an$p, alpha), check.names = FALSE)
 }
 

@@ -141,10 +141,10 @@ assum_table_html <- function(a) {
   rows <- character(0)
   ok <- function(p, why = NULL) {
     if (!is.finite(p)) return(paste0("not available", if (length(why)) paste0(": ", esc(why)) else ""))
-    if (p > a$alpha) "no significant departure" else "<b>significant departure</b>"
+    if (p >= a$alpha) "no significant departure" else "<b>significant departure</b>"
   }
   stat <- function(lab, v) if (is.finite(v)) paste(lab, "=", fmt(v)) else "-"
-  pv <- function(p) if (is.finite(p)) p_eq(p) else "-"
+  pv <- function(p) if (is.finite(p)) p_eq(p, a$alpha) else "-"
   rows <- c(rows, sprintf(
     "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>%s</td><td>%s</td><td>%s</td></tr>",
     stat("W", if (is.null(a$shapiro)) NA else a$shapiro$statistic), pv(a$p_norm), ok(a$p_norm, a$norm_why)))
@@ -172,8 +172,12 @@ assum_table_html <- function(a) {
     if (length(a$outliers)) paste(a$outliers, collapse = ", ") else "none"))
   lev <- a$levene; bart <- a$bartlett
   left <- join_and(head_more(lev$left_out, 6))
-  sig <- function(p) is.finite(p) && p <= a$alpha
+  sig <- function(p) is.finite(p) && p < a$alpha
   notes <- c(
+    if (isTRUE(a$on_residuals) && !isTRUE(a$exact))
+      paste("The design has blocks, so the tests of equal variances use each plot's residual, recentred on its",
+            "treatment's mean: the block differences, which the error variance does not include, would otherwise",
+            "hide unequal variances. The Taylor slope uses the values themselves, as residuals would flatten it."),
     if (isTRUE(a$exact)) paste("The model fits every value exactly: each observation equals its fitted value,",
                                "so there is no", if (isTRUE(a$strata)) "sub-plot" else "residual",
                                "error variation to test or to plot."),

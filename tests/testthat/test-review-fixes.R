@@ -243,3 +243,90 @@ test_that("a stale X-axis choice from another effect is not used", {
     expect_identical(rlang::as_label(mp()$mapping$x), "Days")
   })
 })
+
+## ------------------------------- the four bugs deferred in October 2026 ----
+
+test_that("a pooled factorial tests equal variances within each environment", {
+  set.seed(4)
+  d <- expand.grid(Env = c("E1", "E2", "E3"), Rep = paste0("R", 1:3), Nit = c("N0", "N1"),
+                   Var = c("V1", "V2"), stringsAsFactors = FALSE)
+  # the varieties swap places between environments; the errors are all alike
+  d$Y <- 40 + c(0, 8, -8)[match(d$Env, c("E1", "E2", "E3"))] * (d$Var == "V2") + rnorm(nrow(d))
+  r <- analyze(d, "POOLFRCBD", list(response = "Y", env = "Env", rep = "Rep", factors = c("Nit", "Var")))
+  expect_identical(r$env, "Env")
+  cells <- hov_cells(r)
+  expect_identical(nlevels(cells), 12L)
+  a <- check_assumptions(r)
+  # Levene's on each plot's residual, recentred on its own cell's mean
+  y <- r$data$Y; g <- interaction(r$data[c("Env", "Nit", "Var")], drop = TRUE)
+  yv <- residuals(lm(y ~ interaction(r$data$Env, r$data$Rep) + g)) + ave(y, g)
+  expect_equal(a$p_hov, levene_test(yv, g)$p)
+  expect_gt(a$p_hov, 0.05)
+  # pooled across environments the swap reads as unequal variances
+  expect_lt(levene_test(y, interaction(r$data[c("Nit", "Var")]))$p, 1e-4)
+})
+
+test_that("with blocks, equal variances are tested on the residuals", {
+  # CRD: nothing to remove, the values themselves
+  r <- analyze(demo_data("CRD"), "CRD", list(response = "Yield", treat = "Treatment"))
+  expect_equal(hov_values(r, hov_cells(r)), r$data$Yield)
+  expect_false(check_assumptions(r)$on_residuals)
+  # Latin square: the row and column effects come out
+  d <- demo_data("LSD")
+  r <- analyze(d, "LSD", list(response = "Yield", row = "Row", col = "Column", treat = "Treatment"))
+  a <- check_assumptions(r)
+  y <- r$data$Yield; g <- factor(r$data$Treatment)
+  yv <- residuals(lm(y ~ factor(r$data$Row) + factor(r$data$Column) + g)) + ave(y, g)
+  expect_equal(a$p_hov, levene_test(yv, g)$p)
+  expect_true(a$on_residuals)
+  expect_match(assum_table_html(a), "use each plot's residual, recentred on its treatment's mean", fixed = TRUE)
+  # the Taylor slope still uses the values themselves
+  expect_equal(unname(a$mv$v), unname(as.numeric(tapply(y, g, var))))
+  # large block effects no longer hide a treatment three times as variable
+  set.seed(9)
+  hit <- replicate(150, {
+    d <- expand.grid(Block = paste0("B", 1:5), Trt = paste0("T", 1:5))
+    d$Y <- 50 + rnorm(5, 0, 6)[as.integer(d$Block)] + rnorm(25, 0, ifelse(d$Trt == "T1", 3, 1))
+    r <- analyze(d, "RCBD", list(response = "Y", block = "Block", treat = "Trt"))
+    c(check_assumptions(r)$p_hov, levene_test(d$Y, d$Trt)$p) < 0.05
+  })
+  expect_gt(mean(hit[1, ]), 3 * mean(hit[2, ]))
+})
+
+test_that("an exact fit is judged against the spread of the values, not their size", {
+  set.seed(2)
+  d <- data.frame(Trt = rep(paste0("T", 1:4), each = 4), Y = 2e9 + round(rnorm(16, 0, 1), 1))
+  r <- analyze(d, "CRD", list(response = "Y", treat = "Trt"))
+  expect_false(exact_fit(r))
+  expect_false(is.na(check_assumptions(r)$p_norm))
+  # an additive table near a million is still exact
+  d <- expand.grid(Block = paste0("B", 1:3), Trt = paste0("T", 1:4))
+  d$Y <- 1e6 + 10 * as.integer(d$Block) + 3 * as.integer(d$Trt)
+  r <- analyze(d, "RCBD", list(response = "Y", block = "Block", treat = "Trt"))
+  expect_true(exact_fit(r))
+})
+
+test_that("a p-value below a threshold never prints at it", {
+  expect_identical(p_text(0.049973, 0.05), "0.04997")
+  expect_identical(p_text(0.049973), "0.05")
+  expect_identical(p_text(0.0099952, 0.05), "0.009995")
+  expect_identical(p_text(0.05001, 0.05), "0.05")
+  expect_identical(p_text(c(NA, 0.00001, 0.0499999, 0.3), 0.05), c("-", "< 0.0001", "0.0499999", "0.3"))
+  expect_identical(p_eq(0.0999, 0.1), "p = 0.0999")
+  expect_identical(p_eq(0.01999, 0.1), "p = 0.01999")
+  an <- data.frame(Source = c("A", "B", "Residuals"), Df = c(2, 2, 10), SS = 1:3, MS = 1:3,
+                   F = c(4, 5, NA), p = c(0.049973, 0.0099997, NA))
+  tab <- anova_display(an, 0.05)
+  expect_identical(tab$`p value`, c("0.04997", "0.0099997", "-"))
+  expect_identical(tab$Signif, c("*", "**", ""))
+  expect_match(rd_sig(0.049973, 0.05), "(p = 0.04997)", fixed = TRUE)
+  expect_match(rd_sig(0.0099997, 0.05), "significant at the 1% level (p = 0.0099997)", fixed = TRUE)
+  # every printed p in the tables stays below the threshold its star claims
+  set.seed(8)
+  for (i in 1:200) {
+    p <- runif(1, 0.0099, 0.0101); a <- c(0.05, 0.01, 0.1)[i %% 3 + 1]
+    if (p < a / 5) expect_lt(as.numeric(p_text(p, a)), a / 5)
+    p <- runif(1, a - 1e-4, a + 1e-4)
+    if (p < a) expect_lt(as.numeric(p_text(p, a)), a)
+  }
+})

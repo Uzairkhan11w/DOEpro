@@ -77,7 +77,12 @@ AUTHORS <- list(
   list(name = "Dr. M. Iqbal Jeelani", role = "Scientist (Statistics)",
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
        email = NA_character_,
-       orcid = "0000-0002-2974-2871"))
+       orcid = "0000-0002-2974-2871"),
+  ## a contributor: listed with the developers, not in the citation
+  list(name = "Dr. Imran Khan", role = "Contributor",
+       aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
+       email = "imrankhan@skuastkashmir.ac.in",
+       orcid = NA_character_))
 APP_DOI     <- "10.5281/zenodo.21399570"   # concept DOI: always the latest release
 APP_URL     <- "https://doepro.pages.dev"
 CREDIT_SHORT <- "DOEpro \u00b7 Shah, Khan & Jeelani"
@@ -143,13 +148,29 @@ err_text <- function(e, what, digits = 2, html = TRUE) {
   paste0(fmt(rg[1], dg), if (html) "&ndash;" else " to ", fmt(rg[2], dg))
 }
 
-## a p-value for reading: never in scientific notation, never "= <0.0001"
-p_text <- function(p) ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
-                             trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
-pval <- function(p) gsub("<", "&lt;", p_text(p), fixed = TRUE)
+## a p-value for reading: never in scientific notation, never "= <0.0001".
+## Given alpha, a p below one of the thresholds the marks use (alpha,
+## alpha / 5) gains figures until it no longer prints at or above it:
+## 0.049973 prints as 0.04997, not 0.05, beside its star.
+p_text <- function(p, alpha = NULL) {
+  s <- ifelse(is.na(p), "-", ifelse(p < 1e-4, "< 0.0001",
+              trimws(formatC(signif(p, 3), format = "fg", digits = 3))))
+  for (cut in alpha / c(5, 1)) {
+    for (i in which(!is.na(p) & p >= 1e-4 & p < cut)) {
+      d <- 3
+      while (as.numeric(s[i]) >= cut && d < 12) {
+        d <- d + 1
+        s[i] <- trimws(formatC(signif(p[i], d), format = "fg", digits = d))
+      }
+    }
+  }
+  s
+}
+p_show <- function(p, alpha) p_text(p, alpha)
+pval <- function(p, alpha = NULL) gsub("<", "&lt;", p_text(p, alpha), fixed = TRUE)
 
 ## "p = 0.0373" or "p &lt; 0.0001", for running text
-p_eq <- function(p) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p)))
+p_eq <- function(p, alpha = NULL) ifelse(!is.na(p) & p < 1e-4, "p &lt; 0.0001", paste("p =", p_text(p, alpha)))
 
 ## Significance marks at the level the user chose: one star at alpha, two at
 ## alpha / 5. At alpha = 0.05 that is the familiar 5% and 1% pair; at any other
@@ -314,7 +335,7 @@ anova_display <- function(an, alpha) {
   data.frame(Source = an$Source, Df = an$Df,
              `Sum of squares` = an$SS, `Mean square` = an$MS,
              `F value` = an$F,
-             `p value` = p_text(an$p),
+             `p value` = p_text(an$p, alpha),
              Signif = star(an$p, alpha), check.names = FALSE)
 }
 
@@ -1891,6 +1912,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
                        `Rep within env` = if (!is.null(RE)) RE else NULL)
     res$homogeneity <- hom
     res$pooled <- TRUE
+    res$env <- E
   }
 
   ## ------------------------------ factorial pooled / combined over envs ------
@@ -2016,6 +2038,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
                        `Rep within env` = if (!is.null(RE)) RE else NULL)
     res$homogeneity <- hom
     res$pooled <- TRUE
+    res$env <- E
   }
   res$resid  <- stats::residuals(res$lm)
   res$fitted <- stats::fitted(res$lm)
@@ -2326,18 +2349,20 @@ bartlett_cells <- function(y, g) {
 }
 
 ## An exact fit: every observation equals its fitted value, so the residuals
-## are only the rounding left by the arithmetic (about 1e-16 of the data).
-## There is then no error variation to test, transform or plot, and treating
-## the rounding as residuals would give verdicts about nothing.
-## The rounding grows with the size of the values (10000.001 carries more
-## than 0.001), so the tolerance is set against their magnitude; real
-## residuals are never within a billionth of the values themselves.
+## are only the rounding left by the arithmetic. There is then no error
+## variation to test, transform or plot, and treating the rounding as
+## residuals would give verdicts about nothing. Residuals are judged against
+## the spread of the values (within a billionth of it), with a floor for the
+## rounding that the values' size leaves (1000 times the machine precision of
+## the largest), as the regression judges them. Judging against the size
+## alone called a response near 2e9 that scatters by 1 an exact fit.
 exact_fit <- function(res) {
   y <- res$data[[res$resp]]
   size <- max(abs(y), na.rm = TRUE)
   spread <- max(abs(y - mean(y, na.rm = TRUE)), na.rm = TRUE)
   r <- res$resid
-  !length(r) || !is.finite(size) || spread == 0 || all(abs(r) <= 1e-9 * size, na.rm = TRUE)
+  !length(r) || !is.finite(size) || spread == 0 ||
+    all(abs(r) <= max(1e-9 * spread, 1e3 * .Machine$double.eps * size), na.rm = TRUE)
 }
 
 ## Box-Cox log-likelihood profile.  For a positive response y and design matrix X,
@@ -2362,13 +2387,35 @@ boxcox_profile <- function(y, X, level, lambda = seq(-2, 2, 0.02)) {
   list(x = lambda, y = ll, lambda = best, ci = range(inside), level = level)
 }
 
+## The cells that should share one error variance: the treatment
+## combinations, and in a pooled analysis the treatment combinations within
+## each environment, so that a treatment-by-environment pattern in the means
+## is not read as a difference in variance (a pooled factorial's res$facs
+## leaves the environment out).
+hov_cells <- function(res) interaction(res$data[unique(c(res$env, res$facs))], drop = TRUE)
+
+## The values the equal-variance checks compare. In a design with blocks
+## (rows and columns, replications) each value still carries its block's
+## effect, which the error variance does not include: compared raw, the
+## tests held only 0.1-1.5% at the 5% level and found a treatment with three
+## times the spread 3% of the time (RCBD, 5 x 5, simulated). The residuals,
+## recentred on their cell's mean, vary within a cell as the error does:
+## Levene's held 2-5% and Bartlett's 1.5-4%, and they found that treatment
+## 18% and 33% of the time. Without blocks these are the values themselves.
+hov_values <- function(res, cells) {
+  y <- res$data[[res$resp]]
+  if (!length(res$blks)) return(y)
+  res$resid + stats::ave(y, cells)
+}
+
 ## The assumption tests are judged at the analysis's own significance level, so
 ## a user who chose 1% is not told about departures at 5%.
 check_assumptions <- function(res) {
   alpha <- res$alpha
   r <- res$resid
   d <- res$data; resp <- res$resp
-  cells <- interaction(d[res$facs], drop = TRUE)
+  cells <- hov_cells(res)
+  yv <- hov_values(res, cells)
   exact <- exact_fit(res)
 
   ## With one error degree of freedom the residuals are one fixed pattern,
@@ -2379,8 +2426,8 @@ check_assumptions <- function(res) {
   norm_why <- if (exact) "the model fits every value exactly, so the residuals are all zero"
               else if (one_df) "with one error degree of freedom the residuals take the same pattern whatever the data, so their shape says nothing about normality"
               else if (is.null(sw)) "Shapiro-Wilk needs between 3 and 5000 residuals" else NULL
-  lev  <- levene_test(d[[resp]], cells)
-  bart <- bartlett_cells(d[[resp]], cells)
+  lev  <- levene_test(yv, cells)
+  bart <- bartlett_cells(yv, cells)
   if (exact) {
     why <- "the model fits every value exactly"
     lev[c("F", "p")] <- NA_real_; lev$why <- why
@@ -2411,7 +2458,12 @@ check_assumptions <- function(res) {
     else if (identical(lev$why, bart$why)) lev$why
     else sprintf("for Levene's test, %s; for Bartlett's test, %s", lev$why, bart$why)
 
-  ## mean-variance relationship -> Taylor's power law slope
+  ## mean-variance relationship -> Taylor's power law slope, from each
+  ## cell's own values even in a blocked design. Residuals share the block
+  ## means, which carry every treatment's noise into every cell, so their
+  ## slope came out near 0.3 where it should be 2 (lognormal, blocks acting
+  ## in proportion) and 0.6 where it should be 1 (counts, no blocks), in
+  ## 6 x 4 RCBDs simulated; the values themselves gave 2.0 and 1.0.
   mv <- data.frame(m = tapply(d[[resp]], cells, mean),
                    v = tapply(d[[resp]], cells, stats::var))
   mv <- mv[stats::complete.cases(mv) & mv$m > 0 & mv$v > 0, ]
@@ -2435,6 +2487,7 @@ check_assumptions <- function(res) {
   outliers <- if (exact) integer(0) else rd_far_rows(res)
 
   list(alpha = alpha, exact = exact, strata = isTRUE(res$design %in% c("SPLIT", "STRIP")),
+       on_residuals = length(res$blks) > 0,
        shapiro = sw, norm_why = norm_why,
        levene = lev, bartlett = bart, hov_test = hov_test, hov_label = hov_label, hov_short = hov_short,
        hov_why = hov_why, slope = slope, slope_p = slope_p,
@@ -2482,7 +2535,7 @@ suggest_transform <- function(res, asm, dtype = "auto") {
       why = paste("The model fits every value exactly, so there is no unexplained variation:",
                   "no transformation can help, and none is needed.")))
 
-  ok <- (is.na(pn) || pn > res$alpha) && (is.na(ph) || ph > res$alpha)
+  ok <- (is.na(pn) || pn >= res$alpha) && (is.na(ph) || ph >= res$alpha)
   ## Equal variances are tested in full only when the verdict covers every
   ## cell; Levene's on some cells alone leaves the others untested.
   hov_full <- !is.na(ph) && !(identical(asm$hov_test, "Levene") && isTRUE(asm$levene$dropped > 0))
@@ -2490,7 +2543,7 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   ## of the variance with the mean decides instead, but only when the slope
   ## is itself significant at the chosen level, since a slope from variances
   ## of two values each is mostly noise.
-  slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p <= res$alpha)
+  slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p < res$alpha)
   if (ok && !hov_full && slope_evidence) ok <- FALSE
   all_tested <- !is.na(pn) && hov_full
 
@@ -2719,7 +2772,7 @@ integrated_means_html <- function(res, digits = 2, readings = FALSE) {
     e <- res$effects[[nm]]
     sig <- effect_sig(e)
     ttl <- sprintf("Table of means: <b>%s</b> &nbsp;(F = %s, %s, %s)",
-                   e$label, fmt(e$F, 2), p_eq(e$p), star(e$p, e$alpha))
+                   e$label, fmt(e$F, 2), p_eq(e$p, e$alpha), star(e$p, e$alpha))
     unequal <- !isTRUE(e$equal_rep)
     m <- gate_letters(e)          # letters blanked when the F-test is NS
     foot <- ""; extra <- ""; note <- ""
@@ -4389,23 +4442,6 @@ cor_strength <- function(coef, method) {
   a <- abs(printed2(coef)); k <- COR_CUTS[[method]]
   ifelse(is.na(a), NA_character_, ifelse(a < k[1], "negligible", ifelse(a < k[2], "weak",
          ifelse(a < k[3], "moderate", "strong"))))
-}
-
-## A p-value as printed, with enough figures that one below a threshold the
-## marks use (alpha, alpha / 5) never prints at or above it: 0.049973 prints
-## as 0.04997, not 0.05, beside its star.
-p_show <- function(p, alpha) {
-  if (is.na(p)) return("-")
-  s <- p_text(p)
-  if (p < 1e-4) return(s)
-  for (cut in c(alpha / 5, alpha)) {
-    d <- 3
-    while (p < cut && as.numeric(s) >= cut && d < 12) {
-      d <- d + 1
-      s <- trimws(formatC(signif(p, d), format = "fg", digits = d))
-    }
-  }
-  s
 }
 
 ## ------------------------------------------------- rank p-values ----
@@ -7452,7 +7488,7 @@ fa_data <- function(d, vars, factors = NULL, rotation = c("varimax", "promax", "
 #' @export
 print.doepro_fa <- function(x, ...) {
   cat(sprintf("KMO %.3f; Bartlett chi-square %.2f on %d df, %s\n\n", x$kmo, x$bartlett$statistic, as.integer(x$bartlett$df),
-              gsub("&lt;", "<", p_eq(x$bartlett$p), fixed = TRUE)))
+              gsub("&lt;", "<", p_eq(x$bartlett$p, x$alpha), fixed = TRUE)))
   print(round(cbind(x$loadings, Communality = x$communality, Uniqueness = x$uniqueness), 3))
   invisible(x)
 }
@@ -7772,16 +7808,16 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
         sprintf("Because the data are unbalanced, the difference two means need to be declared different depends on which two are compared: the C.D. at %s ranges from <b>%s</b>.",
                 lvl, err_text(e, "cd", 3, html = FALSE))
       ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). The highest mean, %s, was recorded for <b>%s</b>. %s</li>",
-        e$label, s, fmt(e$F, 2), p_eq(e$p), fmt(best$Mean), top, cd_txt))
+        e$label, s, fmt(e$F, 2), p_eq(e$p, a), fmt(best$Mean), top, cd_txt))
     } else if (length(e$vars) > 1) {
       ## an interaction F-test asks whether one factor's effect depends on the
       ## other, not whether the cell means are all equal
       fx <- e$vars
       ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence at the %s level that the effect of %s depends on the level of %s. This is not evidence that the interaction is absent; a small one may have gone undetected.</li>",
-        e$label, s, fmt(e$F, 2), p_eq(e$p), lvl, fx[1], paste(fx[-1], collapse = " and ")))
+        e$label, s, fmt(e$F, 2), p_eq(e$p, a), lvl, fx[1], paste(fx[-1], collapse = " and ")))
     } else {
       ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence to conclude that its means differ at the %s level, so no C.D. is quoted and no letters are given. This is not evidence that the means are equal; the experiment may have been too small to detect a real difference.</li>",
-        e$label, s, fmt(e$F, 2), p_eq(e$p), lvl))
+        e$label, s, fmt(e$F, 2), p_eq(e$p, a), lvl))
     }
   }
 
@@ -7798,10 +7834,10 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
       if (rows$p[i] < a) {
         inter_sig <- TRUE
         ee <- c(ee, sprintf("<li><b>%s</b> is significant at the %s level (F = %s, %s): the effect of %s differs between environments, so its pooled means are averages over environments that behave differently and should be read with that in mind.</li>",
-          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i]), fac))
+          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i], a), fac))
       } else {
         ee <- c(ee, sprintf("<li><b>%s</b> is not significant at the %s level (F = %s, %s): there is insufficient evidence that the effect of %s differs between environments.</li>",
-          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i]), fac))
+          rows$Source[i], lvl, fmt(rows$F[i], 2), p_eq(rows$p[i], a), fac))
       }
     }
   }
@@ -7816,15 +7852,15 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
     "there is no", if (isTRUE(asm$strata)) "sub-plot" else "residual",
     "error variation, and the checks of normality and equal variances do not apply.</li>"))
   if (!is.na(asm$p_norm)) at <- c(at, sprintf("<li>Shapiro-Wilk on residuals: W = %s, %s - %s.</li>",
-    fmt(asm$shapiro$statistic, 3), p_eq(asm$p_norm),
-    if (asm$p_norm > a) sprintf("insufficient evidence at the %s level that the residuals depart from normality", lvl)
+    fmt(asm$shapiro$statistic, 3), p_eq(asm$p_norm, a),
+    if (asm$p_norm >= a) sprintf("insufficient evidence at the %s level that the residuals depart from normality", lvl)
     else sprintf("the residuals <b>depart from normality</b> at the %s level", lvl)))
   else if (!isTRUE(asm$exact)) at <- c(at, sprintf("<li>Normality could not be tested: %s.</li>",
     asm$norm_why %||% "too few residuals"))
   if (!is.na(asm$p_hov)) at <- c(at, sprintf("<li>%s: %s - %s.</li>",
     paste0(toupper(substr(asm$hov_label, 1, 1)), substring(asm$hov_label, 2)),
-    p_eq(asm$p_hov),
-    if (asm$p_hov > a) sprintf("insufficient evidence at the %s level that the treatments differ in variance", lvl)
+    p_eq(asm$p_hov, a),
+    if (asm$p_hov >= a) sprintf("insufficient evidence at the %s level that the treatments differ in variance", lvl)
     else sprintf("the variances are <b>heterogeneous</b> at the %s level", lvl)))
   else if (!isTRUE(asm$exact)) at <- c(at, sprintf("<li>Equal variances could not be tested: %s.</li>",
     asm$hov_why %||% "too few values"))
@@ -7889,7 +7925,7 @@ sup{color:#1B4F9C;font-weight:600}
 ## cannot support. The readings are plain text, escaped where they are shown.
 
 ## "p = 0.0216" or "p < 0.0001", as the tables print it
-rd_p <- function(p) gsub("&lt;", "<", p_eq(p), fixed = TRUE)
+rd_p <- function(p, alpha) gsub("&lt;", "<", p_eq(p, alpha), fixed = TRUE)
 
 ## "5%"
 rd_lvl <- function(alpha) paste0(pct(alpha), "%")
@@ -7898,7 +7934,7 @@ rd_lvl <- function(alpha) paste0(pct(alpha), "%")
 ## the level of the double star, is reported at that level.
 rd_sig <- function(p, alpha)
   sprintf("%s at the %s level (%s)", if (p < alpha) "significant" else "not significant",
-          rd_lvl(if (p < alpha / 5) alpha / 5 else alpha), rd_p(p))
+          rd_lvl(if (p < alpha / 5) alpha / 5 else alpha), rd_p(p, alpha))
 
 ## "the effect of Nitrogen depends on the level of Variety"; with three or
 ## more factors, "the interaction of A and B differs between the levels of C"
@@ -8169,7 +8205,7 @@ means_body <- function(e, digits, tr) {
   sig <- effect_sig(e)
   verdict <- if (is.na(e$p)) "" else if (sig) "" else
     sprintf(paste("The F-test for %s is not significant at the %s level (%s), so no C.D. is quoted and no letters are given:",
-                  "there is insufficient evidence that the %s means differ."), v, lvl, rd_p(e$p), v)
+                  "there is insufficient evidence that the %s means differ."), v, lvl, rd_p(e$p, a), v)
   if (length(top) == k)
     return(paste0(sprintf("All %d %s means print as %s.", k, v, pr[1]), if (nzchar(verdict)) paste0(" ", verdict) else ""))
   ends <- if (k == 2) sprintf("%s has the higher mean (%s) and %s the lower (%s).", lab[top], pr[top], lab[bot], pr[bot])
@@ -8217,13 +8253,13 @@ twoway_text <- function(res, e, f1, f2, digits = 2, tr = "none", cd_digits = dig
     return(sprintf(paste("The %s x %s interaction is not significant at the %s level (%s): there is insufficient evidence that the",
                          "differences between the %s means change with %s, so the marginal means (the last row and column) can",
                          "be read on their own, each with its own factor's F-test and C.D. A small interaction may have gone undetected."),
-                   f1, f2, lvl, rd_p(e$p), f2, f1))
+                   f1, f2, lvl, rd_p(e$p, a), f2, f1))
   m <- e$means; shown <- rd_shown(e, tr); pr <- fmt(shown, digits)
   l1 <- levels(res$data[[f1]]); l1 <- l1[l1 %in% as.character(m[[f1]])]
   rows <- lapply(l1, function(x) which(as.character(m[[f1]]) == x))
   best <- vapply(rows, function(i) join_and(as.character(m[[f2]][i][at_extreme(pr[i], max)])), "")
   out <- sprintf("The %s x %s interaction is significant at the %s level (%s): there is evidence that the differences between the %s means are not the same at every level of %s.",
-                 f1, f2, rd_lvl(if (e$p < a / 5) a / 5 else a), rd_p(e$p), f2, f1)
+                 f1, f2, rd_lvl(if (e$p < a / 5) a / 5 else a), rd_p(e$p, a), f2, f1)
   n2 <- length(unique(as.character(m[[f2]])))
   if (length(unique(best)) == 1) {
     ## the same level is highest everywhere: say whether the order of the
@@ -8495,11 +8531,11 @@ assum_text <- function(res, asm, tr = "none") {
   out <- if (identical(tr, "none")) character(0)
          else sprintf("These checks are of the analysis of the transformed values (%s).", TRANS[[tr]]$lab)
   norm <- if (is.na(asm$p_norm)) sprintf("Normality could not be tested: %s.", asm$norm_why %||% "too few residuals")
-    else if (asm$p_norm < a) sprintf("The Shapiro-Wilk test finds that the residuals depart from a normal distribution, significant at the %s level (%s); the Q-Q plot below shows where.", lvl, rd_p(asm$p_norm))
-    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals depart from a normal distribution (%s).", lvl, rd_p(asm$p_norm))
+    else if (asm$p_norm < a) sprintf("The Shapiro-Wilk test finds that the residuals depart from a normal distribution, significant at the %s level (%s); the Q-Q plot below shows where.", lvl, rd_p(asm$p_norm, asm$alpha))
+    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals depart from a normal distribution (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
   hov <- if (is.na(asm$p_hov)) sprintf("Equal variances could not be tested: %s.", asm$hov_why %||% "too few values")
-    else if (asm$p_hov < a) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
-    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
+    else if (asm$p_hov < a) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
+    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
   far <- rd_far_rows(res)
   outl <- if (length(far)) sprintf("%s %s a standardised residual beyond -3 or 3; check %s for a recording error.",
                                    cap1(rows_text(far)), pl(length(far), "has", "have"), pl(length(far), "it", "them"))
@@ -8556,7 +8592,7 @@ meanvar_text <- function(res, asm) {
                 "root helps; about 2, as the square of the mean, where the logarithm helps.")
   if (isTRUE(asm$exact) || nrow(asm$mv) < 3) return(NULL)
   lvl <- rd_lvl(asm$alpha); b <- as.numeric(sprintf("%.2f", asm$slope))
-  cells <- table(interaction(res$data[res$facs], drop = TRUE))
+  cells <- table(hov_cells(res))
   left <- length(cells) - nrow(asm$mv)
   how <- if (b < 0) "falls as the mean rises"
          else if (b < 0.5) "rises with the mean, though more slowly than in proportion to it"
@@ -8567,8 +8603,8 @@ meanvar_text <- function(res, asm) {
     if (left > 0) sprintf("%d %s not drawn, because %s mean is not positive or %s no variance (a single value, or values all equal).",
                           left, pl(left, "cell is", "cells are"), pl(left, "its", "their"), pl(left, "it has", "they have")),
     if (is.na(asm$slope_p)) sprintf("The slope is b = %.2f; with only three points it cannot be tested.", asm$slope)
-    else if (asm$slope_p < asm$alpha) sprintf("The slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s.", asm$slope, lvl, rd_p(asm$slope_p), how)
-    else sprintf("The slope, b = %.2f, does not differ significantly from 0 at the %s level (%s): insufficient evidence that the variance changes with the mean.", asm$slope, lvl, rd_p(asm$slope_p)),
+    else if (asm$slope_p < asm$alpha) sprintf("The slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s.", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha), how)
+    else sprintf("The slope, b = %.2f, does not differ significantly from 0 at the %s level (%s): insufficient evidence that the variance changes with the mean.", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha)),
     if (min(cells) <= 3) sprintf("Each variance rests on only %s values, so the points scatter widely and the slope is uncertain.",
                                  if (min(cells) == max(cells)) min(cells) else sprintf("%d to %d", min(cells), max(cells))))
   list(what = what, reading = paste(out, collapse = " "))
@@ -8596,8 +8632,8 @@ resid_text <- function(res, asm) {
   far <- rd_far_rows(res)
   hov <- if (is.na(asm$p_hov)) sprintf("Equal variances could not be tested: %s.", asm$hov_why %||% "too few values")
     else if (asm$p_hov < asm$alpha) sprintf("%s finds that the variances differ between the treatments, significant at the %s level (%s): look for the band to widen towards one side.",
-                                           rd_hov_name(asm), lvl, rd_p(asm$p_hov))
-    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov))
+                                           rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
+    else sprintf("%s finds insufficient evidence at the %s level that the variances differ between the treatments (%s).", rd_hov_name(asm), lvl, rd_p(asm$p_hov, asm$alpha))
   out <- c(hov,
     if (length(far)) sprintf("%s %s beyond -3 or 3, which normal residuals seldom are; check %s for a recording error.",
                              cap1(rows_text(far)), pl(length(far), "lies", "lie"), pl(length(far), "it", "them"))
@@ -8639,8 +8675,8 @@ qq_aov_text <- function(res, asm) {
   ## with one error degree of freedom the plot's reading has already said why
   test <- if (identical(pattern, "one") && isTRUE(res$dfe < 2)) NULL
     else if (is.na(asm$p_norm)) sprintf("Normality could not be tested: %s.", asm$norm_why %||% "too few residuals")
-    else if (asm$p_norm < asm$alpha) sprintf("The Shapiro-Wilk test finds a significant departure from normal at the %s level (%s).", lvl, rd_p(asm$p_norm))
-    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals are not normal (%s).", lvl, rd_p(asm$p_norm))
+    else if (asm$p_norm < asm$alpha) sprintf("The Shapiro-Wilk test finds a significant departure from normal at the %s level (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
+    else sprintf("The Shapiro-Wilk test finds insufficient evidence at the %s level that the residuals are not normal (%s).", lvl, rd_p(asm$p_norm, asm$alpha))
   calm <- identical(pattern, "ok ok")
   clash <- !is.na(asm$p_norm) && read && ((asm$p_norm < asm$alpha && calm) || (asm$p_norm >= asm$alpha && !calm))
   out <- c(plot_read, test,
@@ -8695,9 +8731,9 @@ scale_text <- function(res, asm) {
   out <- if (is.na(asm$slope)) "The mean-variance slope could not be estimated, so the line is the only guide here."
     else if (is.na(asm$slope_p)) sprintf("The mean-variance slope (b = %.2f) rests on three treatments and cannot be tested, so the line is the main guide here.", asm$slope)
     else if (asm$slope_p < asm$alpha) sprintf("The mean-variance slope, b = %.2f, differs significantly from 0 at the %s level (%s): the variance %s with the mean, so look for the line to %s.",
-                                              asm$slope, lvl, rd_p(asm$slope_p), if (asm$slope > 0) "rises" else "falls",
+                                              asm$slope, lvl, rd_p(asm$slope_p, asm$alpha), if (asm$slope > 0) "rises" else "falls",
                                               if (asm$slope > 0) "climb" else "fall")
-    else sprintf("The mean-variance slope, b = %.2f, gives insufficient evidence at the %s level that the variance changes with the mean (%s).", asm$slope, lvl, rd_p(asm$slope_p))
+    else sprintf("The mean-variance slope, b = %.2f, gives insufficient evidence at the %s level that the variance changes with the mean (%s).", asm$slope, lvl, rd_p(asm$slope_p, asm$alpha))
   list(what = what, reading = out)
 }
 
@@ -9297,10 +9333,10 @@ assum_table_html <- function(a) {
   rows <- character(0)
   ok <- function(p, why = NULL) {
     if (!is.finite(p)) return(paste0("not available", if (length(why)) paste0(": ", esc(why)) else ""))
-    if (p > a$alpha) "no significant departure" else "<b>significant departure</b>"
+    if (p >= a$alpha) "no significant departure" else "<b>significant departure</b>"
   }
   stat <- function(lab, v) if (is.finite(v)) paste(lab, "=", fmt(v)) else "-"
-  pv <- function(p) if (is.finite(p)) p_eq(p) else "-"
+  pv <- function(p) if (is.finite(p)) p_eq(p, a$alpha) else "-"
   rows <- c(rows, sprintf(
     "<tr><td>Shapiro-Wilk (normality of residuals)</td><td>%s</td><td>%s</td><td>%s</td></tr>",
     stat("W", if (is.null(a$shapiro)) NA else a$shapiro$statistic), pv(a$p_norm), ok(a$p_norm, a$norm_why)))
@@ -9328,8 +9364,12 @@ assum_table_html <- function(a) {
     if (length(a$outliers)) paste(a$outliers, collapse = ", ") else "none"))
   lev <- a$levene; bart <- a$bartlett
   left <- join_and(head_more(lev$left_out, 6))
-  sig <- function(p) is.finite(p) && p <= a$alpha
+  sig <- function(p) is.finite(p) && p < a$alpha
   notes <- c(
+    if (isTRUE(a$on_residuals) && !isTRUE(a$exact))
+      paste("The design has blocks, so the tests of equal variances use each plot's residual, recentred on its",
+            "treatment's mean: the block differences, which the error variance does not include, would otherwise",
+            "hide unequal variances. The Taylor slope uses the values themselves, as residuals would flatten it."),
     if (isTRUE(a$exact)) paste("The model fits every value exactly: each observation equals its fitted value,",
                                "so there is no", if (isTRUE(a$strata)) "sub-plot" else "residual",
                                "error variation to test or to plot."),
@@ -9451,9 +9491,9 @@ auto_scan <- function(d, design, map, candidates, alpha = 0.05, dtype = "auto") 
       data.frame(Variable = v,
                  Key = s$method,
                  Optional = isTRUE(s$optional),
-                 `Shapiro-Wilk p` = fmt(a$p_norm, 3),
+                 `Shapiro-Wilk p` = p_text(a$p_norm, a$alpha),
                  `Equal variances p` = if (is.na(a$p_hov)) "-" else
-                   paste0(fmt(a$p_hov, 3), if (identical(a$hov_test, "Bartlett")) " (Bartlett)"
+                   paste0(p_text(a$p_hov, a$alpha), if (identical(a$hov_test, "Bartlett")) " (Bartlett)"
                           else if (a$levene$dropped > 0) " (Levene, some cells)" else ""),
                  `Taylor b` = fmt(a$slope, 2),
                  `Box-Cox lambda` = fmt(a$lambda, 2),
@@ -10492,10 +10532,10 @@ doepro_server <- function(input, output, session) {
         else ""))) else NULL,
       if (isTRUE(f1$pooled) && !is.null(f1$homogeneity)) {
         h <- f1$homogeneity
-        homog <- isTRUE(h$p > r$alpha)
+        homog <- isTRUE(h$p >= r$alpha)
         div(class = if (homog) "sugbox" else "warn", HTML(sprintf(
           "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
-          fmt(h$chisq, 3), h$df, p_eq(h$p),
+          fmt(h$chisq, 3), h$df, p_eq(h$p, r$alpha),
           if (homog)
             sprintf("There is insufficient evidence at the %s%% level that the environments' error variances differ, so pooling the errors is reasonable; a small difference may have gone undetected.", pct(r$alpha))
           else

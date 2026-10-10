@@ -164,7 +164,7 @@ fa_data <- function(d, vars, factors = NULL, rotation = c("varimax", "promax", "
 #' @export
 print.doepro_fa <- function(x, ...) {
   cat(sprintf("KMO %.3f; Bartlett chi-square %.2f on %d df, %s\n\n", x$kmo, x$bartlett$statistic, as.integer(x$bartlett$df),
-              gsub("&lt;", "<", p_eq(x$bartlett$p), fixed = TRUE)))
+              gsub("&lt;", "<", p_eq(x$bartlett$p, x$alpha), fixed = TRUE)))
   print(round(cbind(x$loadings, Communality = x$communality, Uniqueness = x$uniqueness), 3))
   invisible(x)
 }
