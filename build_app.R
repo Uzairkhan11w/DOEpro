@@ -152,9 +152,8 @@ message("Next, for the browser build: export_app()")
 
 ## ------------------------------------------------------ the browser build ---
 ## shinylive::export() compiles app/ into docs/, writing every file afresh,
-## including index.html and its service worker. The StatLabX loading screen
-## (site/) replaces shinylive's unexplained spinner, so it is put back after
-## every export here rather than by hand.
+## including index.html and its service worker. The StatLabX website (site/)
+## is put into that page after every export here rather than by hand.
 export_app <- function(app = "app", out = "docs") {
   unlink(out, recursive = TRUE)
   shinylive::export(app, out)
@@ -162,19 +161,23 @@ export_app <- function(app = "app", out = "docs") {
   invisible(out)
 }
 
-## The loading screen: a branded page shown until Shiny connects, with the
-## real progress of the download of R and its packages. The files the first
-## visit downloads are listed here with their sizes in this build, so the
-## bar measures the bytes received against the true total. If shinylive
-## changes the files it writes, this stops rather than ship a wrong total
-## or an unbranded page.
+## The website people land on. It is plain HTML, CSS and JavaScript, so it
+## shows at once, while R starts in the app's frame underneath; site/landing.js
+## opens the app when asked and shows the real progress of the download of R
+## and its packages. Facts on the page (the version, the designs, the post-hoc
+## methods, the people, the citation and the worked example's results) are
+## taken from the package here, so the page cannot drift from the app. The
+## files a first visit downloads are listed with their sizes in this build,
+## so progress is bytes received against the true total. If shinylive changes
+## the files it writes, this stops rather than ship a wrong total or a page
+## without the website.
 brand_site <- function(out = "docs", site = "site") {
   index <- file.path(out, "index.html")
   sw <- file.path(out, "shinylive-sw.js")
   stopifnot(file.exists(index), file.exists(sw), dir.exists(site))
   html <- paste(readLines(index, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  if (grepl("slx-loading", html, fixed = TRUE))
-    stop(index, " already has the loading screen; run export_app() for a fresh export.", call. = FALSE)
+  if (grepl("slx-site", html, fixed = TRUE))
+    stop(index, " already has the website; run export_app() for a fresh export.", call. = FALSE)
   read <- function(f) paste(readLines(file.path(site, f), warn = FALSE, encoding = "UTF-8"), collapse = "\n")
 
   ## what the first visit downloads: R and its built-in library, the
@@ -188,22 +191,21 @@ brand_site <- function(out = "docs", site = "site") {
   files <- c(core, file.path(webr, "packages", "metadata.rds"), pkgs, libs)
   gone <- files[!file.exists(files)]
   if (length(gone) || !length(pkgs))
-    stop("The export no longer has the files the loading screen counts (", paste(basename(gone), collapse = ", "),
+    stop("The export no longer has the files the website counts (", paste(basename(gone), collapse = ", "),
          "). Check what a first visit downloads and update brand_site().", call. = FALSE)
   rel <- substring(normalizePath(files, "/"), nchar(normalizePath(out, "/")) + 2)
   sizes <- sprintf('"%s": %.0f', rel, file.size(files))
-  js <- sub("/*FILES*/{}", paste0("{", paste(sizes, collapse = ", "), "}"), read("loading.js"), fixed = TRUE)
+  js <- sub("/*FILES*/{}", paste0("{", paste(sizes, collapse = ", "), "}"), read("landing.js"), fixed = TRUE)
   if (!grepl('"shinylive/webr/R.wasm"', js, fixed = TRUE))
-    stop("site/loading.js lost its /*FILES*/{} placeholder.", call. = FALSE)
+    stop("site/landing.js lost its /*FILES*/{} placeholder.", call. = FALSE)
 
-  ## the logo, as the page and the browser tab show it, taken from the
-  ## package so that there is one copy
-  src <- paste(readLines(file.path("R", "constants.R"), warn = FALSE), collapse = "\n")
-  b64 <- regmatches(src, regexpr("LOGO_URI <- \"data:image/png;base64,[A-Za-z0-9+/=]+", src))
-  if (!length(b64)) stop("LOGO_URI not found in R/constants.R.", call. = FALSE)
-  png <- jsonlite::base64_dec(sub(".*base64,", "", b64))
-  writeBin(png, file.path(out, "logo.png"))
-  writeBin(png, file.path(out, "favicon.ico"))
+  ## the page's text, filled in from the package
+  body <- site_fill(read("landing.html"), site_facts(sum(file.size(files))))
+
+  ## images: the wordmark (dark and light), the icons and the preview card
+  assets <- list.files(file.path(site, "assets"), full.names = TRUE)
+  if (!length(assets)) stop("site/assets is empty.", call. = FALSE)
+  file.copy(assets, out, overwrite = TRUE)
 
   ## one insertion each, or nothing is written
   put <- function(x, pattern, with) {
@@ -211,18 +213,106 @@ brand_site <- function(out = "docs", site = "site") {
       stop("index.html from shinylive no longer has exactly one ", pattern, call. = FALSE)
     sub(pattern, with, x, fixed = TRUE)
   }
+  desc <- paste("Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters,",
+                "assumption checks, post-hoc tests and plain-language readings, with R running in your browser.")
   head <- paste0(
     "<title>StatLabX - statistics for agricultural and allied research</title>\n",
-    "    <meta name=\"description\" content=\"Free analysis of designed agricultural experiments and ",
-    "of agricultural data: ANOVA, means and C.D., post-hoc tests, regression, correlation, principal ",
-    "components, clustering and factor analysis. R runs in your browser.\" />\n",
-    "    <link rel=\"icon\" type=\"image/png\" href=\"logo.png\" />\n",
-    "    <style>\n", read("loading.css"), "\n    </style>")
+    "    <meta name=\"description\" content=\"", desc, "\" />\n",
+    "    <meta name=\"theme-color\" content=\"#0B1530\" />\n",
+    "    <meta property=\"og:type\" content=\"website\" />\n",
+    "    <meta property=\"og:title\" content=\"StatLabX - statistics for agricultural and allied research\" />\n",
+    "    <meta property=\"og:description\" content=\"", desc, "\" />\n",
+    "    <meta property=\"og:image\" content=\"https://doepro.pages.dev/og.png\" />\n",
+    "    <meta name=\"twitter:card\" content=\"summary_large_image\" />\n",
+    "    <link rel=\"icon\" href=\"favicon.ico\" sizes=\"any\" />\n",
+    "    <link rel=\"icon\" type=\"image/png\" href=\"icon-192.png\" />\n",
+    "    <link rel=\"apple-touch-icon\" href=\"apple-touch-icon.png\" />\n",
+    "    <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\n",
+    "    <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin />\n",
+    "    <link rel=\"stylesheet\" crossorigin href=\"https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap\" />\n",
+    "    <style>\n", read("landing.css"), "\n    </style>")
   html <- put(html, "<title>Shiny App</title>", head)
-  html <- put(html, "<body>", paste0("<body>\n", read("loading.html"), "\n<script>\n", js, "\n</script>"))
+  html <- put(html, "<body>", paste0("<body class=\"slx-shell\">\n", body, "\n<script>\n", js, "\n</script>"))
   writeLines(html, index, useBytes = TRUE)
   cat(read("sw-progress.js"), file = sw, sep = "\n", append = TRUE)
-  message(sprintf("Added the loading screen to %s: %d files, %.1f MB on a first visit.",
+  message(sprintf("Added the website to %s: %d files, %.1f MB on a first visit.",
                   out, length(files), sum(file.size(files)) / 1048576))
   invisible(out)
+}
+
+## Everything the website states that the package knows: the version, the
+## designs and post-hoc methods, the people, the citation, and the worked
+## example (the RCBD demo) analysed as the app analyses it, for the hero's
+## cards, the table of means and the reading quoted on the page.
+site_facts <- function(first_visit_bytes) {
+  ns <- pkgload::load_all(".", quiet = TRUE, export_all = TRUE)$env
+  esc <- function(x) ns$esc(x)
+  r <- ns$analyze(ns$demo_data("RCBD"), "RCBD", list(response = "Yield", treat = "Variety", block = "Block"))
+  e <- r$effects$Variety; a <- ns$check_assumptions(r)
+  m <- e$means[order(-e$means$Mean), ]
+  an <- r$anova[r$anova$Source != "Total", ]
+  cv <- as.numeric(ns$fmt(r$cv, 2))
+  band <- if (cv < 10) "low" else if (cv < 20) "moderate" else if (cv < 30) "high" else "very high"
+  facts <- list(
+    demo = "RCBD", design = "RCBD", response = "Yield", factor = "Variety",
+    level = paste0(ns$pct(r$alpha), "%"), cd = ns$fmt(e$cd, 2), cv = ns$fmt(r$cv, 2), cv_band = band,
+    sw = ns$p_text(a$p_norm, r$alpha), hov = ns$p_text(a$p_hov, r$alpha),
+    means = lapply(seq_len(nrow(e$means)), function(i) list(
+      lab = as.character(e$means$Variety[i]), mean = round(e$means$Mean[i], 4), se = round(e$means$SE[i], 4),
+      letter = e$means$Letter[i], best = e$means$Letter[i] == "a")),
+    anova = lapply(seq_len(nrow(an)), function(i) list(
+      src = if (an$Source[i] == "Residuals") "Error" else an$Source[i], df = an$Df[i], ms = ns$fmt(an$MS[i], 2),
+      f = if (is.na(an$F[i])) "" else ns$fmt(an$F[i], 2),
+      mark = if (is.na(an$p[i])) "" else ns$star(an$p[i], r$alpha))))
+  json <- gsub("</", "<\\/", jsonlite::toJSON(facts, auto_unbox = TRUE), fixed = TRUE)
+
+  ## the people: initials from the first full name and the surname
+  team <- vapply(ns$AUTHORS, function(p) {
+    words <- strsplit(sub("^(Dr|Mr|Ms|Mrs|Prof)[.] ", "", p$name), " ")[[1]]
+    full <- words[!grepl("[.]$", words)]
+    ini <- toupper(paste0(substr(full[1], 1, 1), substr(full[length(full)], 1, 1)))
+    links <- c(if (!is.null(p$orcid) && !is.na(p$orcid))
+                 sprintf("<a href=\"https://orcid.org/%s\" target=\"_blank\" rel=\"noopener\">ORCID</a>", p$orcid),
+               if (!is.null(p$email) && !is.na(p$email)) sprintf("<a href=\"mailto:%s\">%s</a>", p$email, p$email))
+    sprintf(paste0("<article class=\"s-person\" data-reveal><div class=\"s-avatar\" aria-hidden=\"true\">%s</div>",
+                   "<h3>%s%s</h3><p class=\"s-role\">%s</p><p class=\"s-aff\">%s</p><p class=\"s-person-links\">%s</p></article>"),
+            ini, esc(p$name), if (isTRUE(p$maintainer)) "<span class=\"s-badge\">Maintainer</span>" else "",
+            esc(p$role), esc(p$aff), paste(links, collapse = ""))
+  }, "")
+
+  ## the citation, as inst/CITATION words it
+  cit <- utils::readCitationFile(file.path("inst", "CITATION"), meta = list(Encoding = "UTF-8"))
+  cite_txt <- paste(format(cit, style = "citation", bibtex = FALSE), collapse = " ")
+  cite_txt <- trimws(gsub("[[:space:]]+", " ", sub("^.*please use:", "", cite_txt)))
+  year <- regmatches(cite_txt, regexpr("[(][0-9]{4}[)]", cite_txt))
+
+  chips <- function(x) paste0("<span class=\"s-chip\">", esc(x), "</span>", collapse = "")
+  more <- c("Shapiro-Wilk on the residuals", "Levene's test", "Bartlett's test", "Box-Cox profile",
+            "Descriptive statistics", "Correlation", "Regression", "Principal components",
+            "Cluster analysis", "Factor analysis", "Plain-language readings", "HTML report")
+  list(
+    VERSION = ns$APP_VERSION, N_DESIGNS = length(ns$DESIGNS), N_POSTHOC = length(ns$PH_METHODS),
+    DESIGN_LIST = paste0("<li>", esc(names(ns$DESIGNS)), "</li>", collapse = ""),
+    POSTHOC_LIST = paste0("<li>", esc(ns$PH_METHODS), "</li>", collapse = ""),
+    TICKER_A = chips(names(ns$DESIGNS)), TICKER_B = chips(c(ns$PH_METHODS, more)),
+    MEANS_ROWS = paste0("<tr><td>", esc(as.character(m$Variety)), "</td><td>", ns$fmt(m$Mean, 2), "</td><td>",
+                        esc(m$Letter), "</td></tr>", collapse = ""),
+    CD = ns$fmt(e$cd, 2), CV = ns$fmt(r$cv, 2),
+    READING = esc(ns$means_text(e, 2, "none", r)),
+    TEAM = paste(team, collapse = ""),
+    CITATION = esc(cite_txt), DOI = ns$APP_DOI, YEAR = gsub("[()]", "", year),
+    TOTAL_MB = sprintf("%.0f", first_visit_bytes / 1048576),
+    FACTS = json)
+}
+
+## {{KEY}} -> value, every key used and none left over
+site_fill <- function(html, facts) {
+  for (k in names(facts)) {
+    key <- paste0("{{", k, "}}")
+    if (!grepl(key, html, fixed = TRUE)) stop("site/landing.html has no ", key, call. = FALSE)
+    html <- gsub(key, as.character(facts[[k]]), html, fixed = TRUE)
+  }
+  left <- regmatches(html, gregexpr("[{][{][A-Z_]+[}][}]", html))[[1]]
+  if (length(left)) stop("site/landing.html has slots nothing fills: ", paste(unique(left), collapse = ", "), call. = FALSE)
+  html
 }

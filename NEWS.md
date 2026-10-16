@@ -1,5 +1,20 @@
 # DOEpro (development version)
 
+* StatLabX has a website as its front page (doepro.pages.dev): plain HTML,
+  CSS and JavaScript that appears at once, while R starts in the background.
+  It shows the worked example's real results, what the app covers, the
+  people behind it and how to cite it, with a live view of R loading; "Start
+  analysing" opens the app (as soon as R is ready), "See a worked example"
+  loads, maps and runs the RCBD example, and the app's About tab and logo
+  bring the website back. Facts on the page come from the package at build
+  time.
+* The app's tabs follow the order of the work: About, Data, Explore, Design
+  and ANOVA, Means, Assumptions, Post-hoc, Plots, Interpretation and report.
+  Explore now comes straight after the data, ahead of the analysis of
+  variance.
+* The new StatLabX logo is used throughout: the website, the app's navigation
+  bar, the report and the browser tab.
+* Dr. Imran Khan is listed as Chief Scientist.
 * Unequal replication: every mean now has its own standard error and every pair
   of means its own SE(d) and C.D. Blocked designs with a missing plot and
   factorials with unequal cells use adjusted (least-squares) means with
@@ -226,7 +241,6 @@
   p < 0.05; it now prints as 0.04997, as the correlation and regression
   tables already did. A p-value exactly at the level is not significant
   everywhere, as the stars have it.
-* Dr. Imran Khan (SKUAST-Kashmir) is listed as a contributor.
 * An accuracy audit of the whole package (October 2026) found and fixed the
   following.
   - **Pooled factorial interactions.** With the environment random, two

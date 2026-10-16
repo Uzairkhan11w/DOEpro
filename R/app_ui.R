@@ -28,10 +28,11 @@ h4{font-size:17px;margin-top:14px}
 .navbar.navbar-default .container-fluid{padding:0;flex-wrap:wrap}
 .navbar .navbar-brand{display:flex;align-items:center;gap:10px;padding:2px 0;margin-right:16px;
   color:var(--slx-navy);text-decoration:none;white-space:nowrap}
-.navbar .navbar-brand img{height:32px;width:auto}
-.slx-word{font-size:20px;font-weight:800;letter-spacing:-.015em;line-height:1.05;color:var(--slx-navy)}
-.slx-x{background:linear-gradient(90deg,#3B7DD8,#7C4DFF);-webkit-background-clip:text;background-clip:text;color:transparent}
-.slx-sub{display:block;font-size:11px;font-weight:500;color:var(--slx-muted);letter-spacing:0}
+.navbar .navbar-brand{cursor:pointer}
+.navbar .navbar-brand img.slx-logo{height:30px;width:auto;display:block}
+.slx-sub{display:inline-block;padding-left:12px;border-left:1px solid var(--slx-line);font:500 10px/1.25 ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--slx-muted)}
+@media (max-width:575.98px){.slx-sub{display:none}}
 .navbar .navbar-nav{gap:2px;flex-wrap:wrap}
 .navbar .nav-link{color:var(--slx-ink) !important;border-radius:999px;padding:7px 13px !important;
   font-weight:500;font-size:14px;border:0 !important}
@@ -91,8 +92,10 @@ sup{color:var(--slx-blue-dark);font-weight:600}
 .slx-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:999px;
   background:#fff;border:1px solid var(--slx-line);font-size:13px;color:var(--slx-ink);font-weight:500}
 .slx-dot{width:8px;height:8px;border-radius:50%;background:#2F9E5B;box-shadow:0 0 0 3px rgba(47,158,91,.18)}
-.slx-h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin:18px auto 14px;max-width:880px;color:var(--slx-navy)}
-.slx-grad{background:linear-gradient(90deg,#3B7DD8,#6C63FF 55%,#7C4DFF);-webkit-background-clip:text;background-clip:text;color:transparent}
+.slx-hero-logo{height:64px;width:auto;margin:0 auto 22px;display:block}
+.slx-h1{font:400 clamp(40px,7vw,84px)/.95 Anton,Impact,Haettenschweiler,'Arial Narrow Bold',sans-serif;text-transform:uppercase;
+  letter-spacing:.005em;margin:20px auto 16px;max-width:880px;color:#0B1530}
+.slx-grad{background:linear-gradient(100deg,#0A2477 0%,#1E4FD7 36%,#3B82F6 68%,#7CB7FF 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .slx-lead{font-size:16.5px;color:var(--slx-muted);max-width:720px;margin:0 auto 22px;line-height:1.6}
 .slx-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .slx-section{background:#fff;border:1px solid var(--slx-line);border-radius:16px;padding:18px 22px;margin:0 0 16px}
@@ -113,12 +116,11 @@ sup{color:var(--slx-blue-dark);font-weight:600}
 trans_choices <- function()
   stats::setNames(names(TRANS), vapply(TRANS, `[[`, character(1), "lab"))
 
-## The brand at the left of the navigation bar: the logo, the platform's
-## name and the package that powers it
+## The brand at the left of the navigation bar: the StatLabX wordmark and
+## the package that powers it
 nav_brand <- function()
-  tagList(tags$img(src = LOGO_URI, alt = ""),
-          tags$span(tags$span(class = "slx-word", HTML("StatLab<span class='slx-x'>X</span>")),
-                    tags$span(class = "slx-sub", sprintf("powered by %s %s", APP_NAME, APP_VERSION))))
+  tagList(tags$img(src = LOGO_URI, alt = "StatLabX", class = "slx-logo"),
+          tags$span(class = "slx-sub", sprintf("powered by %s %s", APP_NAME, APP_VERSION)))
 
 #' The DOEpro user interface
 #'
@@ -145,11 +147,26 @@ doepro_ui <- function() navbarPage(
                      "  document.body.appendChild(a); a.click();",
                      "  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);",
                      " } catch(e){ alert('Download failed: ' + e.message); }",
-                     "});"))),
+                     "});")),
+                   ## in the browser build the website (site/) is the About page,
+                   ## so the About tab and the logo hand back to it
+                   tags$script(HTML(paste(
+                     "document.addEventListener('click', function (e) {",
+                     "  var a = e.target.closest ? e.target.closest('.navbar a[data-value=about], .navbar .navbar-brand') : null;",
+                     "  if (!a) return;",
+                     "  var shell = null;",
+                     "  try { shell = window.parent !== window ? window.parent.StatLabX : null; } catch (err) { shell = null; }",
+                     "  if (shell && shell.home) { e.preventDefault(); e.stopPropagation(); shell.home(); }",
+                     "}, true);")))),
                    tags$div(class = "appfoot", CREDIT_SHORT)),
 
+  ## ----------------------------------------------------------------- about --
+  ## first, so that the app opens on it; in the browser build the website
+  ## (site/) takes its place, and choosing it there brings the website back
+  tabPanel("About", value = "about", htmlOutput("about")),
+
   ## ------------------------------------------------------------------ data --
-  tabPanel("1. Data",
+  tabPanel("1. Data", value = "data",
     sidebarLayout(
       sidebarPanel(width = 4,
         h4("Paste from Excel"),
@@ -186,114 +203,10 @@ doepro_ui <- function() navbarPage(
         DTOutput("scanTab"))
     )),
 
-  ## ------------------------------------------------------- design and anova --
-  tabPanel("2. Design & ANOVA",
-    sidebarLayout(
-      sidebarPanel(width = 4,
-        selectInput("design", "Experimental design", DESIGNS, selected = "RCBD"),
-        conditionalPanel("input.design == 'FCRD' || input.design == 'FRCBD' || input.design == 'POOLFRCBD' || input.design == 'POOLFCRD'",
-          sliderInput("nfac", "Number of treatment factors", 2, 4, 2, step = 1)),
-        uiOutput("mapUI"),
-        selectInput("alpha", "Significance level", c(0.05, 0.01), selected = 0.05),
-        selectInput("dtype", "Nature of the responses (helps the adviser)",
-          c("Detect automatically" = "auto", "Counts (insects, grains, spores)" = "count",
-            "Percentage / proportion" = "percent", "Continuous measurement" = "continuous")),
-        tags$hr(),
-        h4("Transformation"),
-        uiOutput("transUI"),
-        actionButton("applysug", "Apply all suggested", class = "btn-default btn-sm"),
-        tags$hr(),
-        actionButton("run", "Run analysis", class = "btn-primary btn-lg"),
-        tags$br(), tags$br(),
-        actionButton("dl_anova", "ANOVA (CSV)", icon = icon("download"))),
-      mainPanel(width = 8,
-        uiOutput("runNote"),
-        uiOutput("anovaOut"),
-        tab_guide("The designs and their error terms", GUIDE_DESIGNS),
-        conditionalPanel("['POOLRCBD', 'POOLCRD', 'POOLFRCBD', 'POOLFCRD'].indexOf(input.design) >= 0",
-          tab_guide("Pooled (combined) analysis over environments", GUIDE_POOLED)))
-    )),
-
-  ## ----------------------------------------------------------------- means --
-  tabPanel("3. Means & C.D.",
-    fluidRow(
-      column(3, checkboxInput("letters", "Show grouping letters", TRUE)),
-      column(3, checkboxInput("detailed", "Show detailed tables", FALSE)),
-      column(3, numericInput("digits", "Decimal places", 2, 0, 5, 1)),
-      column(3, actionButton("dl_means", "Means (CSV)", icon = icon("download")))),
-    tags$hr(),
-    uiOutput("meansOut"),
-    tab_guide("How SE(m), SE(d) and the C.D. are worked out", GUIDE_ERRORS)),
-
-  ## ----------------------------------------------------------- assumptions --
-  tabPanel("4. Assumptions",
-    fluidRow(column(4, uiOutput("aRespUI"))),
-    uiOutput("assumtxt"),
-    uiOutput("asmText"),
-    uiOutput("sugbox"),
-    tab_guide("Choosing a transformation", GUIDE_TRANSFORM),
-    fluidRow(column(6, plotOutput("bcPlot", height = "300px"), uiOutput("bcText")),
-             column(6, plotOutput("mvPlot", height = "300px"), uiOutput("mvText"))),
-    tags$hr(), h4("Residual diagnostics"),
-    fluidRow(column(6, plotOutput("diagFit", height = "300px"), uiOutput("diagFitText")),
-             column(6, plotOutput("diagQQ", height = "300px"), uiOutput("diagQQText"))),
-    fluidRow(column(6, plotOutput("diagHist", height = "300px"), uiOutput("diagHistText")),
-             column(6, plotOutput("diagScale", height = "300px"), uiOutput("diagScaleText")))),
-
-  ## --------------------------------------------------------------- posthoc --
-  tabPanel("5. Post-hoc",
-    sidebarLayout(
-      sidebarPanel(width = 3,
-        uiOutput("aRespUI2"), uiOutput("phEffectUI"),
-        selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
-        ## a control means something only to Dunnett's test
-        conditionalPanel("input.phMethod == 'Dunnett'",
-          uiOutput("phControlUI"),
-          radioButtons("phAlt", "Compare each treatment with the control",
-            c("Does it differ? (two-sided)" = "two.sided", "Is it higher? (one-sided)" = "greater",
-              "Is it lower? (one-sided)" = "less"))),
-        actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
-        tags$br(), tags$br(),
-        actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
-      mainPanel(width = 9,
-        uiOutput("phNote"),
-        h4("Treatment groups"), DTOutput("phTab"), uiOutput("phText"),
-        h4("Test parameters"), DTOutput("phStats"),
-        uiOutput("phRangesUI"),
-        h4("Pairwise comparisons"),
-        div(class = "note", paste(
-          "Every pair of means: their difference, the standard error of that difference,",
-          "the critical value and critical difference it is judged against, and the verdict.")),
-        DTOutput("phPairs"), uiOutput("phPairsText"),
-        tab_guide("Which test to choose", GUIDE_POSTHOC))
-    )),
-
-  ## ----------------------------------------------------------------- plots --
-  tabPanel("6. Plots",
-    sidebarLayout(
-      sidebarPanel(width = 3,
-        uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
-        radioButtons("plType", "Plot type",
-          c("Bar chart" = "bar", "Interaction lines" = "line",
-            "Heat map" = "heat", "Box plot" = "box")),
-        checkboxInput("plLetters", "Show grouping letters", TRUE),
-        downloadButton("dl_plot", "Plot (PNG)")),
-      mainPanel(width = 9, plotOutput("mainPlot", height = "560px"), uiOutput("mainPlotText")))
-    ),
-
-  ## -------------------------------------------------------------- interpret --
-  tabPanel("7. Interpretation & Report",
-    fluidRow(
-      column(4, actionButton("dl_html", "Download report (HTML)",
-                             icon = icon("download"), class = "btn-primary")),
-      column(6, uiOutput("pdfBtn"))),
-    tags$hr(),
-    uiOutput("interpOut")),
-
   ## ---------------------------------------------------------------- explore --
-  ## analyses that describe and explore the data without a design; the
-  ## numbered tabs keep the analysis-of-variance workflow in order
-  navbarMenu("Explore",
+  ## analyses that describe and explore the data without a design, straight
+  ## after the data and before the analysis of variance
+  navbarMenu("2. Explore",
     tabPanel("Descriptive statistics",
       sidebarLayout(
         sidebarPanel(width = 3,
@@ -456,8 +369,107 @@ doepro_ui <- function() navbarPage(
             column(6, uiOutput("faScores"))))
       ))),
 
-  ## ------------------------------------------------------------------ help --
+  ## ------------------------------------------------------- design and anova --
+  tabPanel("3. Design & ANOVA", value = "design",
+    sidebarLayout(
+      sidebarPanel(width = 4,
+        selectInput("design", "Experimental design", DESIGNS, selected = "RCBD"),
+        conditionalPanel("input.design == 'FCRD' || input.design == 'FRCBD' || input.design == 'POOLFRCBD' || input.design == 'POOLFCRD'",
+          sliderInput("nfac", "Number of treatment factors", 2, 4, 2, step = 1)),
+        uiOutput("mapUI"),
+        selectInput("alpha", "Significance level", c(0.05, 0.01), selected = 0.05),
+        selectInput("dtype", "Nature of the responses (helps the adviser)",
+          c("Detect automatically" = "auto", "Counts (insects, grains, spores)" = "count",
+            "Percentage / proportion" = "percent", "Continuous measurement" = "continuous")),
+        tags$hr(),
+        h4("Transformation"),
+        uiOutput("transUI"),
+        actionButton("applysug", "Apply all suggested", class = "btn-default btn-sm"),
+        tags$hr(),
+        actionButton("run", "Run analysis", class = "btn-primary btn-lg"),
+        tags$br(), tags$br(),
+        actionButton("dl_anova", "ANOVA (CSV)", icon = icon("download"))),
+      mainPanel(width = 8,
+        uiOutput("runNote"),
+        uiOutput("anovaOut"),
+        tab_guide("The designs and their error terms", GUIDE_DESIGNS),
+        conditionalPanel("['POOLRCBD', 'POOLCRD', 'POOLFRCBD', 'POOLFCRD'].indexOf(input.design) >= 0",
+          tab_guide("Pooled (combined) analysis over environments", GUIDE_POOLED)))
+    )),
 
-  ## ----------------------------------------------------------------- about --
-  tabPanel("About", htmlOutput("about"))
+  ## ----------------------------------------------------------------- means --
+  tabPanel("4. Means & C.D.", value = "means",
+    fluidRow(
+      column(3, checkboxInput("letters", "Show grouping letters", TRUE)),
+      column(3, checkboxInput("detailed", "Show detailed tables", FALSE)),
+      column(3, numericInput("digits", "Decimal places", 2, 0, 5, 1)),
+      column(3, actionButton("dl_means", "Means (CSV)", icon = icon("download")))),
+    tags$hr(),
+    uiOutput("meansOut"),
+    tab_guide("How SE(m), SE(d) and the C.D. are worked out", GUIDE_ERRORS)),
+
+  ## ----------------------------------------------------------- assumptions --
+  tabPanel("5. Assumptions", value = "assumptions",
+    fluidRow(column(4, uiOutput("aRespUI"))),
+    uiOutput("assumtxt"),
+    uiOutput("asmText"),
+    uiOutput("sugbox"),
+    tab_guide("Choosing a transformation", GUIDE_TRANSFORM),
+    fluidRow(column(6, plotOutput("bcPlot", height = "300px"), uiOutput("bcText")),
+             column(6, plotOutput("mvPlot", height = "300px"), uiOutput("mvText"))),
+    tags$hr(), h4("Residual diagnostics"),
+    fluidRow(column(6, plotOutput("diagFit", height = "300px"), uiOutput("diagFitText")),
+             column(6, plotOutput("diagQQ", height = "300px"), uiOutput("diagQQText"))),
+    fluidRow(column(6, plotOutput("diagHist", height = "300px"), uiOutput("diagHistText")),
+             column(6, plotOutput("diagScale", height = "300px"), uiOutput("diagScaleText")))),
+
+  ## --------------------------------------------------------------- posthoc --
+  tabPanel("6. Post-hoc", value = "posthoc",
+    sidebarLayout(
+      sidebarPanel(width = 3,
+        uiOutput("aRespUI2"), uiOutput("phEffectUI"),
+        selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
+        ## a control means something only to Dunnett's test
+        conditionalPanel("input.phMethod == 'Dunnett'",
+          uiOutput("phControlUI"),
+          radioButtons("phAlt", "Compare each treatment with the control",
+            c("Does it differ? (two-sided)" = "two.sided", "Is it higher? (one-sided)" = "greater",
+              "Is it lower? (one-sided)" = "less"))),
+        actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
+        tags$br(), tags$br(),
+        actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
+      mainPanel(width = 9,
+        uiOutput("phNote"),
+        h4("Treatment groups"), DTOutput("phTab"), uiOutput("phText"),
+        h4("Test parameters"), DTOutput("phStats"),
+        uiOutput("phRangesUI"),
+        h4("Pairwise comparisons"),
+        div(class = "note", paste(
+          "Every pair of means: their difference, the standard error of that difference,",
+          "the critical value and critical difference it is judged against, and the verdict.")),
+        DTOutput("phPairs"), uiOutput("phPairsText"),
+        tab_guide("Which test to choose", GUIDE_POSTHOC))
+    )),
+
+  ## ----------------------------------------------------------------- plots --
+  tabPanel("7. Plots", value = "plots",
+    sidebarLayout(
+      sidebarPanel(width = 3,
+        uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
+        radioButtons("plType", "Plot type",
+          c("Bar chart" = "bar", "Interaction lines" = "line",
+            "Heat map" = "heat", "Box plot" = "box")),
+        checkboxInput("plLetters", "Show grouping letters", TRUE),
+        downloadButton("dl_plot", "Plot (PNG)")),
+      mainPanel(width = 9, plotOutput("mainPlot", height = "560px"), uiOutput("mainPlotText")))
+    ),
+
+  ## -------------------------------------------------------------- interpret --
+  tabPanel("8. Interpretation & Report", value = "report",
+    fluidRow(
+      column(4, actionButton("dl_html", "Download report (HTML)",
+                             icon = icon("download"), class = "btn-primary")),
+      column(6, uiOutput("pdfBtn"))),
+    tags$hr(),
+    uiOutput("interpOut"))
 )

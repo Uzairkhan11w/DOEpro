@@ -1217,7 +1217,8 @@ doepro_server <- function(input, output, session) {
         sprintf(" &nbsp;<a href='https://orcid.org/%s' target='_blank'>%s</a>", a$orcid, a$orcid) else ""
       eml <- if (!is.null(a$email) && !is.na(a$email))
         sprintf("<br><a href='mailto:%s'>%s</a>", a$email, a$email) else ""
-      sprintf("<li><b>%s</b><br>%s, %s%s%s</li>", a$name, a$role, a$aff, orc, eml)
+      sprintf("<li><b>%s</b>%s<br>%s, %s%s%s</li>", a$name, if (isTRUE(a$maintainer)) " <i>(maintainer)</i>" else "",
+              a$role, a$aff, orc, eml)
     }, character(1)), collapse = "")
 
     ## counts as words, as running text writes them
@@ -1225,8 +1226,9 @@ doepro_server <- function(input, output, session) {
     n_des <- length(DESIGNS); n_ph <- length(PH_METHODS)
     HTML(sprintf("
 <div class='slx-hero'>
-  <span class='slx-chip'><span class='slx-dot'></span>Free, open source, and runs in your browser</span>
-  <h1 class='slx-h1'>Statistics for agricultural research,<br><span class='slx-grad'>right in your browser</span></h1>
+  <img class='slx-hero-logo' src='%s' alt='StatLabX'>
+  <span class='slx-chip'><span class='slx-dot'></span>Free and open source, with R on your own computer</span>
+  <h1 class='slx-h1'>Designed for the <span class='slx-grad'>field</span></h1>
   <p class='slx-lead'>Analysis of variance for %s experimental designs, with means, critical differences and
   post-hoc tests, and regression, correlation, principal components, cluster and factor analysis.
   R runs on your own computer, so your data never leave it.</p>
@@ -1288,7 +1290,7 @@ so it depends only on <b>shiny</b>, <b>DT</b>, <b>ggplot2</b> and <b>rlang</b> (
 <b>bslib</b>, which shiny itself uses).</p>
 <p class='note'>%s</p>
 </div>",
-      words[n_des], n_des, n_ph, APP_NAME, APP_VERSION, APP_NAME, author_li,
+      LOGO_URI, words[n_des], n_des, n_ph, APP_NAME, APP_VERSION, APP_NAME, author_li,
       format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
       APP_URL, APP_URL, words[n_ph], CREDIT_LONG))
   })

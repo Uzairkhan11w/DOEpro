@@ -4,62 +4,526 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StatLabX - statistics for agricultural and allied research</title>
-    <meta name="description" content="Free analysis of designed agricultural experiments and of agricultural data: ANOVA, means and C.D., post-hoc tests, regression, correlation, principal components, clustering and factor analysis. R runs in your browser." />
-    <link rel="icon" type="image/png" href="logo.png" />
+    <meta name="description" content="Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters, assumption checks, post-hoc tests and plain-language readings, with R running in your browser." />
+    <meta name="theme-color" content="#0B1530" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="StatLabX - statistics for agricultural and allied research" />
+    <meta property="og:description" content="Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters, assumption checks, post-hoc tests and plain-language readings, with R running in your browser." />
+    <meta property="og:image" content="https://doepro.pages.dev/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="icon-192.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" crossorigin href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" />
     <style>
-/* StatLabX loading screen, shown while R and its packages load in the
-   browser. build_app.R puts this into docs/index.html after every export.
-   Colours follow the app: blue #3B7DD8, navy #1B4F9C, with violet only in
-   the wordmark and the bar. No web fonts, so nothing more to download. */
-#slx-loading {
-  position: fixed; inset: 0; z-index: 2147483000;
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px 16px; box-sizing: border-box; overflow: auto;
-  background:
-    radial-gradient(1100px 560px at 15% -10%, #E4EEFD 0%, rgba(228, 238, 253, 0) 62%),
-    radial-gradient(900px 520px at 105% 110%, #EFE7FD 0%, rgba(239, 231, 253, 0) 58%),
-    #FAFCFF;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #1C2B4A; transition: opacity .35s ease;
+/* StatLabX website. build_app.R puts this into docs/index.html after every
+   shinylive export. The page is plain HTML and CSS, so it appears at once,
+   while R starts underneath in the app's frame (#root), which stays hidden
+   until the visitor opens it. Colours come from the logo: navy lettering,
+   a royal-to-sky blue orbit. Display type is Anton; text is Inter; both fall
+   back to system fonts if Google Fonts cannot be reached. */
+
+/* ------------------------------------------------------------ the shell */
+html { scroll-behavior: smooth; }
+body.slx-shell { background: #EEF3FB; overflow-x: hidden; }
+body.slx-shell.slx-app-open { overflow: hidden; }
+#root {
+  position: fixed !important; inset: 0; z-index: 40; width: 100vw; height: 100vh;
+  opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s linear .45s;
 }
-#slx-loading.slx-done { opacity: 0; pointer-events: none; }
-#slx-loading * { box-sizing: border-box; }
-.slx-card { width: 100%; max-width: 440px; text-align: center; }
-.slx-logo { width: 84px; height: auto; display: block; margin: 0 auto 14px; }
-.slx-name { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
-.slx-name span {
-  background: linear-gradient(90deg, #3B7DD8, #7C4DFF);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.slx-tag { margin: 6px 0 30px; color: #5B6B86; font-size: 15px; }
-.slx-bar { position: relative; height: 10px; border-radius: 999px; background: #E2E9F5; overflow: hidden; }
-.slx-fill {
-  height: 100%; width: 0; border-radius: 999px;
-  background: linear-gradient(90deg, #3B7DD8, #7C4DFF); transition: width .25s ease;
-}
-/* after the downloads, or when they cannot be counted, the bar shows that
-   work is going on without claiming how much is left */
-.slx-bar.slx-working .slx-fill { opacity: .55; }
-.slx-bar.slx-working::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .75) 50%, rgba(255, 255, 255, 0) 100%);
-  transform: translateX(-100%); animation: slx-sweep 1.5s ease-in-out infinite;
-}
-@keyframes slx-sweep { to { transform: translateX(100%); } }
-@media (prefers-reduced-motion: reduce) {
-  .slx-fill { transition: none; }
-  .slx-bar.slx-working::after { animation: none; }
-}
-.slx-status { margin: 14px 0 2px; font-size: 15px; font-weight: 600; min-height: 1.4em; }
-.slx-amount { margin: 0; font-size: 13px; color: #5B6B86; min-height: 1.3em; font-variant-numeric: tabular-nums; }
-.slx-note { margin: 24px 0 0; font-size: 13.5px; color: #41526E; line-height: 1.55; }
-.slx-slow {
-  margin: 16px 0 0; font-size: 13px; line-height: 1.5; color: #7A4B00;
-  background: #FFF4E0; border-radius: 10px; padding: 8px 12px;
-}
-.slx-foot { margin: 28px 0 0; font-size: 12px; color: #7A889E; }
+body.slx-app-open #root { opacity: 1; visibility: visible; transition: opacity .45s ease, visibility 0s; }
 /* shinylive's own spinner sits underneath; its error panel must still show */
 .shinylive-viewer .loading-wrapper:not(.loading-wrapper-error) { visibility: hidden; }
+
+/* -------------------------------------------------------------- tokens */
+.slx-site {
+  --ink: #0B1530; --ink2: #24324F; --muted: #5A6784; --line: #E1E7F1; --line2: #D3DCEA;
+  --bg: #EEF3FB; --blue: #1E4FD7; --blue2: #3B82F6; --sky: #7CB7FF; --ok: #14A05C;
+  --grad: linear-gradient(100deg, #0A2477 0%, #1E4FD7 36%, #3B82F6 68%, #7CB7FF 100%);
+  --display: "Anton", Impact, Haettenschweiler, "Arial Narrow Bold", "Franklin Gothic Medium", sans-serif;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, Menlo, monospace;
+  position: relative; min-height: 100vh; font-family: var(--sans); font-size: 16px; line-height: 1.6;
+  color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased;
+  transition: opacity .45s ease, visibility 0s;
+}
+body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .45s; }
+/* resets at zero specificity (:where), so every component rule below wins */
+:where(.slx-site) *, :where(.slx-site) *::before, :where(.slx-site) *::after { box-sizing: border-box; }
+:where(.slx-site) :where(h1, h2, h3, h4, p, ul, ol, blockquote, pre, figure) { margin: 0; }
+:where(.slx-site) :where(ul, ol) { padding: 0; list-style: none; }
+:where(.slx-site) :where(a) { color: inherit; }
+:where(.slx-site) :where(button) { font: inherit; }
+:where(.slx-site) :where(em) { font-style: normal; }
+/* shinylive's reset makes every svg a block; icons here sit in lines of text */
+.slx-site svg { display: inline-block; }
+.slx-site .s-arcs, .slx-site .s-orbit svg, .slx-site .s-bars, .slx-site .s-step-ico, .slx-site .s-tile-ico { display: block; }
+.slx-site :focus-visible { outline: 3px solid rgba(59, 130, 246, .55); outline-offset: 3px; border-radius: 10px; }
+.s-sky {
+  position: absolute; inset: 0 0 auto 0; height: 1100px; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(900px 560px at 88% -6%, #D5E4FF 0%, rgba(213, 228, 255, 0) 64%),
+    radial-gradient(800px 520px at -8% 18%, #E2ECFF 0%, rgba(226, 236, 255, 0) 60%);
+}
+.slx-site main, .s-nav, .s-foot { position: relative; z-index: 1; }
+
+/* ------------------------------------------------------------- buttons */
+.s-btn {
+  display: inline-flex; align-items: center; gap: 12px; border-radius: 999px; cursor: pointer;
+  padding: 16px 18px 16px 26px; border: 1px solid transparent; text-decoration: none;
+  font: 600 13.5px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  transition: transform .25s ease, box-shadow .25s ease, background-color .25s ease, color .25s ease, border-color .25s ease;
+}
+.s-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.s-btn-dark { background: var(--ink); color: #fff; box-shadow: 0 12px 26px rgba(11, 21, 48, .22); }
+.s-btn-dark:hover { background: #14244E; transform: translateY(-2px); box-shadow: 0 16px 34px rgba(11, 21, 48, .28); }
+.s-btn-arrow {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); transition: transform .3s ease, background-color .3s ease;
+}
+.s-btn-dark:hover .s-btn-arrow { transform: rotate(45deg); background: var(--blue2); }
+.s-btn-ghost { background: #fff; color: var(--ink); border-color: var(--line2); padding: 16px 24px; }
+.s-btn-ghost:hover { border-color: var(--ink); transform: translateY(-2px); }
+.s-btn-light { background: #fff; color: var(--ink); }
+.s-btn-light:hover { background: #DCE8FF; }
+.s-btn-sm { padding: 11px 16px; font-size: 11.5px; gap: 9px; }
+.s-btn-sm.s-btn-ghost { padding: 11px 16px; }
+.s-live {
+  width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--blue2);
+  box-shadow: 0 0 0 0 rgba(59, 130, 246, .55); animation: s-pulse 1.6s ease-out infinite;
+}
+.slx-site.is-ready .s-live { background: var(--ok); animation: none; box-shadow: 0 0 0 3px rgba(20, 160, 92, .22); }
+.slx-site.is-failed .s-live { background: #D04A3B; animation: none; }
+@keyframes s-pulse { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, .5); } 100% { box-shadow: 0 0 0 9px rgba(59, 130, 246, 0); } }
+
+/* ----------------------------------------------------------------- nav */
+.s-nav { position: sticky; top: 14px; z-index: 50; padding: 14px 16px 0; }
+.s-nav-inner {
+  max-width: 1240px; margin: 0 auto; height: 66px; display: flex; align-items: center; gap: 18px;
+  padding: 0 12px 0 22px; border-radius: 20px; background: rgba(255, 255, 255, .84);
+  border: 1px solid rgba(225, 231, 241, .95); box-shadow: 0 10px 30px rgba(11, 21, 48, .06);
+  -webkit-backdrop-filter: saturate(1.5) blur(14px); backdrop-filter: saturate(1.5) blur(14px);
+  transition: box-shadow .3s ease;
+}
+.s-nav.is-scrolled .s-nav-inner { box-shadow: 0 16px 40px rgba(11, 21, 48, .12); }
+.s-brand { display: flex; align-items: center; flex: 0 0 auto; }
+.s-brand img { height: 36px; width: auto; display: block; }
+.s-brand-sub {
+  flex: 0 0 auto; padding-left: 16px; border-left: 1px solid var(--line2); white-space: nowrap;
+  font: 500 10.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+}
+.s-links { flex: 1; display: flex; justify-content: flex-end; gap: clamp(14px, 2.4vw, 34px); margin-right: 8px; }
+.s-links a {
+  display: inline-flex; align-items: center; gap: 10px; text-decoration: none; white-space: nowrap;
+  font: 600 12px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink2);
+  padding: 8px 2px; transition: color .2s ease;
+}
+.s-links a i { font-style: normal; font-weight: 400; font-size: 15px; color: var(--muted); transition: transform .3s ease, color .3s ease; }
+.s-links a:hover { color: var(--blue); }
+.s-links a:hover i { transform: rotate(90deg); color: var(--blue); }
+.s-burger { display: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line2); background: #fff; cursor: pointer; position: relative; }
+.s-burger span { position: absolute; left: 13px; right: 13px; height: 1.6px; background: var(--ink); transition: transform .3s ease, top .3s ease; }
+.s-burger span:first-child { top: 17px; } .s-burger span:last-child { top: 25px; }
+.s-burger[aria-expanded="true"] span:first-child { top: 21px; transform: rotate(45deg); }
+.s-burger[aria-expanded="true"] span:last-child { top: 21px; transform: rotate(-45deg); }
+
+/* ---------------------------------------------------------------- hero */
+.s-hero { padding: 22px 16px 0; }
+.s-hero-card {
+  position: relative; max-width: 1240px; margin: 0 auto; overflow: hidden;
+  min-height: clamp(580px, calc(100vh - 128px), 820px);
+  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); align-items: center;
+  background: #fff; border: 1px solid var(--line); border-radius: 32px;
+  box-shadow: 0 40px 90px rgba(11, 21, 48, .08), 0 2px 8px rgba(11, 21, 48, .04);
+}
+.s-arcs { position: absolute; left: -60px; top: -60px; width: 760px; height: 760px; pointer-events: none; }
+.s-arcs circle { fill: none; stroke: #D8E0EC; stroke-width: 1.2; stroke-dasharray: 5 8; }
+.s-glyphs {
+  position: absolute; right: 1.5%; top: 50%; transform: translateY(-50%);
+  display: grid; grid-template-columns: repeat(2, auto); gap: 0 .06em; pointer-events: none; user-select: none;
+  font: 800 clamp(120px, 15.5vw, 236px)/.92 var(--sans); letter-spacing: -.05em; color: #F1F4F9;
+}
+.s-glyphs span { text-align: center; }
+.s-hero-copy { position: relative; z-index: 3; padding: clamp(34px, 4.6vw, 68px); container-type: inline-size; }
+.s-status {
+  display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
+  padding: 7px 14px 7px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(11, 21, 48, .05); font-size: 12.5px; font-weight: 500; color: var(--ink2);
+}
+.s-status-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-status-bar { width: 56px; height: 4px; border-radius: 99px; background: #E6ECF6; overflow: hidden; flex: 0 0 auto; position: relative; }
+.s-status-bar i { display: block; height: 100%; width: 0; background: var(--grad); border-radius: 99px; transition: width .3s ease; }
+.slx-site.is-ready .s-status-bar, .slx-site.is-failed .s-status-bar { display: none; }
+.s-h1 {
+  margin: 24px 0 22px; font: 400 clamp(54px, 7vw, 104px)/.9 var(--display);
+  text-transform: uppercase; letter-spacing: .002em; color: var(--ink);
+}
+/* sized to its column, so "for the field" always fits on one line */
+@supports (font-size: 1cqi) { .s-h1 { font-size: clamp(50px, 17.2cqi, 128px); } }
+.s-h1-line { display: block; white-space: nowrap; }
+.s-h1 em, .s-h2 em {
+  background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent;
+  padding-right: .04em;
+}
+.s-lead { max-width: 31em; font-size: 17px; line-height: 1.65; color: var(--muted); }
+.s-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.s-trust { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; font-size: 12.5px; color: var(--muted); }
+.s-trust li { display: inline-flex; align-items: center; gap: 8px; }
+.s-trust li::before {
+  content: ""; width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto;
+  background: #E5F3EC url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M4 7.2 6.1 9.2 10 5' fill='none' stroke='%2314A05C' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat;
+}
+
+/* the hero's product shot: the worked example's own output */
+.s-visual { position: relative; z-index: 2; height: 100%; min-height: 540px; }
+.s-orbit { position: absolute; left: 50%; top: 50%; width: 520px; height: 520px; margin: -260px 0 0 -260px; transform: rotate(-16deg) scale(var(--orbit-scale, 1.12)); pointer-events: none; }
+.s-orbit svg { width: 520px; height: 520px; display: block; }
+.s-orbit ellipse { fill: none; stroke: #C5D6F4; stroke-width: 1.4; stroke-dasharray: 3 7; }
+.s-star {
+  position: absolute; left: 0; top: 0; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  offset-path: path("M 10 260 A 250 96 0 1 1 510 260 A 250 96 0 1 1 10 260"); offset-rotate: 0deg;
+  animation: s-orbit 16s linear infinite;
+  background: radial-gradient(circle, #fff 0 18%, rgba(124, 183, 255, .9) 30%, rgba(59, 130, 246, 0) 70%);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Cpath d='M13 0C14 9 17 12 26 13 17 14 14 17 13 26 12 17 9 14 0 13 9 12 12 9 13 0Z'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Cpath d='M13 0C14 9 17 12 26 13 17 14 14 17 13 26 12 17 9 14 0 13 9 12 12 9 13 0Z'/%3E%3C/svg%3E") center/contain no-repeat;
+  filter: drop-shadow(0 0 8px rgba(59, 130, 246, .9));
+}
+@keyframes s-orbit { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+.s-stage { position: absolute; inset: 0; --px: 0; --py: 0; }
+.s-card {
+  position: absolute; border-radius: 20px; padding: 16px 18px 14px;
+  background: rgba(255, 255, 255, .8); border: 1px solid rgba(211, 222, 238, .95);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 26px 60px rgba(11, 21, 48, .13), 0 2px 6px rgba(11, 21, 48, .05);
+  transform: translate3d(calc(var(--px) * var(--depth) * 1px), calc(var(--py) * var(--depth) * 1px), 0);
+  transition: transform .5s cubic-bezier(.2, .8, .2, 1);
+  opacity: 0; scale: .94;
+  animation: s-card-in .9s cubic-bezier(.2, .8, .2, 1) forwards, s-float var(--float, 7s) ease-in-out infinite;
+  animation-delay: calc(.35s + var(--d) * .16s), calc(1.4s + var(--d) * .5s);
+}
+@keyframes s-card-in { to { opacity: 1; scale: 1; } }
+@keyframes s-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -9px; } }
+.s-card-k { font: 600 10px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.s-card-t { font-size: 14px; font-weight: 700; color: var(--ink); margin-top: 4px; }
+.s-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.s-card-means { --depth: 14; --float: 7.5s; left: 6%; top: 22%; width: min(390px, 74%); }
+.s-card-anova { --depth: 26; --float: 6.5s; right: 3%; top: 7%; width: 282px; }
+.s-card-checks { --depth: 34; --float: 8s; right: 5%; bottom: 7%; width: 268px; }
+.s-chip-cd {
+  flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; background: #EAF1FF; color: var(--blue);
+  font: 600 11px/1.2 var(--mono); white-space: nowrap;
+}
+.s-bars { display: block; width: 100%; height: auto; margin-top: 8px; overflow: visible; }
+.s-bars .bar { fill: url(#s-bar-g); transform-box: fill-box; transform-origin: 50% 100%; animation: s-grow .9s cubic-bezier(.2, .8, .2, 1) both; }
+.s-bars .bar.top { fill: url(#s-bar-top); }
+.s-bars .err { stroke: #0B1530; stroke-width: 1.2; opacity: .55; }
+.s-bars .let { font: 700 12px var(--sans); fill: var(--blue); text-anchor: middle; }
+.s-bars .lab { font: 600 10.5px var(--mono); fill: var(--muted); text-anchor: middle; }
+.s-bars .base { stroke: var(--line2); stroke-width: 1; }
+@keyframes s-grow { from { transform: scaleY(0); } }
+.s-card-note { font-size: 10.5px; color: var(--muted); margin-top: 4px; }
+.s-aov { width: 100%; border-collapse: collapse; margin-top: 10px; font: 500 11.5px/1.35 var(--mono); color: var(--ink2); font-variant-numeric: tabular-nums; }
+.s-aov th { font-weight: 600; color: var(--muted); text-align: right; padding: 0 0 6px; font-size: 10px; letter-spacing: .06em; }
+.s-aov th:first-child, .s-aov td:first-child { text-align: left; }
+.s-aov td { text-align: right; padding: 5px 0; border-top: 1px dashed var(--line); }
+.s-aov .sig { color: #C0392B; font-weight: 700; }
+.s-aov .ns { color: #8A97AF; }
+.s-ok { display: flex; align-items: center; gap: 9px; margin-top: 9px; font-size: 12px; color: var(--ink2); }
+.s-ok b { font: 600 11.5px var(--mono); color: var(--ink); margin-left: auto; white-space: nowrap; }
+.s-ok::before {
+  content: ""; width: 18px; height: 18px; border-radius: 6px; flex: 0 0 auto;
+  background: #E5F3EC url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5 9.3 7.8 12 13 6.5' fill='none' stroke='%2314A05C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat;
+}
+
+/* --------------------------------------------------------------- ticker */
+.s-ticker {
+  padding: 40px 0 6px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.s-track { display: flex; width: max-content; animation: s-marquee 70s linear infinite; }
+.s-track-rev { animation-direction: reverse; animation-duration: 82s; margin-top: 12px; }
+.s-ticker:hover .s-track { animation-play-state: paused; }
+.s-row { display: flex; gap: 12px; padding-right: 12px; }
+.s-chip {
+  display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; padding: 10px 17px;
+  border-radius: 999px; background: #fff; border: 1px solid var(--line); font-size: 14px; font-weight: 500; color: var(--ink2);
+}
+.s-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--grad); }
+@keyframes s-marquee { to { transform: translateX(-50%); } }
+
+/* -------------------------------------------------------------- numbers */
+.s-numbers {
+  max-width: 1240px; margin: 44px auto 0; padding: 0 16px;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.s-num { padding: 26px 26px 6px; border-left: 1px dashed var(--line2); }
+.s-num:first-child { border-left: 0; padding-left: 4px; }
+.s-num b { display: block; font: 400 clamp(58px, 6.4vw, 92px)/1 var(--display); color: var(--ink); }
+.s-num span { display: block; margin-top: 8px; font-size: 14px; color: var(--muted); max-width: 17em; }
+
+/* ------------------------------------------------------------- sections */
+.s-section { max-width: 1240px; margin: 0 auto; padding: clamp(80px, 10vw, 136px) 16px 0; }
+.s-head { max-width: 780px; margin-bottom: 46px; }
+.s-kicker {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+  font: 600 11.5px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--blue);
+}
+.s-kicker span { display: inline-grid; place-items: center; width: 36px; height: 22px; border-radius: 999px; border: 1px solid currentColor; font-size: 10.5px; letter-spacing: .06em; }
+.s-h2 { font: 400 clamp(44px, 6.4vw, 90px)/.94 var(--display); text-transform: uppercase; letter-spacing: .002em; color: var(--ink); }
+.s-sub { margin-top: 20px; font-size: 17px; color: var(--muted); max-width: 40em; }
+
+.s-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: none; }
+.s-step {
+  position: relative; background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 28px 24px 30px;
+  transition: transform .35s ease, box-shadow .35s ease, border-color .35s ease;
+}
+.s-step:hover { transform: translateY(-6px); box-shadow: 0 26px 50px rgba(11, 21, 48, .1); border-color: var(--line2); }
+.s-step-n { position: absolute; top: 18px; right: 22px; font: 400 58px/1 var(--display); color: transparent; -webkit-text-stroke: 1.3px #CBD6E8; }
+.s-step-ico { width: 46px; height: 46px; fill: none; stroke: var(--blue); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.s-step-ico circle { fill: #fff; }
+.s-step h3 { margin: 26px 0 10px; font: 400 34px/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.s-step p { font-size: 15px; color: var(--muted); line-height: 1.6; }
+
+/* ---------------------------------------------------------------- bento */
+.s-bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.s-tile {
+  position: relative; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 26px; padding: 28px;
+  transition: transform .35s ease, box-shadow .35s ease;
+}
+.s-tile:hover { transform: translateY(-4px); box-shadow: 0 26px 50px rgba(11, 21, 48, .08); }
+.s-tile-k { font: 600 11px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--blue); margin-bottom: 14px; }
+.s-tile h3 { font-size: clamp(21px, 2vw, 26px); line-height: 1.15; font-weight: 750; letter-spacing: -.02em; margin-bottom: 12px; }
+.s-tile p { font-size: 15px; color: var(--muted); }
+.s-tile-designs { grid-column: span 5; grid-row: span 2; background: linear-gradient(180deg, #fff 0%, #F5F8FE 100%); }
+.s-tile-means { grid-column: span 4; }
+.s-tile-ph { grid-column: span 3; }
+.s-tile-checks { grid-column: span 4; }
+.s-tile-private { grid-column: span 3; background: var(--ink); border-color: var(--ink); color: #fff; }
+.s-tile-private p { color: #A9B7D3; }
+.s-tile-ico { width: 44px; height: 44px; fill: none; stroke: var(--sky); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 18px; }
+.s-tile-reading { grid-column: span 7; }
+.s-tile-report { grid-column: span 5; }
+.s-designs { counter-reset: d; margin-top: 18px; }
+.s-designs li {
+  counter-increment: d; display: flex; gap: 14px; align-items: baseline; padding: 11px 0; border-top: 1px dashed var(--line2);
+  font-size: 15px; font-weight: 500; color: var(--ink2);
+}
+.s-designs li::before { content: counter(d, decimal-leading-zero); font: 600 11px var(--mono); color: var(--blue); flex: 0 0 22px; }
+.s-mini { width: 100%; border-collapse: collapse; margin-top: 16px; font: 500 13px/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+.s-mini td { padding: 7px 0; border-top: 1px dashed var(--line2); }
+.s-mini td:nth-child(2) { text-align: right; }
+.s-mini td:nth-child(3) { text-align: right; width: 3.4em; color: var(--blue); font-weight: 700; font-family: var(--sans); }
+.s-mini-foot { margin-top: 12px; font-size: 12.5px !important; color: var(--muted); }
+.s-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.s-tags li { padding: 7px 12px; border-radius: 999px; background: #F1F5FD; border: 1px solid var(--line); font-size: 13px; font-weight: 500; color: var(--ink2); }
+.s-tile-reading blockquote {
+  position: relative; margin-top: 8px; padding: 20px 22px 20px 26px; border-radius: 18px; background: #F5F8FE;
+  border-left: 3px solid var(--blue2); font-size: 16px; line-height: 1.65; color: var(--ink2);
+}
+
+/* --------------------------------------------------------------- engine */
+.s-engine {
+  position: relative; margin-top: clamp(84px, 10vw, 140px); overflow: hidden; color: #B9C7E2; background: #050B1D;
+  background-image:
+    radial-gradient(700px 420px at 82% 28%, rgba(30, 79, 215, .38), rgba(30, 79, 215, 0) 62%),
+    radial-gradient(520px 360px at 8% 100%, rgba(124, 183, 255, .12), rgba(124, 183, 255, 0) 60%),
+    linear-gradient(rgba(124, 160, 255, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 160, 255, .06) 1px, transparent 1px);
+  background-size: auto, auto, 46px 46px, 46px 46px;
+}
+.s-engine-inner {
+  max-width: 1240px; margin: 0 auto; padding: clamp(80px, 9vw, 124px) 16px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: center;
+}
+.s-kicker-dark { color: var(--sky); }
+.s-h2-dark { color: #fff; margin-bottom: 26px; }
+.s-h2-dark em { background: linear-gradient(100deg, #3B82F6 0%, #7CB7FF 55%, #D6E7FF 100%); -webkit-background-clip: text; background-clip: text; }
+.s-engine-copy p { font-size: 16.5px; line-height: 1.7; }
+.s-engine-copy p + p { margin-top: 14px; }
+.s-hud {
+  position: relative; padding: 24px 26px 22px; border-radius: 18px; font-family: var(--mono);
+  background: rgba(9, 18, 44, .72); border: 1px solid rgba(124, 170, 255, .22);
+  box-shadow: inset 0 0 60px rgba(30, 79, 215, .14), 0 30px 80px rgba(0, 0, 0, .35);
+}
+.s-hud::before, .s-hud::after { content: ""; position: absolute; width: 22px; height: 22px; border-color: var(--sky); border-style: solid; opacity: .8; }
+.s-hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; border-top-left-radius: 18px; }
+.s-hud::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-bottom-right-radius: 18px; }
+.s-hud-top { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--sky); padding-bottom: 14px; border-bottom: 1px solid rgba(124, 170, 255, .16); }
+.s-hud-top span:last-child { color: #fff; }
+.s-hud-steps { margin-top: 6px; }
+.s-hud-steps li { display: flex; align-items: center; gap: 14px; padding: 11px 0; border-bottom: 1px dashed rgba(124, 170, 255, .14); font-size: 13.5px; color: #6E7FA3; transition: color .3s ease; }
+.s-hud-steps li::before { content: ""; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(124, 170, 255, .4); flex: 0 0 auto; transition: background-color .3s ease, border-color .3s ease, box-shadow .3s ease; }
+.s-hud-steps li.is-active { color: #fff; }
+.s-hud-steps li.is-active::before { background: var(--blue2); border-color: var(--blue2); box-shadow: 0 0 14px var(--blue2); animation: s-blink 1s steps(2, start) infinite; }
+.s-hud-steps li.is-done { color: #B9C7E2; }
+.s-hud-steps li.is-done::before { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 10px rgba(20, 160, 92, .6); }
+@keyframes s-blink { to { opacity: .35; } }
+.s-hud-bar, .s-sheet-bar { position: relative; height: 6px; margin-top: 20px; border-radius: 99px; overflow: hidden; background: rgba(124, 170, 255, .14); }
+.s-sheet-bar { background: #E6ECF6; }
+.s-hud-bar i, .s-sheet-bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, #1E4FD7, #7CB7FF); box-shadow: 0 0 16px rgba(59, 130, 246, .8); transition: width .3s ease; }
+.is-working i { opacity: .5; }
+.is-working::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%); animation: s-sweep 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .7), rgba(255, 255, 255, 0));
+}
+@keyframes s-sweep { to { transform: translateX(100%); } }
+.s-hud-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; font-size: 12.5px; color: #8FA2C6; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- proof */
+.s-proof { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 5vw, 70px); align-items: center; }
+.s-proof-big { font: 400 clamp(130px, 21vw, 310px)/.82 var(--display); color: transparent; -webkit-text-stroke: 2px #C4D2E8; letter-spacing: -.005em; user-select: none; }
+.s-proof-copy .s-h2 { margin-bottom: 24px; }
+.s-proof-copy p { font-size: 16.5px; color: var(--muted); max-width: 36em; }
+.s-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 22px; margin-top: 26px; }
+.s-checks li { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; color: var(--ink2); }
+.s-checks li::before {
+  content: ""; width: 22px; height: 22px; border-radius: 7px; flex: 0 0 auto;
+  background: #E5F3EC url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5 9.3 7.8 12 13 6.5' fill='none' stroke='%2314A05C' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/20px no-repeat;
+}
+
+/* ----------------------------------------------------------------- team */
+.s-team { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.s-person { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 26px 24px; transition: transform .35s ease, box-shadow .35s ease; }
+.s-person:hover { transform: translateY(-4px); box-shadow: 0 24px 48px rgba(11, 21, 48, .08); }
+.s-avatar {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 20px;
+  font: 400 22px/1 var(--display); letter-spacing: .04em; color: #fff; background: var(--grad);
+  box-shadow: 0 10px 24px rgba(30, 79, 215, .3);
+}
+.s-person h3 { font-size: 18px; font-weight: 750; letter-spacing: -.01em; }
+.s-role { margin-top: 4px; font-size: 13.5px; font-weight: 600; color: var(--blue); }
+.s-aff { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+.s-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #EAF1FF; color: var(--blue); font-size: 11px; font-weight: 600; vertical-align: 2px; }
+.s-person-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; font-size: 12.5px; }
+.s-person-links a { color: var(--ink2); text-decoration: none; border-bottom: 1px solid var(--line2); word-break: break-all; }
+.s-person-links a:hover { color: var(--blue); border-color: var(--blue); }
+.s-team-note { margin-top: 22px; font-size: 14.5px; color: var(--muted); }
+.s-team-note a { color: var(--blue); }
+
+/* ----------------------------------------------------------------- cite */
+.s-cite { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.s-citation { font-size: 16px !important; line-height: 1.65; color: var(--ink2) !important; }
+.s-code { margin-top: 2px; padding: 18px 20px; border-radius: 16px; background: var(--ink); color: #CFE0FF; overflow-x: auto; font: 500 14px/1.7 var(--mono); }
+.s-row-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 18px; }
+.s-link { font-size: 14px; font-weight: 600; color: var(--blue); text-decoration: none; border-bottom: 1px solid rgba(30, 79, 215, .3); }
+.s-link:hover { border-color: var(--blue); }
+
+/* ---------------------------------------------------------------- final */
+.s-final { max-width: 1240px; margin: clamp(80px, 10vw, 130px) auto 0; padding: 0 16px clamp(80px, 9vw, 120px); text-align: center; }
+.s-final .s-h2 { margin-bottom: 18px; }
+.s-final p { color: var(--muted); margin-bottom: 30px; font-size: 16px; }
+
+/* --------------------------------------------------------------- footer */
+.s-foot { background: #050B1D; color: #93A3C4; padding: 70px 16px 30px; }
+.s-foot-inner { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 40px; }
+.s-foot-brand img { width: 220px; height: auto; display: block; }
+.s-foot-brand p { margin-top: 18px; max-width: 30em; font-size: 14.5px; }
+.s-foot-cols { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.5fr); gap: 24px; }
+.s-foot h4 { font: 600 11px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--sky); margin-bottom: 16px; }
+.s-foot-cols a, .s-foot-cols button {
+  display: block; margin: 0 0 10px; padding: 0; background: none; border: 0; cursor: pointer; text-align: left;
+  color: #C9D5EC; font-size: 14px; text-decoration: none; overflow-wrap: anywhere;
+}
+.s-foot-cols a:hover, .s-foot-cols button:hover { color: #fff; }
+.s-foot-legal { max-width: 1240px; margin: 48px auto 0; padding-top: 22px; border-top: 1px solid rgba(124, 170, 255, .14); font-size: 12.5px; color: #6E7FA3; }
+
+/* ---------------------------------------------------------------- sheet */
+.s-sheet { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; background: rgba(5, 11, 29, .42); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.s-sheet[hidden] { display: none; }
+.s-sheet-card {
+  width: min(460px, 100%); padding: 32px 30px 26px; border-radius: 26px; background: #fff; text-align: center;
+  box-shadow: 0 40px 100px rgba(5, 11, 29, .35); animation: s-pop .45s cubic-bezier(.2, .8, .2, 1);
+}
+.s-sheet-card img { height: 42px; width: auto; margin: 0 auto 18px; display: block; }
+.s-sheet-card h2 { font: 400 34px/1 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.s-sheet-stage { margin-top: 14px; font-weight: 600; color: var(--ink2); min-height: 1.5em; }
+.s-sheet-amount { margin-top: 10px; font: 500 12.5px var(--mono); color: var(--muted); min-height: 1.4em; font-variant-numeric: tabular-nums; }
+.s-sheet-note { margin-top: 14px; font-size: 14px; color: var(--muted); }
+.s-sheet-slow { margin-top: 14px; padding: 9px 12px; border-radius: 12px; background: #FFF4E0; color: #7A4B00; font-size: 13px; }
+.s-sheet-card .s-btn { margin-top: 20px; }
+@keyframes s-pop { from { opacity: 0; transform: translateY(14px) scale(.97); } }
+
+/* ------------------------------------------------- entrance and reveal */
+.s-h1-line, .s-hero-copy .s-status, .s-lead, .s-actions, .s-trust { animation: s-rise .9s cubic-bezier(.2, .8, .2, 1) both; }
+.s-hero-copy .s-status { animation-delay: .05s; }
+.s-h1-line:nth-child(1) { animation-delay: .12s; }
+.s-h1-line:nth-child(2) { animation-delay: .22s; }
+.s-lead { animation-delay: .34s; }
+.s-actions { animation-delay: .44s; }
+.s-trust { animation-delay: .54s; }
+@keyframes s-rise { from { opacity: 0; transform: translateY(28px); } }
+/* hidden for the reveal only once the script runs, so without it nothing stays invisible */
+.slx-js [data-reveal] { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s cubic-bezier(.2, .8, .2, 1); }
+.slx-js [data-reveal].is-in { opacity: 1; transform: none; }
+/* the second load of a first visit (shinylive's one reload) skips the intro */
+.slx-site.no-intro .s-h1-line, .slx-site.no-intro .s-status, .slx-site.no-intro .s-lead,
+.slx-site.no-intro .s-actions, .slx-site.no-intro .s-trust { animation: none; }
+.slx-site.no-intro .s-card { animation-delay: 0s, calc(.6s + var(--d) * .5s); }
+
+/* -------------------------------------------------------------- smaller */
+@media (max-width: 1100px) {
+  .s-links { display: none; position: absolute; top: 74px; left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 0; margin: 0;
+             padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 50px rgba(11, 21, 48, .14); }
+  .s-links.is-open { display: flex; }
+  .s-links a { justify-content: space-between; padding: 15px 14px; border-radius: 12px; }
+  .s-links a:hover { background: #F2F6FD; }
+  .s-burger { display: inline-block; }
+  .s-nav-inner { position: relative; justify-content: space-between; }
+  .s-nav-cta { margin-left: auto; }
+  .s-hero-card { grid-template-columns: 1fr; min-height: 0; }
+  .s-visual { min-height: 520px; margin-top: -30px; }
+  .s-glyphs { top: auto; bottom: 0; transform: none; font-size: clamp(110px, 26vw, 200px); }
+  .s-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .s-num:nth-child(3) { border-left: 0; padding-left: 4px; }
+  .s-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .s-bento { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .s-tile-designs, .s-tile-means, .s-tile-reading, .s-tile-report { grid-column: span 6; grid-row: auto; }
+  .s-tile-ph, .s-tile-checks, .s-tile-private { grid-column: span 3; }
+  .s-tile-private { grid-column: span 6; }
+  .s-engine-inner, .s-proof, .s-foot-inner { grid-template-columns: 1fr; }
+  .s-team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .s-nav { top: 8px; padding: 8px 10px 0; }
+  .s-nav-inner { height: 60px; padding: 0 8px 0 14px; gap: 10px; }
+  .s-brand img { height: 30px; }
+  .s-brand-sub { display: none; }
+  .s-nav-cta span:nth-child(2) { display: none; }
+  .s-nav-cta { padding: 12px; }
+  .s-hero { padding: 14px 10px 0; }
+  .s-hero-card { border-radius: 26px; }
+  .s-hero-copy { padding: 30px 22px 6px; }
+  .s-lead { font-size: 16px; }
+  .s-actions .s-btn { flex: 1 1 100%; justify-content: center; }
+  .s-visual { min-height: 470px; margin-top: 0; }
+  .s-stage { scale: .8; transform-origin: 50% 40%; }
+  .s-card-means { left: 2%; top: 26%; width: 86%; }
+  .s-card-anova { right: -4%; top: 2%; }
+  .s-card-checks { right: -4%; bottom: 2%; }
+  .s-orbit { --orbit-scale: .8; }
+  .s-numbers { grid-template-columns: 1fr 1fr; }
+  .s-num { padding: 22px 14px 4px; }
+  .s-steps, .s-team, .s-cite, .s-checks { grid-template-columns: 1fr; }
+  .s-bento { grid-template-columns: 1fr; }
+  .s-bento > .s-tile { grid-column: auto; }
+  .s-tile { padding: 24px 22px; border-radius: 22px; }
+  .s-foot-cols { grid-template-columns: 1fr 1fr; }
+  .s-foot-cols > div:last-child { grid-column: 1 / -1; }
+  .s-hud { padding: 20px 18px; }
+  .s-hud-foot { flex-direction: column; align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .slx-site *, .slx-site *::before, .slx-site *::after { animation: none !important; transition: none !important; }
+  .s-card { opacity: 1; scale: 1; }
+  .slx-js [data-reveal] { opacity: 1; transform: none; }
+  .s-track { flex-wrap: wrap; width: auto; }
+  .s-row[aria-hidden="true"] { display: none; }
+  .s-row { flex-wrap: wrap; padding: 0 16px; }
+}
     </style>
     <script
       src="./shinylive/load-shinylive-sw.js"
@@ -77,56 +541,486 @@
     <link rel="stylesheet" href="./shinylive/shinylive.css" />
     
   </head>
-  <body>
-<div id="slx-loading">
-  <div class="slx-card">
-    <img class="slx-logo" src="logo.png" alt="" width="84" height="81">
-    <h1 class="slx-name">StatLab<span>X</span></h1>
-    <p class="slx-tag">Statistics for agricultural and allied research</p>
-    <div class="slx-bar" id="slx-bar" role="progressbar" aria-label="Loading R and its packages"
-         aria-valuemin="0" aria-valuemax="100"><div class="slx-fill" id="slx-fill"></div></div>
-    <p class="slx-status" id="slx-status" aria-live="polite">Getting ready</p>
-    <p class="slx-amount" id="slx-amount"></p>
-    <p class="slx-note">StatLabX runs R inside your browser, so your data never leave this computer.
-      Only the first visit downloads R; your browser usually keeps a copy, so later visits skip the
-      download, though R still takes a little while to start.</p>
-    <p class="slx-slow" id="slx-slow" hidden>Still working. On a slow connection or an older computer this
-      can take a minute or two; please keep this tab open.</p>
-    <p class="slx-foot">Powered by the DOEpro R package</p>
+  <body class="slx-shell">
+<div id="slx-site" class="slx-site">
+  <div class="s-sky" aria-hidden="true"></div>
+
+  <header class="s-nav" id="s-nav">
+    <div class="s-nav-inner">
+      <a class="s-brand" href="#top" data-goto="top" aria-label="StatLabX, back to the top">
+        <img src="statlabx-logo.webp" alt="StatLabX" width="140" height="40">
+      </a>
+      <span class="s-brand-sub">powered by DOEpro 2.0.1</span>
+      <nav class="s-links" id="s-links" aria-label="Sections">
+        <a href="#workflow" data-goto="workflow">Workflow<i aria-hidden="true">+</i></a>
+        <a href="#features" data-goto="features">Analyses<i aria-hidden="true">+</i></a>
+        <a href="#engine" data-goto="engine">In your browser<i aria-hidden="true">+</i></a>
+        <a href="#team" data-goto="team">Team<i aria-hidden="true">+</i></a>
+        <a href="#cite" data-goto="cite">Cite<i aria-hidden="true">+</i></a>
+      </nav>
+      <button class="s-btn s-btn-dark s-btn-sm s-nav-cta" type="button" data-open="data">
+        <span class="s-live" aria-hidden="true"></span><span>Open the app</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5"/></svg>
+      </button>
+      <button class="s-burger" id="s-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="s-links">
+        <span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ======================================================== hero -->
+    <section class="s-hero" id="top">
+      <div class="s-hero-card">
+        <svg class="s-arcs" viewBox="0 0 600 600" aria-hidden="true">
+          <circle cx="40" cy="40" r="210"/><circle cx="40" cy="40" r="330"/><circle cx="40" cy="40" r="460"/>
+        </svg>
+        <div class="s-glyphs" aria-hidden="true"><span>&Sigma;</span><span>&sigma;&sup2;</span><span>&chi;&sup2;</span><span>&mu;</span></div>
+
+        <div class="s-hero-copy">
+          <p class="s-status" id="s-status" aria-live="polite">
+            <span class="s-live" aria-hidden="true"></span>
+            <span class="s-status-text" id="s-status-text">Loading R in your browser</span>
+            <span class="s-status-bar" aria-hidden="true"><i id="s-status-fill"></i></span>
+          </p>
+          <h1 class="s-h1">
+            <span class="s-h1-line">Designed</span>
+            <span class="s-h1-line">for the <em>field</em></span>
+          </h1>
+          <p class="s-lead">Free analysis of designed experiments for agricultural and allied research.
+            Paste your data from Excel and get the ANOVA, means with C.D. and letters, assumption checks,
+            post-hoc tests and a plain-language reading of every result, with R running in your browser.</p>
+          <div class="s-actions">
+            <button class="s-btn s-btn-dark" type="button" data-open="data">
+              <span>Start analysing</span>
+              <span class="s-btn-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 11 11 5M6 5h5v5"/></svg></span>
+            </button>
+            <button class="s-btn s-btn-ghost" type="button" data-open="example">See a worked example</button>
+          </div>
+          <ul class="s-trust">
+            <li>Free and open source</li><li>On CRAN</li><li>Checked against Gomez &amp; Gomez (1984)</li>
+          </ul>
+        </div>
+
+        <div class="s-visual" id="s-visual" aria-hidden="true">
+          <div class="s-orbit"><svg viewBox="0 0 520 520"><ellipse cx="260" cy="260" rx="250" ry="96"/></svg><span class="s-star"></span></div>
+          <div class="s-stage" id="s-stage"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================== ticker -->
+    <section class="s-ticker" aria-label="What StatLabX covers">
+      <div class="s-track"><div class="s-row"><span class="s-chip">Completely Randomised Design (CRD)</span><span class="s-chip">Randomised Complete Block Design (RCBD)</span><span class="s-chip">Latin Square Design (LSD)</span><span class="s-chip">Factorial CRD (2-4 factors)</span><span class="s-chip">Factorial RCBD (2-4 factors)</span><span class="s-chip">Split Plot Design</span><span class="s-chip">Strip Plot (Split Block) Design</span><span class="s-chip">Pooled analysis over environments - RCBD base</span><span class="s-chip">Pooled analysis over environments - CRD base</span><span class="s-chip">Pooled factorial over environments - RCBD base (2-4 factors)</span><span class="s-chip">Pooled factorial over environments - CRD base (2-4 factors)</span></div><div class="s-row" aria-hidden="true"><span class="s-chip">Completely Randomised Design (CRD)</span><span class="s-chip">Randomised Complete Block Design (RCBD)</span><span class="s-chip">Latin Square Design (LSD)</span><span class="s-chip">Factorial CRD (2-4 factors)</span><span class="s-chip">Factorial RCBD (2-4 factors)</span><span class="s-chip">Split Plot Design</span><span class="s-chip">Strip Plot (Split Block) Design</span><span class="s-chip">Pooled analysis over environments - RCBD base</span><span class="s-chip">Pooled analysis over environments - CRD base</span><span class="s-chip">Pooled factorial over environments - RCBD base (2-4 factors)</span><span class="s-chip">Pooled factorial over environments - CRD base (2-4 factors)</span></div></div>
+      <div class="s-track s-track-rev"><div class="s-row"><span class="s-chip">LSD (Fisher's protected)</span><span class="s-chip">LSD (Bonferroni-adjusted)</span><span class="s-chip">Tukey HSD</span><span class="s-chip">Duncan's DMRT</span><span class="s-chip">Student-Newman-Keuls</span><span class="s-chip">Scheffe</span><span class="s-chip">Dunnett</span><span class="s-chip">Shapiro-Wilk on the residuals</span><span class="s-chip">Levene's test</span><span class="s-chip">Bartlett's test</span><span class="s-chip">Box-Cox profile</span><span class="s-chip">Descriptive statistics</span><span class="s-chip">Correlation</span><span class="s-chip">Regression</span><span class="s-chip">Principal components</span><span class="s-chip">Cluster analysis</span><span class="s-chip">Factor analysis</span><span class="s-chip">Plain-language readings</span><span class="s-chip">HTML report</span></div><div class="s-row" aria-hidden="true"><span class="s-chip">LSD (Fisher's protected)</span><span class="s-chip">LSD (Bonferroni-adjusted)</span><span class="s-chip">Tukey HSD</span><span class="s-chip">Duncan's DMRT</span><span class="s-chip">Student-Newman-Keuls</span><span class="s-chip">Scheffe</span><span class="s-chip">Dunnett</span><span class="s-chip">Shapiro-Wilk on the residuals</span><span class="s-chip">Levene's test</span><span class="s-chip">Bartlett's test</span><span class="s-chip">Box-Cox profile</span><span class="s-chip">Descriptive statistics</span><span class="s-chip">Correlation</span><span class="s-chip">Regression</span><span class="s-chip">Principal components</span><span class="s-chip">Cluster analysis</span><span class="s-chip">Factor analysis</span><span class="s-chip">Plain-language readings</span><span class="s-chip">HTML report</span></div></div>
+    </section>
+
+    <!-- =================================================== numbers -->
+    <section class="s-numbers" aria-label="StatLabX in numbers">
+      <div class="s-num" data-reveal><b data-count="11">11</b><span>experimental designs, each with the error terms its layout calls for</span></div>
+      <div class="s-num" data-reveal><b data-count="7">7</b><span>ways to compare means, Dunnett's test against a control among them</span></div>
+      <div class="s-num" data-reveal><b data-count="6">6</b><span>tools to explore data before the analysis of variance</span></div>
+      <div class="s-num" data-reveal><b>0</b><span>things to install: R runs inside this page</span></div>
+    </section>
+
+    <!-- ================================================== workflow -->
+    <section class="s-section" id="workflow">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>01</span>The workflow</p>
+        <h2 class="s-h2">From spreadsheet<br>to <em>publishable</em> table</h2>
+        <p class="s-sub">Four steps, in the order of the tabs. Every result comes with a short reading of what it shows,
+          worded to match the evidence: a test that is not significant reads as insufficient evidence, never as
+          proof of no difference.</p>
+      </header>
+      <ol class="s-steps">
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">01</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="30" rx="4"/><path d="M7 18h34M7 27h34M19 9v30M30 9v30"/></svg>
+          <h3>Load</h3>
+          <p>Paste straight from Excel, upload a CSV or start from a worked example. A data check finds decimal
+            commas, units typed after numbers and labels that differ only in capitals, and corrects only what is certain.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">02</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 38 18 24l8 7 14-19"/><circle cx="18" cy="24" r="2.5"/><circle cx="26" cy="31" r="2.5"/><circle cx="40" cy="12" r="2.5"/></svg>
+          <h3>Explore</h3>
+          <p>Look before you test: descriptive statistics, correlation, regression, principal components,
+            cluster and factor analysis, each with a reading of what the numbers and plots show.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">03</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="7" width="15" height="15" rx="2"/><rect x="26" y="7" width="15" height="15" rx="2"/><rect x="7" y="26" width="15" height="15" rx="2"/><rect x="26" y="26" width="15" height="15" rx="2"/></svg>
+          <h3>Analyse</h3>
+          <p>Choose the design and map its columns. The right error terms follow: split and strip plots get their
+            strata, and analyses over seasons or locations treat the environment as random.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">04</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 6h17l9 9v27H12z"/><path d="M29 6v9h9M18 25h14M18 31h14M18 37h9"/></svg>
+          <h3>Report</h3>
+          <p>The ANOVA, means with SE(m), SE(d), C.D. and letters, assumption checks, post-hoc tests and plots,
+            then an interpretation and a report to download.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================================================== features -->
+    <section class="s-section" id="features">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>02</span>The analyses</p>
+        <h2 class="s-h2">Everything a field<br>trial asks <em>of you</em></h2>
+      </header>
+      <div class="s-bento">
+        <article class="s-tile s-tile-designs" data-reveal>
+          <p class="s-tile-k">Designs</p>
+          <h3>11 designs, the right error terms</h3>
+          <ol class="s-designs"><li>Completely Randomised Design (CRD)</li><li>Randomised Complete Block Design (RCBD)</li><li>Latin Square Design (LSD)</li><li>Factorial CRD (2-4 factors)</li><li>Factorial RCBD (2-4 factors)</li><li>Split Plot Design</li><li>Strip Plot (Split Block) Design</li><li>Pooled analysis over environments - RCBD base</li><li>Pooled analysis over environments - CRD base</li><li>Pooled factorial over environments - RCBD base (2-4 factors)</li><li>Pooled factorial over environments - CRD base (2-4 factors)</li></ol>
+        </article>
+        <article class="s-tile s-tile-means" data-reveal>
+          <p class="s-tile-k">Tables of means</p>
+          <h3>Means you can publish</h3>
+          <p>SE(m), SE(d) and the C.D. at the level you choose. Letters appear only when the F-test allows them, and
+            a missing plot gets adjusted means rather than wrong ones.</p>
+          <table class="s-mini" aria-label="Means of the worked example"><tr><td>V4</td><td>54.31</td><td>a</td></tr><tr><td>V2</td><td>48.78</td><td>b</td></tr><tr><td>V5</td><td>48.45</td><td>b</td></tr><tr><td>V6</td><td>45.51</td><td>c</td></tr><tr><td>V1</td><td>42.95</td><td>c</td></tr><tr><td>V3</td><td>37.71</td><td>d</td></tr></table>
+          <p class="s-mini-foot">Worked example (RCBD): C.D. (5%) 2.80 &middot; CV 4.01%</p>
+        </article>
+        <article class="s-tile s-tile-ph" data-reveal>
+          <p class="s-tile-k">Post-hoc</p>
+          <h3>7 ways to compare</h3>
+          <ul class="s-tags"><li>LSD (Fisher's protected)</li><li>LSD (Bonferroni-adjusted)</li><li>Tukey HSD</li><li>Duncan's DMRT</li><li>Student-Newman-Keuls</li><li>Scheffe</li><li>Dunnett</li></ul>
+        </article>
+        <article class="s-tile s-tile-checks" data-reveal>
+          <p class="s-tile-k">Assumptions</p>
+          <h3>Checks before conclusions</h3>
+          <p>Shapiro&ndash;Wilk on the residuals, Levene's and Bartlett's tests, the mean&ndash;variance slope and the
+            Box&ndash;Cox profile. A transformation is suggested only when the checks support it.</p>
+        </article>
+        <article class="s-tile s-tile-private" data-reveal>
+          <svg class="s-tile-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="21" width="28" height="20" rx="4"/><path d="M16 21v-6a8 8 0 0 1 16 0v6M24 29v5"/></svg>
+          <h3>Your data stay here</h3>
+          <p>R runs on your own computer. Nothing you paste is uploaded anywhere.</p>
+        </article>
+        <article class="s-tile s-tile-reading" data-reveal>
+          <p class="s-tile-k">Readings</p>
+          <h3>Every result, explained</h3>
+          <blockquote>V4 has the highest mean (54.31) and V3 the lowest (37.71). Two Variety means must differ by more than the C.D., 2.80, to be declared different at the 5% level. Every other Variety mean is significantly lower than that of V4. Every other Variety mean is significantly higher than that of V3.</blockquote>
+          <p class="s-mini-foot">The reading under the worked example's table of means, as the app writes it.</p>
+        </article>
+        <article class="s-tile s-tile-report" data-reveal>
+          <p class="s-tile-k">Report</p>
+          <h3>A report to keep</h3>
+          <p>Download the analysis as one HTML page: the ANOVA, the tables of means, the assumption checks and the
+            interpretation, ready to print or attach.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- =================================================== engine -->
+    <section class="s-engine" id="engine">
+      <div class="s-engine-inner">
+        <div class="s-engine-copy" data-reveal>
+          <p class="s-kicker s-kicker-dark"><span>03</span>The engine</p>
+          <h2 class="s-h2 s-h2-dark">R, running<br>right <em>here</em></h2>
+          <p>StatLabX runs R itself, compiled to WebAssembly, inside this page. There is no server: nothing to
+            install, no account, no queue, and the data you analyse never leave your computer.</p>
+          <p>The first visit downloads about 59 MB of R and its packages; your browser usually keeps a copy,
+            so later visits skip the download, though R still takes a little while to start.</p>
+        </div>
+        <div class="s-hud" data-reveal>
+          <div class="s-hud-top"><span>R runtime</span><span id="s-hud-state">Loading</span></div>
+          <ol class="s-hud-steps" id="s-hud-steps">
+            <li>Loading R</li>
+            <li>Starting R in your browser</li>
+            <li>Loading the packages the analyses use</li>
+            <li>Installing and loading the packages</li>
+            <li>Starting StatLabX</li>
+          </ol>
+          <div class="s-hud-bar" aria-hidden="true"><i id="s-hud-fill"></i></div>
+          <div class="s-hud-foot"><span id="s-hud-amount">&nbsp;</span>
+            <button class="s-btn s-btn-light s-btn-sm" type="button" data-open="data">Open the app</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============================================== validation -->
+    <section class="s-section s-proof" id="proof">
+      <div class="s-proof-big" data-reveal aria-hidden="true">1984</div>
+      <div class="s-proof-copy" data-reveal>
+        <p class="s-kicker"><span>04</span>The evidence</p>
+        <h2 class="s-h2">Checked against<br>the <em>textbook</em></h2>
+        <p>The worked examples of Gomez &amp; Gomez, <i>Statistical Procedures for Agricultural Research</i> (1984),
+          are reproduced exactly, with one deliberate difference: environments are treated as random, so
+          treatments are tested against their interaction with the environment. Behind that, the package's tests
+          check every statistic against an independent computation.</p>
+        <ul class="s-checks">
+          <li>Completely randomised design</li><li>Randomised complete block design</li><li>Latin square</li>
+          <li>Split plot</li><li>Combined analysis over seasons</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================================================== team -->
+    <section class="s-section" id="team">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>05</span>The team</p>
+        <h2 class="s-h2">The people<br><em>behind it</em></h2>
+      </header>
+      <div class="s-team"><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IS</div><h3>Dr. Immad A. Shah</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0003-2761-5112" target="_blank" rel="noopener">ORCID</a><a href="mailto:immad11w@skuastkashmir.ac.in">immad11w@skuastkashmir.ac.in</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">UK</div><h3>Mr. Uzair Javid Khan<span class="s-badge">Maintainer</span></h3><p class="s-role">UG Research Student, Statistics</p><p class="s-aff">AAAMDC Bemina, Cluster University Srinagar</p><p class="s-person-links"><a href="https://orcid.org/0009-0001-6368-0977" target="_blank" rel="noopener">ORCID</a><a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IJ</div><h3>Dr. M. Iqbal Jeelani</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0002-2974-2871" target="_blank" rel="noopener">ORCID</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IK</div><h3>Dr. Imran Khan</h3><p class="s-role">Chief Scientist</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="mailto:imrankhan@skuastkashmir.ac.in">imrankhan@skuastkashmir.ac.in</a></p></article></div>
+      <p class="s-team-note" data-reveal>Suggestions and bug reports are welcome: write to
+        <a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a> or open an issue on
+        <a href="https://github.com/Uzairkhan11w/DOEpro/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+    </section>
+
+    <!-- ===================================================== cite -->
+    <section class="s-section" id="cite">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>06</span>Cite and install</p>
+        <h2 class="s-h2">Use it, <em>cite it</em></h2>
+      </header>
+      <div class="s-cite">
+        <article class="s-tile" data-reveal>
+          <p class="s-tile-k">How to cite</p>
+          <p class="s-citation" id="s-citation">Shah, I. A., Khan, U. J. and Jeelani, M. I. (2026). DOEpro: Analysis of Designed Agricultural Experiments. R package version 2.0.1. doi:10.5281/zenodo.21399570</p>
+          <div class="s-row-btns">
+            <button class="s-btn s-btn-ghost s-btn-sm" type="button" data-copy="s-citation">Copy citation</button>
+            <a class="s-link" href="https://doi.org/10.5281/zenodo.21399570" target="_blank" rel="noopener">doi:10.5281/zenodo.21399570</a>
+          </div>
+          <p class="s-mini-foot">This is the concept DOI: it always leads to the latest release.</p>
+        </article>
+        <article class="s-tile" data-reveal>
+          <p class="s-tile-k">In R</p>
+          <pre class="s-code" id="s-code"><code>install.packages("DOEpro")
+DOEpro::run_DOEpro()</code></pre>
+          <div class="s-row-btns">
+            <button class="s-btn s-btn-ghost s-btn-sm" type="button" data-copy="s-code">Copy code</button>
+            <a class="s-link" href="https://CRAN.R-project.org/package=DOEpro" target="_blank" rel="noopener">CRAN</a>
+            <a class="s-link" href="https://github.com/Uzairkhan11w/DOEpro" target="_blank" rel="noopener">GitHub</a>
+          </div>
+          <p class="s-mini-foot">The same analyses as this site, as an R package (GPL-3).</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ====================================================== cta -->
+    <section class="s-final" data-reveal>
+      <h2 class="s-h2">Ready when <em>you are</em></h2>
+      <p id="s-final-note">R is loading in the background while you read.</p>
+      <button class="s-btn s-btn-dark" type="button" data-open="data">
+        <span>Start analysing</span>
+        <span class="s-btn-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 11 11 5M6 5h5v5"/></svg></span>
+      </button>
+    </section>
+  </main>
+
+  <footer class="s-foot">
+    <div class="s-foot-inner">
+      <div class="s-foot-brand">
+        <img src="statlabx-logo-light.webp" alt="StatLabX" width="210" height="60" loading="lazy">
+        <p>Statistics for agricultural and allied research. Powered by the DOEpro R package, version 2.0.1.</p>
+      </div>
+      <div class="s-foot-cols">
+        <div><h4>Use</h4>
+          <button type="button" data-open="data">Open the app</button>
+          <button type="button" data-open="example">Worked example</button>
+        </div>
+        <div><h4>Project</h4>
+          <a href="https://github.com/Uzairkhan11w/DOEpro" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://CRAN.R-project.org/package=DOEpro" target="_blank" rel="noopener">CRAN</a>
+          <a href="https://doi.org/10.5281/zenodo.21399570" target="_blank" rel="noopener">Zenodo</a>
+        </div>
+        <div><h4>Contact</h4>
+          <a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a>
+          <a href="mailto:immad11w@skuastkashmir.ac.in">immad11w@skuastkashmir.ac.in</a>
+        </div>
+      </div>
+    </div>
+    <p class="s-foot-legal">&copy; 2026 the authors &middot; GPL-3 &middot; R in your browser through webR and Shinylive</p>
+  </footer>
+
+  <div class="s-sheet" id="s-sheet" hidden>
+    <div class="s-sheet-card" role="dialog" aria-modal="true" aria-labelledby="s-sheet-title">
+      <img src="statlabx-logo.webp" alt="" width="150" height="43">
+      <h2 id="s-sheet-title">Opening StatLabX</h2>
+      <p class="s-sheet-stage" id="s-sheet-stage">Loading R</p>
+      <div class="s-sheet-bar" aria-hidden="true"><i id="s-sheet-fill"></i></div>
+      <p class="s-sheet-amount" id="s-sheet-amount">&nbsp;</p>
+      <p class="s-sheet-note">It opens by itself as soon as R is ready.</p>
+      <p class="s-sheet-slow" id="s-sheet-slow" hidden>Still working. On a slow connection or an older computer this
+        can take a minute or two; please keep this tab open.</p>
+      <button class="s-btn s-btn-ghost s-btn-sm" type="button" id="s-sheet-close">Keep reading</button>
+    </div>
   </div>
 </div>
+<script type="application/json" id="slx-facts">{"demo":"RCBD","design":"RCBD","response":"Yield","factor":"Variety","level":"5%","cd":"2.80","cv":"4.01","cv_band":"low","sw":"0.788","hov":"0.822","means":[{"lab":"V1","mean":42.9525,"se":0.929,"letter":"c","best":false},{"lab":"V2","mean":48.7825,"se":0.929,"letter":"b","best":false},{"lab":"V3","mean":37.7075,"se":0.929,"letter":"d","best":false},{"lab":"V4","mean":54.3075,"se":0.929,"letter":"a","best":true},{"lab":"V5","mean":48.445,"se":0.929,"letter":"b","best":false},{"lab":"V6","mean":45.5075,"se":0.929,"letter":"c","best":false}],"anova":[{"src":"Block","df":3,"ms":"2.31","f":"0.67","mark":"NS"},{"src":"Variety","df":5,"ms":"128.44","f":"37.21","mark":"**"},{"src":"Error","df":15,"ms":"3.45","f":"","mark":""}]}</script>
 <script>
-/* StatLabX loading screen. build_app.R puts this into docs/index.html after
-   every shinylive export, and fills in FILES with the size of every file the
-   first visit downloads (R, its built-in library and the packages), read
-   from docs/ itself, so the total is the real one for this build.
+/* StatLabX website: the page people land on, shown at once while R starts
+   underneath in the app's frame (#root). build_app.R puts this into
+   docs/index.html after every shinylive export, and fills in FILES with the
+   size of every file a first visit downloads (R, its built-in library and
+   the packages), read from docs/ itself, and the facts block (#slx-facts)
+   with figures from the package: the worked example's ANOVA and means.
 
-   webR downloads those files from its own worker, where the page's fetch
-   cannot see them. The service worker sees every request, so the addition
-   to it (sw-progress.js) counts the bytes of each file as they arrive and
-   reports them on the "statlabx-loading" channel. The bar shows those bytes
-   against the total; no percentage is printed, and nothing is estimated. The
-   stages are read from which files have arrived: R itself, then R starting
-   (webR asks for the package list once R runs), then the packages, then R
-   installing and loading them, then the app's own page loading in its
-   frame, which ends when Shiny connects. The words say "loading", not
-   "downloading": on later visits the same bytes come from the browser's
-   copy, and the screen cannot tell the two apart. */
+   Loading. webR downloads its files from its own worker, where the page's
+   fetch cannot see them; the addition to shinylive's service worker
+   (sw-progress.js) counts the bytes of each file as it arrives and reports
+   them on the "statlabx-loading" channel. Progress is those bytes against
+   the total; no percentage is printed and nothing is estimated. The stages
+   are read from which files have arrived: R itself, R starting (webR asks
+   for the package list once R runs), the packages, R installing and loading
+   them, then the app's page in its frame, which ends when Shiny connects.
+   The words say "loading", not "downloading": later visits take the same
+   bytes from the browser's copy, and the page cannot tell the two apart.
+
+   Opening. "Start analysing" shows the app as soon as Shiny has connected,
+   or a small sheet with the progress until then. The app's own About tab and
+   logo bring this page back (window.StatLabX.home). #app in the address
+   opens the app directly, and the Back button returns here. */
 (function () {
   "use strict";
   var FILES = {"shinylive/webr/webr-worker.js": 134029, "shinylive/webr/R.js": 785856, "shinylive/webr/R.wasm": 18062845, "shinylive/webr/libRblas.so": 198205, "shinylive/webr/libRlapack.so": 1769888, "shinylive/webr/library.js.metadata": 181616, "shinylive/webr/library.data.gz": 15057328, "shinylive/webr/packages/metadata.rds": 1765, "shinylive/webr/packages/bookdown/bookdown_0.48.tgz": 952729, "shinylive/webr/packages/crosstalk/crosstalk_1.2.2.tgz": 346096, "shinylive/webr/packages/DT/DT_0.34.0.tgz": 1729331, "shinylive/webr/packages/evaluate/evaluate_1.0.5.tgz": 72262, "shinylive/webr/packages/farver/farver_2.1.2.tgz": 1317442, "shinylive/webr/packages/ggplot2/ggplot2_4.0.3.tgz": 7481119, "shinylive/webr/packages/gtable/gtable_0.3.6.tgz": 184798, "shinylive/webr/packages/highr/highr_0.12.tgz": 30097, "shinylive/webr/packages/htmlwidgets/htmlwidgets_1.6.4.tgz": 83849, "shinylive/webr/packages/isoband/isoband_0.3.0.tgz": 1627614, "shinylive/webr/packages/knitr/knitr_1.52.tgz": 777341, "shinylive/webr/packages/labeling/labeling_0.4.3.tgz": 42861, "shinylive/webr/packages/lazyeval/lazyeval_0.2.3.tgz": 141949, "shinylive/webr/packages/pagedown/pagedown_0.25.tgz": 290851, "shinylive/webr/packages/processx/processx_3.9.0.tgz": 254118, "shinylive/webr/packages/ps/ps_1.9.3.tgz": 276822, "shinylive/webr/packages/RColorBrewer/RColorBrewer_1.1-3.tgz": 26996, "shinylive/webr/packages/rmarkdown/rmarkdown_2.32.tgz": 2387326, "shinylive/webr/packages/S7/S7_0.2.2.tgz": 225283, "shinylive/webr/packages/scales/scales_1.4.0.tgz": 620880, "shinylive/webr/packages/servr/servr_0.33.tgz": 68592, "shinylive/webr/packages/tinytex/tinytex_0.61.tgz": 93843, "shinylive/webr/packages/vctrs/vctrs_0.7.3.tgz": 1433335, "shinylive/webr/packages/viridisLite/viridisLite_0.4.3.tgz": 1295884, "shinylive/webr/packages/xfun/xfun_0.61.tgz": 434074, "shinylive/webr/packages/yaml/yaml_2.3.12.tgz": 88482, "shinylive/webr/vfs/usr/lib/R/library/parallel.data.gz": 349042, "shinylive/webr/vfs/usr/lib/R/library/parallel.js.metadata": 1238, "shinylive/webr/vfs/usr/lib/R/library/tcltk.data.gz": 132160, "shinylive/webr/vfs/usr/lib/R/library/tcltk.js.metadata": 2019, "shinylive/webr/vfs/usr/lib/R/library/translations.data.gz": 3061528, "shinylive/webr/vfs/usr/lib/R/library/translations.js.metadata": 35184};
+  var doc = document, body = doc.body;
+  var site = doc.getElementById("slx-site");
+  if (!site) return;
+  doc.documentElement.classList.add("slx-js");
+  body.classList.add("slx-shell");
+  var FACTS = {};
+  try { FACTS = JSON.parse(doc.getElementById("slx-facts").textContent); } catch (e) { FACTS = {}; }
+
+  // shinylive reloads the page once on a first visit, to put its service
+  // worker in charge; the intro then plays only the first time
+  try {
+    if (sessionStorage.getItem("slx-intro")) site.classList.add("no-intro");
+    sessionStorage.setItem("slx-intro", "1");
+  } catch (e) { /* storage blocked: the intro plays again */ }
+
+  function $(id) { return doc.getElementById(id); }
+  var root = $("root");
+  // the page decides where it scrolls when the app closes, not the browser
+  try { if ("scrollRestoration" in history) history.scrollRestoration = "manual"; } catch (e) { /* older browsers */ }
+
+  // ------------------------------------------------ the hero's worked example
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function heroCards() {
+    var stage = $("s-stage");
+    if (!stage || !FACTS.means) return;
+    var m = FACTS.means, n = m.length, W = 340, H = 172, pad = 6, top = 26, base = H - 22;
+    var max = 0, i;
+    for (i = 0; i < n; i++) max = Math.max(max, m[i].mean + m[i].se);
+    var step = (W - 2 * pad) / n, bw = Math.min(34, step * 0.56);
+    var bars = "";
+    for (i = 0; i < n; i++) {
+      var x = pad + step * i + (step - bw) / 2, h = (base - top) * m[i].mean / max, y = base - h;
+      var e = (base - top) * m[i].se / max, cx = x + bw / 2;
+      bars += '<rect class="bar' + (m[i].best ? " top" : "") + '" style="animation-delay:' + (0.7 + i * 0.07).toFixed(2) +
+        's" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="6"/>' +
+        '<path class="err" d="M' + cx.toFixed(1) + " " + (y - e).toFixed(1) + "V" + (y + e).toFixed(1) + "M" + (cx - 4).toFixed(1) + " " +
+        (y - e).toFixed(1) + "h8M" + (cx - 4).toFixed(1) + " " + (y + e).toFixed(1) + 'h8"/>' +
+        '<text class="let" x="' + cx.toFixed(1) + '" y="' + (y - e - 6).toFixed(1) + '">' + esc(m[i].letter) + "</text>" +
+        '<text class="lab" x="' + cx.toFixed(1) + '" y="' + (H - 6) + '">' + esc(m[i].lab) + "</text>";
+    }
+    var svg = '<svg class="s-bars" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Bar chart of the worked example\'s means">' +
+      '<defs><linearGradient id="s-bar-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9CC3FF"/><stop offset="1" stop-color="#3B82F6"/></linearGradient>' +
+      '<linearGradient id="s-bar-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#0A2477"/></linearGradient></defs>' +
+      '<line class="base" x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '"/>' + bars + "</svg>";
+    var aov = "";
+    (FACTS.anova || []).forEach(function (r) {
+      aov += "<tr><td>" + esc(r.src) + "</td><td>" + esc(r.df) + "</td><td>" + esc(r.ms) + "</td><td>" + esc(r.f) +
+        (r.mark ? ' <span class="' + (r.mark === "NS" ? "ns" : "sig") + '">' + esc(r.mark) + "</span>" : "") + "</td></tr>";
+    });
+    stage.innerHTML =
+      '<div class="s-card s-card-means" style="--d:0"><div class="s-card-head"><div><p class="s-card-k">Table of means</p>' +
+      '<p class="s-card-t">' + esc(FACTS.response) + " by " + esc(FACTS.factor) + "</p></div>" +
+      '<span class="s-chip-cd">C.D. (' + esc(FACTS.level) + ") " + esc(FACTS.cd) + "</span></div>" + svg +
+      '<p class="s-card-note">Means sharing a letter do not differ significantly at the ' + esc(FACTS.level) + " level.</p></div>" +
+      '<div class="s-card s-card-anova" style="--d:1"><p class="s-card-k">Analysis of variance &middot; ' + esc(FACTS.design) + "</p>" +
+      '<table class="s-aov"><thead><tr><th>Source</th><th>df</th><th>MS</th><th>F</th></tr></thead><tbody>' + aov + "</tbody></table></div>" +
+      '<div class="s-card s-card-checks" style="--d:2"><p class="s-card-k">Assumptions</p>' +
+      '<p class="s-ok">Normal residuals <b>p = ' + esc(FACTS.sw) + "</b></p>" +
+      '<p class="s-ok">Equal variances <b>p = ' + esc(FACTS.hov) + "</b></p>" +
+      '<p class="s-ok">CV ' + esc(FACTS.cv) + "%, " + esc(FACTS.cv_band) + "</p></div>";
+  }
+  heroCards();
+
+  // the hero's cards lean gently towards the pointer
+  (function () {
+    var card = doc.querySelector(".s-hero-card"), stage = $("s-stage"), raf = 0, px = 0, py = 0;
+    if (!card || !stage || !window.matchMedia || !matchMedia("(pointer: fine)").matches) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    card.addEventListener("pointermove", function (e) {
+      var r = card.getBoundingClientRect();
+      px = ((e.clientX - r.left) / r.width - 0.5) * 2; py = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      if (!raf) raf = requestAnimationFrame(function () { raf = 0; stage.style.setProperty("--px", px.toFixed(3)); stage.style.setProperty("--py", py.toFixed(3)); });
+    });
+    card.addEventListener("pointerleave", function () { stage.style.setProperty("--px", 0); stage.style.setProperty("--py", 0); });
+  })();
+
+  // --------------------------------------------------------- reveal, counts
+  (function () {
+    var els = doc.querySelectorAll("[data-reveal]");
+    function count(el) {
+      var b = el.querySelector("[data-count]");
+      if (!b || b.dataset.done) return;
+      b.dataset.done = "1";
+      var to = +b.getAttribute("data-count"), t0 = performance.now();
+      if (!(to > 0)) return;
+      (function tick(t) {
+        var k = Math.min(1, (t - t0) / 900);
+        b.textContent = Math.round(to * (1 - Math.pow(1 - k, 3)));
+        if (k < 1) requestAnimationFrame(tick);
+      })(t0);
+    }
+    if (!("IntersectionObserver" in window)) { els.forEach(function (el) { el.classList.add("is-in"); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.add("is-in"); count(en.target); io.unobserve(en.target);
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+    els.forEach(function (el, i) { el.style.transitionDelay = ((i % 4) * 0.07) + "s"; io.observe(el); });
+  })();
+
+  // --------------------------------------------------------------- the nav
+  var nav = $("s-nav"), links = $("s-links"), burger = $("s-burger");
+  function onScroll() { if (nav) nav.classList.toggle("is-scrolled", window.scrollY > 8); }
+  window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
+  if (burger) burger.addEventListener("click", function () {
+    var open = links.classList.toggle("is-open");
+    burger.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  doc.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest("[data-goto]") : null;
+    if (!a || !site.contains(a)) return;
+    e.preventDefault();
+    if (links) links.classList.remove("is-open");
+    if (burger) burger.setAttribute("aria-expanded", "false");
+    var id = a.getAttribute("data-goto"), target = id === "top" ? null : $(id);
+    if (id === "top") window.scrollTo({ top: 0, behavior: "smooth" });
+    else if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 96, behavior: "smooth" });
+  });
+
+  // ----------------------------------------------------------- copy buttons
+  doc.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-copy]") : null;
+    if (!b) return;
+    var src = $(b.getAttribute("data-copy")); if (!src) return;
+    var text = src.innerText.trim(), label = b.textContent;
+    function done() { b.textContent = "Copied"; setTimeout(function () { b.textContent = label; }, 1600); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () {});
+    else {
+      var ta = doc.createElement("textarea"); ta.value = text; doc.body.appendChild(ta); ta.select();
+      try { doc.execCommand("copy"); done(); } catch (err) { /* nothing more to try */ }
+      doc.body.removeChild(ta);
+    }
+  });
+
+  // ============================================== R loading, as it happens
   var total = 0, f;
   for (f in FILES) total += FILES[f];
-
-  var screen = document.getElementById("slx-loading");
-  if (!screen) return;
-  var bar = document.getElementById("slx-bar");
-  var fill = document.getElementById("slx-fill");
-  var status = document.getElementById("slx-status");
-  var amount = document.getElementById("slx-amount");
-  var slow = document.getElementById("slx-slow");
-
-  var got = {}, ended = {}, heard = false, appStarting = false, lastNews = Date.now(), shown = "";
+  var got = {}, ended = {}, heard = false, appStarting = false, ready = false, failed = false, unknown = false;
+  var started = Date.now(), lastNews = Date.now();
+  var STAGES = ["Loading R", "Starting R in your browser", "Loading the packages the analyses use",
+                "Installing and loading the packages", "Starting StatLabX"];
+  var view = { stage: 0, fraction: 0, working: false, amount: "" };
 
   function mb(bytes) { return (bytes / 1048576).toFixed(1); }
   // R itself and its built-in library sit directly in shinylive/webr/ and
@@ -135,12 +1029,13 @@
   function isCore(file) { return /^shinylive\/webr\/[^/]+$/.test(file); }
   function isList(file) { return /\/packages\/metadata\.rds$/.test(file); }
 
-  function say(text) {
-    if (text !== shown) { shown = text; status.textContent = text; lastNews = Date.now(); }
-  }
-
-  // the bar and the line under it, from the bytes counted so far
-  function draw() {
+  function compute() {
+    if (ready) { view = { stage: 5, fraction: 1, working: false, amount: mb(total) + " MB of R and its packages in place" }; return; }
+    if (unknown || !heard) {
+      view = { stage: appStarting ? 4 : 0, fraction: 1, working: true, amount: "" };
+      if (unknown && !appStarting) view.label = "Loading R and its packages";
+      return;
+    }
     var received = 0, coreDone = true, laterDone = true, listSeen = false;
     for (f in FILES) {
       if (got[f] !== undefined) received += Math.min(got[f], FILES[f]);
@@ -149,30 +1044,46 @@
       else if (!ended[f]) laterDone = false;
     }
     if (coreDone && listSeen && laterDone) {
-      fill.style.width = "100%";
-      bar.classList.add("slx-working");
-      bar.removeAttribute("aria-valuenow");
-      amount.textContent = mb(total) + " MB of R and its packages in place";
-      say(appStarting ? "Starting StatLabX" : "Installing and loading the packages");
+      view = { stage: appStarting ? 4 : 3, fraction: 1, working: true, amount: mb(total) + " MB of R and its packages in place" };
       return;
     }
-    fill.style.width = (100 * received / total).toFixed(2) + "%";
-    bar.setAttribute("aria-valuenow", Math.floor(100 * received / total));
-    amount.textContent = mb(received) + " of " + mb(total) + " MB";
-    if (!coreDone) say("Loading R");
-    else if (!listSeen) say("Starting R in your browser");
-    else say("Loading the packages the analyses use");
+    view = { stage: !coreDone ? 0 : (!listSeen ? 1 : 2), fraction: received / total, working: false,
+             amount: mb(received) + " of " + mb(total) + " MB" };
   }
 
-  // without the channel, or if no file is reported (an old service worker
-  // still in charge on the first load after an update), the bar says only
-  // that work is going on
-  function unknown() {
-    fill.style.width = "100%";
-    bar.classList.add("slx-working");
-    bar.removeAttribute("aria-valuenow");
-    amount.textContent = "";
-    say("Loading R and its packages");
+  function bar(el, fill) {
+    if (!el || !fill) return;
+    fill.style.width = (view.working ? 100 : Math.max(2, 100 * view.fraction)).toFixed(1) + "%";
+    el.classList.toggle("is-working", !!view.working && !ready);
+  }
+  function stageText() {
+    if (failed) return "R could not start here";
+    if (ready) return "Ready";
+    return view.label || STAGES[view.stage];
+  }
+  function render() {
+    compute();
+    site.classList.toggle("is-ready", ready);
+    site.classList.toggle("is-failed", failed && !ready);
+    var chip = $("s-status-text");
+    if (chip) chip.textContent = ready ? "R is ready in your browser" :
+      failed ? "R could not start here; open the app to see why" : stageText();
+    var sf = $("s-status-fill"); if (sf) sf.style.width = (view.working ? 35 : Math.max(4, 100 * view.fraction)).toFixed(1) + "%";
+    var hs = $("s-hud-steps");
+    if (hs) Array.prototype.forEach.call(hs.children, function (li, i) {
+      li.classList.toggle("is-done", ready || i < view.stage);
+      li.classList.toggle("is-active", !ready && !failed && i === view.stage);
+    });
+    var st = $("s-hud-state"); if (st) st.textContent = ready ? "Ready" : failed ? "Stopped" : "Loading";
+    bar(doc.querySelector(".s-hud-bar"), $("s-hud-fill"));
+    var amt = $("s-hud-amount"); if (amt) amt.textContent = view.amount || " ";
+    var ss = $("s-sheet-stage"); if (ss) ss.textContent = stageText();
+    bar(doc.querySelector(".s-sheet-bar"), $("s-sheet-fill"));
+    var sa = $("s-sheet-amount"); if (sa) sa.textContent = view.amount || " ";
+    var fin = $("s-final-note");
+    if (fin) fin.textContent = ready ? "R is ready: the app opens at once." :
+      failed ? "R could not start in this browser; the app shows what went wrong." :
+      "R is loading in the background while you read.";
   }
 
   var channel = null;
@@ -185,36 +1096,133 @@
       got[m.file] = Math.max(got[m.file] || 0, m.bytes || 0);
       if (m.done) ended[m.file] = true;
       lastNews = Date.now();
-      draw();
+      render();
     };
-  } else unknown();
+  } else unknown = true;
+  render();
 
-  function finish() {
-    clearInterval(timer);
-    if (channel) channel.close();
-    screen.classList.add("slx-done");
-    setTimeout(function () { if (screen.parentNode) screen.parentNode.removeChild(screen); }, 400);
+  // ================================================= the app and the page
+  var pending = null, appOpen = false, toTop = false;
+  function frame() { return doc.querySelector("#root iframe"); }
+  function appWin() { var fr = frame(); try { return fr && fr.contentWindow; } catch (e) { return null; } }
+  function appDoc() { var w = appWin(); try { return w && w.document; } catch (e) { return null; } }
+  function connected() {
+    var w = appWin();
+    try { return !!(w && w.Shiny && w.Shiny.shinyapp && w.Shiny.shinyapp.isConnected()); } catch (e) { return false; }
+  }
+  function setInert(el, on) { if (!el) return; if (on) el.setAttribute("inert", ""); else el.removeAttribute("inert"); }
+  setInert(root, true);
+
+  function tab(d, value) { var a = d.querySelector('.navbar a[data-value="' + value + '"]'); if (a) a.click(); }
+  function waitFor(test, ms, then) {
+    var t0 = Date.now();
+    (function poll() {
+      var ok = false; try { ok = test(); } catch (e) { ok = false; }
+      if (ok) return then(true);
+      if (Date.now() - t0 > ms) return then(false);
+      setTimeout(poll, 150);
+    })();
+  }
+  // where the app opens: the Data tab the first time (it starts on About),
+  // the tab the visitor left otherwise; the worked example loads the RCBD
+  // example, runs it and shows the analysis of variance
+  function route(target) {
+    var d = appDoc(); if (!d) return;
+    var active = d.querySelector(".navbar .nav-link.active");
+    var onAbout = !active || active.getAttribute("data-value") === "about";
+    if (target !== "example") { if (onAbout) tab(d, "data"); return; }
+    var demo = FACTS.demo || "RCBD";
+    tab(d, "data");
+    // data the visitor has loaded are never replaced: the app just opens
+    function rows() { return d.querySelectorAll("#tbl tbody tr td:not(.dataTables_empty)").length; }
+    if (rows() > 0) return;
+    var sel = d.getElementById("demo");
+    try { if (sel && sel.selectize) sel.selectize.setValue(demo); } catch (e) { return; }
+    setTimeout(function () {
+      var load = d.getElementById("loaddemo"); if (load) load.click();
+      waitFor(function () { return rows() > 0; }, 9000, function (ok) {
+        if (!ok) return;
+        // the column mapping is drawn only once its tab is showing
+        tab(d, "design");
+        waitFor(function () {
+          var r = d.getElementById("resp"), de = d.getElementById("design");
+          return r && de && r.value === FACTS.response && de.value === demo;
+        }, 9000, function (ok2) {
+          if (!ok2) return;
+          setTimeout(function () { var run = d.getElementById("run"); if (run) run.click(); }, 300);
+        });
+      });
+    }, 250);
   }
 
-  var started = Date.now();
+  var sheet = $("s-sheet"), sheetClose = $("s-sheet-close"), lastFocus = null;
+  function showSheet() {
+    if (!sheet || !sheet.hidden) return;
+    lastFocus = doc.activeElement; sheet.hidden = false;
+    if (sheetClose) sheetClose.focus();
+  }
+  function hideSheet() {
+    if (!sheet || sheet.hidden) return;
+    sheet.hidden = true;
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  if (sheetClose) sheetClose.addEventListener("click", function () { pending = null; hideSheet(); });
+  doc.addEventListener("keydown", function (e) { if (e.key === "Escape" && sheet && !sheet.hidden) { pending = null; hideSheet(); } });
+
+  function showApp(target) {
+    hideSheet(); pending = null; appOpen = true;
+    if (links) links.classList.remove("is-open");
+    body.classList.add("slx-app-open");
+    setInert(site, true); setInert(root, false);
+    if (location.hash !== "#app") history.pushState({ slx: "app" }, "", "#app");
+    route(target);
+    var fr = frame(); if (fr) try { fr.focus(); } catch (e) { /* the frame takes focus when clicked */ }
+  }
+  function showSite() {
+    appOpen = false;
+    body.classList.remove("slx-app-open");
+    setInert(site, false); setInert(root, true);
+    if (toTop) { toTop = false; window.scrollTo(0, 0); }
+  }
+  function open(target) {
+    target = target || "data";
+    if (ready || failed) return showApp(target);
+    pending = target; showSheet(); render();
+  }
+  function home() {
+    toTop = true;
+    if (history.state && history.state.slx === "app") history.back();
+    else { history.replaceState(null, "", location.pathname + location.search); showSite(); }
+  }
+  window.addEventListener("popstate", function () {
+    if (location.hash === "#app") { if (!appOpen) open("keep"); }
+    else if (appOpen) showSite();
+  });
+  doc.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-open]") : null;
+    if (!b || !site.contains(b)) return;
+    e.preventDefault(); open(b.getAttribute("data-open"));
+  });
+  // the app's About tab and logo call this from inside its frame
+  window.StatLabX = { home: home, open: open };
+  if (location.hash === "#app") open("keep");
+
+  // ready once Shiny in the app frame has connected
   var timer = setInterval(function () {
-    // the app is ready once Shiny in the app frame has connected
-    var frame = document.querySelector("#root iframe");
-    var ready = false;
-    try {
-      var w = frame && frame.contentWindow;
-      ready = !!(w && w.Shiny && w.Shiny.shinyapp && w.Shiny.shinyapp.isConnected());
-    } catch (err) { ready = false; }
-    if (ready) return finish();
-    // the app's page is given its address once R has started the app
-    if (!appStarting && frame && /app_/.test(frame.getAttribute("src") || "")) {
-      appStarting = true;
-      if (heard) draw(); else say("Starting StatLabX");
+    var fr = frame();
+    if (!ready && connected()) {
+      ready = true; render();
+      if (channel) { channel.close(); channel = null; }
+      if (pending) showApp(pending);
+      clearInterval(timer);
+      return;
     }
-    // shinylive's error panel must be seen, so the screen steps aside
-    if (document.querySelector(".loading-wrapper-error")) return finish();
-    if (!heard && !appStarting && Date.now() - started > 15000) unknown();
-    if (Date.now() - lastNews > 45000) slow.hidden = false;
+    // the app's page is given its address once R has started the app
+    if (!appStarting && fr && /app_/.test(fr.getAttribute("src") || "")) { appStarting = true; render(); }
+    // shinylive's error panel must be seen
+    if (!failed && doc.querySelector(".loading-wrapper-error")) { failed = true; render(); if (pending) showApp(pending); }
+    if (!heard && !unknown && !appStarting && Date.now() - started > 15000) { unknown = true; render(); }
+    var slow = $("s-sheet-slow"); if (slow) slow.hidden = Date.now() - lastNews < 45000;
   }, 250);
 })();
 </script>

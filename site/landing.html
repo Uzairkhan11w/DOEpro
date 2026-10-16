@@ -1,0 +1,310 @@
+<div id="slx-site" class="slx-site">
+  <div class="s-sky" aria-hidden="true"></div>
+
+  <header class="s-nav" id="s-nav">
+    <div class="s-nav-inner">
+      <a class="s-brand" href="#top" data-goto="top" aria-label="StatLabX, back to the top">
+        <img src="statlabx-logo.webp" alt="StatLabX" width="140" height="40">
+      </a>
+      <span class="s-brand-sub">powered by DOEpro {{VERSION}}</span>
+      <nav class="s-links" id="s-links" aria-label="Sections">
+        <a href="#workflow" data-goto="workflow">Workflow<i aria-hidden="true">+</i></a>
+        <a href="#features" data-goto="features">Analyses<i aria-hidden="true">+</i></a>
+        <a href="#engine" data-goto="engine">In your browser<i aria-hidden="true">+</i></a>
+        <a href="#team" data-goto="team">Team<i aria-hidden="true">+</i></a>
+        <a href="#cite" data-goto="cite">Cite<i aria-hidden="true">+</i></a>
+      </nav>
+      <button class="s-btn s-btn-dark s-btn-sm s-nav-cta" type="button" data-open="data">
+        <span class="s-live" aria-hidden="true"></span><span>Open the app</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 11 11 5M6 5h5v5"/></svg>
+      </button>
+      <button class="s-burger" id="s-burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="s-links">
+        <span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ======================================================== hero -->
+    <section class="s-hero" id="top">
+      <div class="s-hero-card">
+        <svg class="s-arcs" viewBox="0 0 600 600" aria-hidden="true">
+          <circle cx="40" cy="40" r="210"/><circle cx="40" cy="40" r="330"/><circle cx="40" cy="40" r="460"/>
+        </svg>
+        <div class="s-glyphs" aria-hidden="true"><span>&Sigma;</span><span>&sigma;&sup2;</span><span>&chi;&sup2;</span><span>&mu;</span></div>
+
+        <div class="s-hero-copy">
+          <p class="s-status" id="s-status" aria-live="polite">
+            <span class="s-live" aria-hidden="true"></span>
+            <span class="s-status-text" id="s-status-text">Loading R in your browser</span>
+            <span class="s-status-bar" aria-hidden="true"><i id="s-status-fill"></i></span>
+          </p>
+          <h1 class="s-h1">
+            <span class="s-h1-line">Designed</span>
+            <span class="s-h1-line">for the <em>field</em></span>
+          </h1>
+          <p class="s-lead">Free analysis of designed experiments for agricultural and allied research.
+            Paste your data from Excel and get the ANOVA, means with C.D. and letters, assumption checks,
+            post-hoc tests and a plain-language reading of every result, with R running in your browser.</p>
+          <div class="s-actions">
+            <button class="s-btn s-btn-dark" type="button" data-open="data">
+              <span>Start analysing</span>
+              <span class="s-btn-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 11 11 5M6 5h5v5"/></svg></span>
+            </button>
+            <button class="s-btn s-btn-ghost" type="button" data-open="example">See a worked example</button>
+          </div>
+          <ul class="s-trust">
+            <li>Free and open source</li><li>On CRAN</li><li>Checked against Gomez &amp; Gomez (1984)</li>
+          </ul>
+        </div>
+
+        <div class="s-visual" id="s-visual" aria-hidden="true">
+          <div class="s-orbit"><svg viewBox="0 0 520 520"><ellipse cx="260" cy="260" rx="250" ry="96"/></svg><span class="s-star"></span></div>
+          <div class="s-stage" id="s-stage"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================== ticker -->
+    <section class="s-ticker" aria-label="What StatLabX covers">
+      <div class="s-track"><div class="s-row">{{TICKER_A}}</div><div class="s-row" aria-hidden="true">{{TICKER_A}}</div></div>
+      <div class="s-track s-track-rev"><div class="s-row">{{TICKER_B}}</div><div class="s-row" aria-hidden="true">{{TICKER_B}}</div></div>
+    </section>
+
+    <!-- =================================================== numbers -->
+    <section class="s-numbers" aria-label="StatLabX in numbers">
+      <div class="s-num" data-reveal><b data-count="{{N_DESIGNS}}">{{N_DESIGNS}}</b><span>experimental designs, each with the error terms its layout calls for</span></div>
+      <div class="s-num" data-reveal><b data-count="{{N_POSTHOC}}">{{N_POSTHOC}}</b><span>ways to compare means, Dunnett's test against a control among them</span></div>
+      <div class="s-num" data-reveal><b data-count="6">6</b><span>tools to explore data before the analysis of variance</span></div>
+      <div class="s-num" data-reveal><b>0</b><span>things to install: R runs inside this page</span></div>
+    </section>
+
+    <!-- ================================================== workflow -->
+    <section class="s-section" id="workflow">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>01</span>The workflow</p>
+        <h2 class="s-h2">From spreadsheet<br>to <em>publishable</em> table</h2>
+        <p class="s-sub">Four steps, in the order of the tabs. Every result comes with a short reading of what it shows,
+          worded to match the evidence: a test that is not significant reads as insufficient evidence, never as
+          proof of no difference.</p>
+      </header>
+      <ol class="s-steps">
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">01</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="30" rx="4"/><path d="M7 18h34M7 27h34M19 9v30M30 9v30"/></svg>
+          <h3>Load</h3>
+          <p>Paste straight from Excel, upload a CSV or start from a worked example. A data check finds decimal
+            commas, units typed after numbers and labels that differ only in capitals, and corrects only what is certain.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">02</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 38 18 24l8 7 14-19"/><circle cx="18" cy="24" r="2.5"/><circle cx="26" cy="31" r="2.5"/><circle cx="40" cy="12" r="2.5"/></svg>
+          <h3>Explore</h3>
+          <p>Look before you test: descriptive statistics, correlation, regression, principal components,
+            cluster and factor analysis, each with a reading of what the numbers and plots show.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">03</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="7" width="15" height="15" rx="2"/><rect x="26" y="7" width="15" height="15" rx="2"/><rect x="7" y="26" width="15" height="15" rx="2"/><rect x="26" y="26" width="15" height="15" rx="2"/></svg>
+          <h3>Analyse</h3>
+          <p>Choose the design and map its columns. The right error terms follow: split and strip plots get their
+            strata, and analyses over seasons or locations treat the environment as random.</p>
+        </li>
+        <li class="s-step" data-reveal>
+          <span class="s-step-n">04</span>
+          <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 6h17l9 9v27H12z"/><path d="M29 6v9h9M18 25h14M18 31h14M18 37h9"/></svg>
+          <h3>Report</h3>
+          <p>The ANOVA, means with SE(m), SE(d), C.D. and letters, assumption checks, post-hoc tests and plots,
+            then an interpretation and a report to download.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ================================================== features -->
+    <section class="s-section" id="features">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>02</span>The analyses</p>
+        <h2 class="s-h2">Everything a field<br>trial asks <em>of you</em></h2>
+      </header>
+      <div class="s-bento">
+        <article class="s-tile s-tile-designs" data-reveal>
+          <p class="s-tile-k">Designs</p>
+          <h3>{{N_DESIGNS}} designs, the right error terms</h3>
+          <ol class="s-designs">{{DESIGN_LIST}}</ol>
+        </article>
+        <article class="s-tile s-tile-means" data-reveal>
+          <p class="s-tile-k">Tables of means</p>
+          <h3>Means you can publish</h3>
+          <p>SE(m), SE(d) and the C.D. at the level you choose. Letters appear only when the F-test allows them, and
+            a missing plot gets adjusted means rather than wrong ones.</p>
+          <table class="s-mini" aria-label="Means of the worked example">{{MEANS_ROWS}}</table>
+          <p class="s-mini-foot">Worked example (RCBD): C.D. (5%) {{CD}} &middot; CV {{CV}}%</p>
+        </article>
+        <article class="s-tile s-tile-ph" data-reveal>
+          <p class="s-tile-k">Post-hoc</p>
+          <h3>{{N_POSTHOC}} ways to compare</h3>
+          <ul class="s-tags">{{POSTHOC_LIST}}</ul>
+        </article>
+        <article class="s-tile s-tile-checks" data-reveal>
+          <p class="s-tile-k">Assumptions</p>
+          <h3>Checks before conclusions</h3>
+          <p>Shapiro&ndash;Wilk on the residuals, Levene's and Bartlett's tests, the mean&ndash;variance slope and the
+            Box&ndash;Cox profile. A transformation is suggested only when the checks support it.</p>
+        </article>
+        <article class="s-tile s-tile-private" data-reveal>
+          <svg class="s-tile-ico" viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="21" width="28" height="20" rx="4"/><path d="M16 21v-6a8 8 0 0 1 16 0v6M24 29v5"/></svg>
+          <h3>Your data stay here</h3>
+          <p>R runs on your own computer. Nothing you paste is uploaded anywhere.</p>
+        </article>
+        <article class="s-tile s-tile-reading" data-reveal>
+          <p class="s-tile-k">Readings</p>
+          <h3>Every result, explained</h3>
+          <blockquote>{{READING}}</blockquote>
+          <p class="s-mini-foot">The reading under the worked example's table of means, as the app writes it.</p>
+        </article>
+        <article class="s-tile s-tile-report" data-reveal>
+          <p class="s-tile-k">Report</p>
+          <h3>A report to keep</h3>
+          <p>Download the analysis as one HTML page: the ANOVA, the tables of means, the assumption checks and the
+            interpretation, ready to print or attach.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- =================================================== engine -->
+    <section class="s-engine" id="engine">
+      <div class="s-engine-inner">
+        <div class="s-engine-copy" data-reveal>
+          <p class="s-kicker s-kicker-dark"><span>03</span>The engine</p>
+          <h2 class="s-h2 s-h2-dark">R, running<br>right <em>here</em></h2>
+          <p>StatLabX runs R itself, compiled to WebAssembly, inside this page. There is no server: nothing to
+            install, no account, no queue, and the data you analyse never leave your computer.</p>
+          <p>The first visit downloads about {{TOTAL_MB}} MB of R and its packages; your browser usually keeps a copy,
+            so later visits skip the download, though R still takes a little while to start.</p>
+        </div>
+        <div class="s-hud" data-reveal>
+          <div class="s-hud-top"><span>R runtime</span><span id="s-hud-state">Loading</span></div>
+          <ol class="s-hud-steps" id="s-hud-steps">
+            <li>Loading R</li>
+            <li>Starting R in your browser</li>
+            <li>Loading the packages the analyses use</li>
+            <li>Installing and loading the packages</li>
+            <li>Starting StatLabX</li>
+          </ol>
+          <div class="s-hud-bar" aria-hidden="true"><i id="s-hud-fill"></i></div>
+          <div class="s-hud-foot"><span id="s-hud-amount">&nbsp;</span>
+            <button class="s-btn s-btn-light s-btn-sm" type="button" data-open="data">Open the app</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============================================== validation -->
+    <section class="s-section s-proof" id="proof">
+      <div class="s-proof-big" data-reveal aria-hidden="true">1984</div>
+      <div class="s-proof-copy" data-reveal>
+        <p class="s-kicker"><span>04</span>The evidence</p>
+        <h2 class="s-h2">Checked against<br>the <em>textbook</em></h2>
+        <p>The worked examples of Gomez &amp; Gomez, <i>Statistical Procedures for Agricultural Research</i> (1984),
+          are reproduced exactly, with one deliberate difference: environments are treated as random, so
+          treatments are tested against their interaction with the environment. Behind that, the package's tests
+          check every statistic against an independent computation.</p>
+        <ul class="s-checks">
+          <li>Completely randomised design</li><li>Randomised complete block design</li><li>Latin square</li>
+          <li>Split plot</li><li>Combined analysis over seasons</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ===================================================== team -->
+    <section class="s-section" id="team">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>05</span>The team</p>
+        <h2 class="s-h2">The people<br><em>behind it</em></h2>
+      </header>
+      <div class="s-team">{{TEAM}}</div>
+      <p class="s-team-note" data-reveal>Suggestions and bug reports are welcome: write to
+        <a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a> or open an issue on
+        <a href="https://github.com/Uzairkhan11w/DOEpro/issues" target="_blank" rel="noopener">GitHub</a>.</p>
+    </section>
+
+    <!-- ===================================================== cite -->
+    <section class="s-section" id="cite">
+      <header class="s-head" data-reveal>
+        <p class="s-kicker"><span>06</span>Cite and install</p>
+        <h2 class="s-h2">Use it, <em>cite it</em></h2>
+      </header>
+      <div class="s-cite">
+        <article class="s-tile" data-reveal>
+          <p class="s-tile-k">How to cite</p>
+          <p class="s-citation" id="s-citation">{{CITATION}}</p>
+          <div class="s-row-btns">
+            <button class="s-btn s-btn-ghost s-btn-sm" type="button" data-copy="s-citation">Copy citation</button>
+            <a class="s-link" href="https://doi.org/{{DOI}}" target="_blank" rel="noopener">doi:{{DOI}}</a>
+          </div>
+          <p class="s-mini-foot">This is the concept DOI: it always leads to the latest release.</p>
+        </article>
+        <article class="s-tile" data-reveal>
+          <p class="s-tile-k">In R</p>
+          <pre class="s-code" id="s-code"><code>install.packages("DOEpro")
+DOEpro::run_DOEpro()</code></pre>
+          <div class="s-row-btns">
+            <button class="s-btn s-btn-ghost s-btn-sm" type="button" data-copy="s-code">Copy code</button>
+            <a class="s-link" href="https://CRAN.R-project.org/package=DOEpro" target="_blank" rel="noopener">CRAN</a>
+            <a class="s-link" href="https://github.com/Uzairkhan11w/DOEpro" target="_blank" rel="noopener">GitHub</a>
+          </div>
+          <p class="s-mini-foot">The same analyses as this site, as an R package (GPL-3).</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ====================================================== cta -->
+    <section class="s-final" data-reveal>
+      <h2 class="s-h2">Ready when <em>you are</em></h2>
+      <p id="s-final-note">R is loading in the background while you read.</p>
+      <button class="s-btn s-btn-dark" type="button" data-open="data">
+        <span>Start analysing</span>
+        <span class="s-btn-arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5 11 11 5M6 5h5v5"/></svg></span>
+      </button>
+    </section>
+  </main>
+
+  <footer class="s-foot">
+    <div class="s-foot-inner">
+      <div class="s-foot-brand">
+        <img src="statlabx-logo-light.webp" alt="StatLabX" width="210" height="60" loading="lazy">
+        <p>Statistics for agricultural and allied research. Powered by the DOEpro R package, version {{VERSION}}.</p>
+      </div>
+      <div class="s-foot-cols">
+        <div><h4>Use</h4>
+          <button type="button" data-open="data">Open the app</button>
+          <button type="button" data-open="example">Worked example</button>
+        </div>
+        <div><h4>Project</h4>
+          <a href="https://github.com/Uzairkhan11w/DOEpro" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://CRAN.R-project.org/package=DOEpro" target="_blank" rel="noopener">CRAN</a>
+          <a href="https://doi.org/{{DOI}}" target="_blank" rel="noopener">Zenodo</a>
+        </div>
+        <div><h4>Contact</h4>
+          <a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a>
+          <a href="mailto:immad11w@skuastkashmir.ac.in">immad11w@skuastkashmir.ac.in</a>
+        </div>
+      </div>
+    </div>
+    <p class="s-foot-legal">&copy; {{YEAR}} the authors &middot; GPL-3 &middot; R in your browser through webR and Shinylive</p>
+  </footer>
+
+  <div class="s-sheet" id="s-sheet" hidden>
+    <div class="s-sheet-card" role="dialog" aria-modal="true" aria-labelledby="s-sheet-title">
+      <img src="statlabx-logo.webp" alt="" width="150" height="43">
+      <h2 id="s-sheet-title">Opening StatLabX</h2>
+      <p class="s-sheet-stage" id="s-sheet-stage">Loading R</p>
+      <div class="s-sheet-bar" aria-hidden="true"><i id="s-sheet-fill"></i></div>
+      <p class="s-sheet-amount" id="s-sheet-amount">&nbsp;</p>
+      <p class="s-sheet-note">It opens by itself as soon as R is ready.</p>
+      <p class="s-sheet-slow" id="s-sheet-slow" hidden>Still working. On a slow connection or an older computer this
+        can take a minute or two; please keep this tab open.</p>
+      <button class="s-btn s-btn-ghost s-btn-sm" type="button" id="s-sheet-close">Keep reading</button>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="slx-facts">{{FACTS}}</script>
