@@ -38,6 +38,9 @@ credit_block <- function() paste0(
 #'   If \code{FALSE}, give the compact summary tables only.
 #' @param screen If \code{TRUE}, return a fragment styled for display inside the
 #'   application. If \code{FALSE}, return a complete standalone HTML document.
+#' @param digits Decimal places for the means in the tables of means. A
+#'   standard error or critical difference that would print as zero is given
+#'   more.
 #'
 #' @return A character string of HTML, of length one.
 #'
@@ -50,7 +53,7 @@ credit_block <- function() paste0(
 #' }
 #'
 #' @export
-build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE) {
+build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE, digits = 2) {
   fits <- rr$fits
   hdr <- sprintf(
     "<div class='rpt-head'><img class='rpt-logo' src='%s' alt='DOEpro'><h1>Analysis of Variance Report</h1></div><p class='meta'>Design: <b>%s</b> &nbsp;|&nbsp; Response variable(s): <b>%s</b> &nbsp;|&nbsp; Significance level: <b>%s</b> &nbsp;|&nbsp; %s</p>%s",
@@ -68,12 +71,15 @@ build_report <- function(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE)
       df_html(anova_display(fits[[nm]]$final$anova, rr$alpha)),
       anova_note(fits[[nm]]$final)), character(1)), collapse = ""),
     "<h2>2. Tables of means</h2>",
-    means_section_html(rr, letters_on = letters_on, detailed = detailed),
+    means_section_html(rr, digits = digits, letters_on = letters_on, detailed = detailed),
     "<h2>3. Assumptions and transformation</h2>",
     paste(vapply(names(fits), function(nm) {
       f <- fits[[nm]]
-      sprintf("<h4>%s</h4>%s<div class='note'>Suggested transformation: <b>%s</b>. %s</div>",
-              f$header, assum_table_html(f$asm), TRANS[[f$sug$method]]$lab, f$sug$why)
+      sprintf("<h4>%s</h4>%s<div class='note'>Suggested transformation%s: <b>%s</b>. %s</div>",
+              f$header, assum_table_html(f$asm),
+              if (identical(f$trans, "none")) ""
+              else sprintf(", judged on the values as entered (the table above is on the %s scale)", TRANS[[f$trans]]$lab),
+              TRANS[[f$sug$method]]$lab, f$sug$why)
     }, character(1)), collapse = ""),
     "<h2>4. Interpretation</h2>",
     paste(vapply(names(fits), function(nm) {
@@ -157,13 +163,18 @@ assum_table_html <- function(a) {
   rows <- c(rows, sprintf(
     "<tr><td>Taylor's power-law slope b</td><td colspan='2'>%s</td><td>%s</td></tr>",
     dfmt(a$slope, 2), if (isTRUE(a$exact)) "not estimable (the model fits every value exactly)"
-      else if (is.na(a$slope)) "-" else if (abs(a$slope) < 0.5)
-      "little sign that the variance changes with the mean"
-      else if (a$slope > 0) "the variance appears to rise with the mean"
-      else "the variance appears to fall as the mean rises"))
+      else if (is.na(a$slope)) "-"
+      ## judged by the slope's own test, as the mean-variance plot's note is
+      else if (is.na(a$slope_p)) "cannot be tested with three points"
+      else if (a$slope_p >= a$alpha)
+        sprintf("insufficient evidence that the variance changes with the mean (%s)", p_eq(a$slope_p, a$alpha))
+      else sprintf("the variance %s with the mean (%s)", if (a$slope > 0) "rises" else "falls",
+                   p_eq(a$slope_p, a$alpha))))
   rows <- c(rows, sprintf(
     "<tr><td>Optimal Box-Cox lambda</td><td colspan='2'>%s</td><td>%s</td></tr>",
-    fmt(a$lambda, 2),
+    ## at the end of the range searched the profile is still rising: the
+    ## optimum lies beyond it, and the figure is only where the search stopped
+    if (!is.na(a$lambda) && abs(a$lambda) >= 2 - 1e-9) sprintf("beyond %s", fmt(a$lambda, 2)) else fmt(a$lambda, 2),
     if (isTRUE(a$exact)) "not estimable (the model fits every value exactly)"
     else if (is.null(a$bc)) "not estimable (response must be &gt; 0)"
     else sprintf("%s%% CI %.2f to %.2f", pct(a$bc$level), a$bc$ci[1], a$bc$ci[2])))

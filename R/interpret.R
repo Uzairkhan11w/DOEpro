@@ -1,14 +1,6 @@
 ###############################################################################
 ##  PLAIN-ENGLISH INTERPRETATION
 ###############################################################################
-cv_verdict <- function(cv) {
-  if (is.na(cv)) return("")
-  if (cv < 10) "low - the experiment was precisely conducted"
-  else if (cv < 20) "moderate - acceptable for most field experiments"
-  else if (cv < 30) "high - precision is poor; treatment differences must be large to be detected"
-  else "very high - the experiment has low reliability; check for outliers, plot heterogeneity or a wrong error term"
-}
-
 ## Every statement is made at the significance level the user chose, and a
 ## non-significant result is reported as insufficient evidence of a difference,
 ## never as evidence that there is none.
@@ -36,22 +28,34 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
     else "",
     if (trans_lab != "None") sprintf(" The response was transformed using <b>%s</b>; all means, SEd and C.D. values below are on the transformed scale (back-transformed means are shown alongside).", trans_lab) else ""))
 
-  p <- c(p, sprintf("<h4>2. Precision of the experiment</h4><p>%s. Grand mean = %s. A CV of this magnitude is %s.</p>",
+  ## judged as the CV reading under the ANOVA judges it: not on a transformed
+  ## scale, not when the grand mean is not positive, every CV of a split or
+  ## strip plot, on the figure as printed
+  p <- c(p, sprintf("<h4>2. Precision of the experiment</h4><p>%s. Grand mean = %s. %s</p>",
     paste(sprintf("%s = %s", names(res$cv), fmt(res$cv, 2)), collapse = "; "),
-    fmt(res$grand), cv_verdict(res$cv[length(res$cv)])))
+    fmt(res$grand), if (exact_fit(res)) "The model fits every value exactly, so the CV reflects only rounding and says nothing about the experiment's precision."
+                    else esc(rd_cv(res, if (identical(trans_lab, "None")) "none" else "transformed"))))
 
-  ## effect-by-effect
+  ## effect-by-effect; an exact fit leaves nothing to test against
   ee <- character(0)
   inter_sig <- FALSE
-  for (nm in names(res$effects)) {
+  exact <- exact_fit(res)
+  if (exact) ee <- sprintf("<li>%s</li>", esc(RD_EXACT))
+  for (nm in if (exact) character(0) else names(res$effects)) {
     e <- res$effects[[nm]]
     if (is.na(e$p)) next
     s <- if (e$p < a / 5) "highly significant" else
          if (e$p < a) sprintf("significant at the %s level", lvl)
          else sprintf("not significant at the %s level", lvl)
-    best <- e$means[which.max(e$means$Mean), ]
-    top <- paste(vapply(e$vars, function(v) as.character(best[[v]]), character(1)),
-                 collapse = " x ")
+    ## the highest mean as the reader knows it: back-transformed when there
+    ## is a transformation (1/y reverses the order), every level tied there
+    bt <- !is.null(e$means$Mean_bt)
+    shown <- if (bt) e$means$Mean_bt else e$means$Mean
+    ti <- at_extreme(fmt(shown, 3), max)
+    top <- join_and(vapply(ti, function(i) paste(vapply(e$vars, function(v) as.character(e$means[[v]][i]), ""),
+                                                 collapse = " x "), ""))
+    best_txt <- sprintf("The highest mean%s, %s, was recorded for <b>%s</b>.",
+                        if (bt) " (back-transformed)" else "", fmt(shown[ti[1]], 3), top)
     if (effect_sig(e)) {
       if (length(e$vars) > 1) inter_sig <- TRUE
       cd_txt <- if (!is.null(e$slice))
@@ -60,17 +64,21 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
       else if (!is.na(e$cd))
         sprintf("Two means of this effect must differ by at least <b>%s</b> (C.D. at %s) to be declared different.",
                 fmt(e$cd), lvl)
+      else if (!is.null(e$mix))
+        sprintf("The environment is random, so the difference two means need to be declared different depends on the factors in which they differ: the C.D. at %s ranges from <b>%s</b>, each kind given with the table of means.",
+                lvl, err_text(e, "cd", 3, html = FALSE))
       else
         sprintf("Because the data are unbalanced, the difference two means need to be declared different depends on which two are compared: the C.D. at %s ranges from <b>%s</b>.",
                 lvl, err_text(e, "cd", 3, html = FALSE))
-      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). The highest mean, %s, was recorded for <b>%s</b>. %s</li>",
-        e$label, s, fmt(e$F, 2), p_eq(e$p, a), fmt(best$Mean), top, cd_txt))
+      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). %s %s</li>",
+        e$label, s, fmt(e$F, 2), p_eq(e$p, a), best_txt, cd_txt))
     } else if (length(e$vars) > 1) {
       ## an interaction F-test asks whether one factor's effect depends on the
       ## other, not whether the cell means are all equal
-      fx <- e$vars
-      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence at the %s level that the effect of %s depends on the level of %s. This is not evidence that the interaction is absent; a small one may have gone undetected.</li>",
-        e$label, s, fmt(e$F, 2), p_eq(e$p, a), lvl, fx[1], paste(fx[-1], collapse = " and ")))
+      ## with three factors it asks whether the interaction of two differs
+      ## between the levels of the third
+      ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence at the %s level that %s. This is not evidence that the interaction is absent; a small one may have gone undetected.</li>",
+        e$label, s, fmt(e$F, 2), p_eq(e$p, a), lvl, rd_inter(e$vars)))
     } else {
       ee <- c(ee, sprintf("<li><b>%s</b> is %s (F = %s, %s). There is insufficient evidence to conclude that its means differ at the %s level, so no C.D. is quoted and no letters are given. This is not evidence that the means are equal; the experiment may have been too small to detect a real difference.</li>",
         e$label, s, fmt(e$F, 2), p_eq(e$p, a), lvl))
@@ -79,7 +87,7 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
 
   ## In a pooled factorial the interaction of the environment with each single
   ## factor is an ANOVA row but not a table of means, so read it from the ANOVA.
-  if (res$design %in% c("POOLFRCBD", "POOLFCRD")) {
+  if (res$design %in% c("POOLFRCBD", "POOLFCRD") && !exact) {
     env <- setdiff(res$effects[[length(res$effects)]]$vars, res$facs)
     an <- res$anova
     rows <- an[startsWith(an$Source, paste0(env, " x ")) & !is.na(an$p), , drop = FALSE]
@@ -122,7 +130,11 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
     asm$hov_why %||% "too few values"))
   if (length(asm$outliers)) at <- c(at, sprintf("<li>%d observation(s) have standardised residuals beyond +/-3 (rows %s) - check them for recording errors.</li>",
     length(asm$outliers), paste(asm$outliers, collapse = ", ")))
-  at <- c(at, sprintf("<li>Recommendation: <b>%s</b>. %s</li>", TRANS[[sug$method]]$lab, sug$why))
+  ## the advice is worked out on the values as entered; with a
+  ## transformation applied the checks above are on its scale
+  at <- c(at, sprintf("<li>Recommendation%s: <b>%s</b>. %s</li>",
+    if (identical(trans_lab, "None")) "" else sprintf(", judged on the values as entered (the checks above are on the %s scale)", trans_lab),
+    TRANS[[sug$method]]$lab, sug$why))
   p <- c(p, "<h4>4. Assumptions of the ANOVA</h4><ul>", at, "</ul>")
 
   p <- c(p, sprintf("<h4>5. How to report this</h4><p>Present the ANOVA table, then the table of means with SEm&plusmn;, SEd, C.D. (%s) and CV(%%) at the foot%s. Means followed by a common letter are not significantly different at the %s level. For pairwise inference the least significant difference (LSD) is used only after a significant F-test (Fisher's protected LSD); Tukey's honestly significant difference (HSD) or Duncan's multiple range test (DMRT) may be preferred when many treatments are compared.</p>",

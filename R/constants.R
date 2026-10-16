@@ -114,13 +114,19 @@ fmt <- function(x, d = 3) {
 ## it fitted them all.
 err_text <- function(e, what, digits = 2, html = TRUE) {
   v <- e[[what]]
-  if (length(v) == 1L && !is.na(v)) return(fmt(v, digits))
+  ## a small-valued response at two decimals would print SE(d) 0.00 and
+  ## C.D. 0.00; decimals are added until the figure shows
+  if (length(v) == 1L && !is.na(v)) {
+    dg <- digits
+    while (dg < digits + 4 && v != 0 && as.numeric(fmt(v, dg)) == 0) dg <- dg + 1
+    return(fmt(v, dg))
+  }
   rg <- e[[c(sem = "se_range", sed = "sed_range", cd = "cd_range")[[what]]]]
   if (length(rg) != 2L || anyNA(rg)) return("-")
   ## a range whose ends round to the same figure reads as nonsense, so show
   ## enough decimals to tell them apart
   dg <- digits
-  while (dg < digits + 3 && fmt(rg[1], dg) == fmt(rg[2], dg)) dg <- dg + 1
+  while (dg < digits + 3 && (fmt(rg[1], dg) == fmt(rg[2], dg) || as.numeric(fmt(rg[1], dg)) == 0)) dg <- dg + 1
   paste0(fmt(rg[1], dg), if (html) "&ndash;" else " to ", fmt(rg[2], dg))
 }
 
@@ -275,10 +281,27 @@ read_pasted <- function(txt, sep = "\t", header = TRUE) {
                          strip.white = TRUE, quote = q, comment.char = "")
   ## quotes are honoured only when they are real quoting, not inch marks
   ## (12" pot), which would swallow lines (see quote_char)
-  d <- rd(quote_char(strsplit(txt, "\n", fixed = TRUE)[[1]]))
-  ## a header one name short makes read.table use the first column as row
-  ## names; keep it as a column, so row numbers in messages stay the visible ones
-  if (!identical(rownames(d), as.character(seq_len(nrow(d))))) {
+  q <- quote_char(strsplit(txt, "\n", fixed = TRUE)[[1]])
+  ## A line with more values than the header (or than most lines) would push
+  ## its values one column to the right: comma-separated text with decimal
+  ## commas (5,6) splits each such number in two. Such text is refused, as an
+  ## uploaded file is; a line with fewer values is only short of its last cells.
+  n <- tryCatch(utils::count.fields(textConnection(txt), sep = s, quote = q, comment.char = "",
+                                    blank.lines.skip = TRUE), error = function(e) integer(0))
+  n <- n[!is.na(n)]
+  body <- if (header) n[-1] else n
+  base <- if (header && length(n)) n[1] else as.integer(names(which.max(table(body))))
+  rownamed <- header && length(body) > 0 && all(body == base + 1)
+  if (length(body) && !rownamed && any(body > base))
+    stop(paste0("Some lines have more values than ", if (header) "the header has names" else "most lines",
+      ". This usually means numbers written with decimal commas in comma-separated text, which splits ",
+      "each of them in two. Choose 'Semicolon' or 'Tab' as the column separator, or copy the cells ",
+      "straight from Excel, which separates them with tabs."), call. = FALSE)
+  d <- rd(q)
+  ## a header one name short on every line (row names, as R writes them) makes
+  ## read.table use the first column as row names; keep it as a column, even
+  ## when it holds 1, 2, 3, so row numbers in messages stay the visible ones
+  if (rownamed) {
     d <- cbind(Label = rownames(d), d, stringsAsFactors = FALSE)
     rownames(d) <- NULL
   }
@@ -515,9 +538,20 @@ natural_levels <- function(x) {
   if (is.numeric(x)) return(levels(factor(x)))
   u <- unique(as.character(x[!is.na(x)]))
   if (!length(u)) return(u)
+  ## dates in time order: sowing dates read by their day number alone ran
+  ## 10 Nov, 25 Nov, 25 Oct
+  dk <- date_key(u)
+  if (!is.null(dk)) return(u[order(dk, u, method = "radix")])
   ## a thousands separator is part of the number (1,000 ppm); a decimal comma
   ## (5,6) is left for the data checks to flag
   s <- gsub("(?<=[0-9]),(?=[0-9]{3}([^0-9]|$))", "", u, perl = TRUE)
+  ## a simple fraction (1/4 RDF) is one number; a dose such as 120/60/40 or
+  ## 120/60 is not a fraction and keeps its numbers
+  fr <- gregexpr("(?<![0-9./])[0-9]+/[0-9]+(?![0-9]|/[0-9])", s, perl = TRUE)
+  regmatches(s, fr) <- lapply(regmatches(s, fr), function(h) vapply(h, function(z) {
+    ab <- as.numeric(strsplit(z, "/", fixed = TRUE)[[1]])
+    if (ab[1] < ab[2] && ab[2] <= 16) format(ab[1] / ab[2], digits = 10) else z
+  }, ""))
   ## a sign belongs to the number only when it stands apart from the letters
   ## and digits before it: "-20 C" is negative, "SR-1" and "0-15 cm" are not
   num <- "(?:(?<![[:alnum:].])[-+])?[0-9]+(?:[.][0-9]+)?"
@@ -534,6 +568,45 @@ natural_levels <- function(x) {
   plain <- lengths(hits) == 0
   first <- if (sum(!plain) >= 2 && any(plain)) ifelse(plain, "0", "1") else ""
   u[order(paste0(first, tolower(s)), u, method = "radix")]
+}
+
+## A sort key for labels that are all dates, or NULL. Day and month name
+## (25 Oct, Oct 25, 25-October-2023), with or without a year: without one, a
+## season that runs over the new year (Oct, Nov, Jan) starts after the
+## longest gap between the months used. Numeric dates (15/06/2023) are read
+## day first, as they are written in India, unless a middle part above 12
+## shows the month comes first.
+date_key <- function(u) {
+  lu <- tolower(u)
+  if (all(grepl("^[0-9]{1,2}[/.-][0-9]{1,2}[/.-][0-9]{2,4}$", lu))) {
+    p <- do.call(rbind, lapply(strsplit(lu, "[/.-]"), as.numeric))
+    yr <- ifelse(p[, 3] < 100, 2000 + p[, 3], p[, 3])
+    dm <- if (any(p[, 2] > 12) && all(p[, 1] <= 12)) p[, 2:1, drop = FALSE] else p[, 1:2, drop = FALSE]
+    if (any(dm[, 2] > 12) || any(dm[, 1] > 31)) return(NULL)
+    return(sprintf("%04d%02d%02d", yr, dm[, 2], dm[, 1]))
+  }
+  mon <- c(tolower(month.abb), "sept")
+  w <- regmatches(lu, regexpr("(?<![[:alpha:]])[[:alpha:]]{3,9}(?![[:alpha:]])", lu, perl = TRUE))
+  if (length(w) != length(u)) return(NULL)
+  full <- tolower(month.name)
+  m <- ifelse(w %in% full, match(w, full), match(w, mon))
+  m[!is.na(m) & m == 13] <- 9
+  if (anyNA(m)) return(NULL)
+  ## nothing but the month word, the day, a year and separators
+  rest <- gsub("[[:alpha:]]+", "", lu)
+  if (any(grepl("[^0-9 ,./-]", rest))) return(NULL)
+  nums <- regmatches(lu, gregexpr("[0-9]+", lu))
+  yr <- vapply(nums, function(z) { y <- as.numeric(z[nchar(z) == 4]); if (length(y) == 1) y else NA_real_ }, 0)
+  dy <- vapply(nums, function(z) { d <- as.numeric(z[nchar(z) <= 2]); if (length(d) == 1 && d >= 1 && d <= 31) d else NA_real_ }, 0)
+  if (anyNA(dy) || length(unique(is.na(yr))) > 1) return(NULL)
+  if (all(is.na(yr))) {
+    used <- sort(unique(m))
+    gaps <- c(diff(used), used[1] + 12 - used[length(used)])
+    start <- used[(which.max(gaps) %% length(used)) + 1]
+    m <- (m - start) %% 12
+    yr <- 0
+  }
+  sprintf("%04d%02d%02d", yr, m, dy)
 }
 
 ## cell means for a set of factors
@@ -603,7 +676,9 @@ new_effect <- function(d, resp, vars, mse, df, p, Fv, alpha, label = NULL, fit =
   } else {
     ls <- ls_means(fit, vars, cell_key(m, vars))
     V <- ls$V
-    if (any(abs(ls$est - m$Mean) > 1e-8 * max(1, abs(m$Mean)))) {
+    ## judged on the means' own scale: values near 1e-8 (counts on the
+    ## reciprocal scale) lost their adjustment against a floor of 1
+    if (any(abs(ls$est - m$Mean) > 1e-8 * max(abs(c(m$Mean, ls$est)), 1e-300))) {
       m$Raw_mean <- m$Mean
       m$Mean <- unname(ls$est)
       notes <- paste0("The data are unbalanced, so these are adjusted (least-squares) ",
@@ -674,6 +749,98 @@ slice_effect <- function(m, vars, slice, label, se, sed, tcrit, mse, df, alpha,
   set_errors(e, m$SE, S, tcrit * S)
 }
 
+## The variance of a difference between two treatment means of a pooled
+## factorial, with the environment random. A mean of the factors Sp (averaged
+## over the others) carries the environment's interaction with every set of
+## factors that shares one with Sp, and two means that differ in the factors D
+## keep, in their difference, those that share one with D. Solving the
+## expected mean squares (E x T random, unrestricted model) gives
+## Var = 2 / (e r) * sum over V of w_V * MS(E x V), over the sets V within Sp
+## that share a factor with D, with
+##   w_V = prod_{f not in V} 1/n_f * prod_{f in V, not D} (1 - 1/n_f)
+##         * [prod_{f in V and D} (1 - 1/n_f) - prod_{f in V and D} (-1/n_f)],
+## which is never negative, so Gomez and Gomez's weighted t applies. With two
+## factors this is their strip-plot formula with the environment as the
+## replication: two A means at the same B have (b - 1) MS(E x A x B) +
+## MS(E x A) over e r b. A main effect keeps MS(E x A) alone. `n` holds the
+## number of levels of every treatment factor, named.
+pool_weights <- function(n, Sp, D) {
+  Vs <- unlist(lapply(seq_along(Sp), function(k) utils::combn(Sp, k, simplify = FALSE)),
+               recursive = FALSE)
+  w <- vapply(Vs, function(V) {
+    vd <- intersect(V, D)
+    if (!length(vd)) return(0)
+    prod(1 / n[setdiff(names(n), V)]) * prod(1 - 1 / n[setdiff(V, D)]) *
+      (prod(1 - 1 / n[vd]) - prod(-1 / n[vd]))
+  }, numeric(1))
+  names(w) <- vapply(Vs, paste, "", collapse = ":")
+  w[w > 1e-12]
+}
+
+## An interaction of a pooled factorial: every pair of means has the SE(d) of
+## the factors in which the two differ, and a C.D. from the weighted t of the
+## mean squares in it. `ms` and `dfs` are the mean squares and df of E x V,
+## named by the factors of V joined by ":". Each kind of comparison is listed
+## in `extra`; `mix` keeps each one's mean squares for the post-hoc tests,
+## which use Satterthwaite's degrees of freedom where they need them.
+pool_effect <- function(d, resp, vars, n, ms, dfs, ne, r, alpha, p, Fv, label, mse, df) {
+  m <- eff_means(d, resp, vars)
+  key <- level_key(m, vars); k <- nrow(m)
+  lv <- as.matrix(m[vars])
+  D_of <- function(i, j) vars[lv[i, ] != lv[j, ]]
+  types <- list(); tkey <- character(0)
+  type <- matrix(0L, k, k)
+  for (i in seq_len(k)) for (j in seq_len(k)) if (i != j) {
+    D <- D_of(i, j); kk <- paste(D, collapse = ":")
+    if (!kk %in% tkey) { tkey <- c(tkey, kk); types[[kk]] <- D }
+    type[i, j] <- match(kk, tkey)
+  }
+  ## fewer factors differing first, then in the order of the factors
+  o <- order(lengths(types), vapply(types, function(D) paste(match(D, vars) + 10, collapse = ""), ""))
+  types <- types[o]; type[type > 0] <- match(type[type > 0], o)
+  comp <- lapply(types, function(D) {
+    w <- pool_weights(n, vars, D)
+    list(w = w * ms[names(w)], df = dfs[names(w)])
+  })
+  sed <- vapply(comp, function(z) sqrt(2 * sum(z$w) / (ne * r)), numeric(1))
+  tq  <- vapply(comp, function(z) sum(z$w * stats::qt(1 - alpha / 2, z$df)) / sum(z$w), numeric(1))
+  S <- matrix(0, k, k, dimnames = list(key, key)); Tm <- S
+  S[type > 0] <- sed[type[type > 0]]; Tm[type > 0] <- tq[type[type > 0]]
+  C <- Tm * S
+  ## the standard error of a mean as the tables show it: SE(d) / sqrt(2) for
+  ## two means that differ in every factor
+  u <- pool_weights(n, vars, vars)
+  m$SE <- rep(sqrt(sum(u * ms[names(u)]) / (ne * r)), k)
+  m$Letter <- cld_lsd(m$Mean, C)
+  what <- vapply(types, function(D) {
+    same <- setdiff(vars, D)
+    if (length(same)) sprintf("two %s means at the same %s", paste(D, collapse = " x "),
+                              paste(same, collapse = " x "))
+    else if (length(D) == 2) sprintf("two means that differ in both %s", join_and(D))
+    else sprintf("two means that differ in every factor (%s)", join_and(D))
+  }, "")
+  cdl <- cd_name(alpha)
+  extra <- as.list(c(rbind(sed, tq * sed)))
+  names(extra) <- c(rbind(paste0("SE(d): ", what), paste0(cdl, ": ", what)))
+  sig <- !is.na(p) && p < alpha
+  dft <- vapply(comp, function(z) sum(z$w)^2 / sum(z$w^2 / z$df), numeric(1))
+  e <- list(label = label, vars = vars, means = m, mse = mse, df = df, alpha = alpha,
+            tcrit = NA_real_, p = p, F = Fv, extra = extra,
+            extra_p = rep(c(NA, p), length(types)),
+            notes = if (sig) paste0("The environment is random, so the difference between two of ",
+              "these means carries the environment's interaction with each factor in which they ",
+              "differ: each kind of comparison has its own SE(d) and C.D., listed below, the ",
+              "C.D. with Gomez and Gomez's weighted t. The letters use the C.D. of each pair.") else "",
+            error_desc = sprintf(paste0("The environment is random, so the SE(d) of each pair ",
+              "combines the mean squares of the environment's interactions with the factors in ",
+              "which the two means differ. The LSD and Bonferroni tests use Gomez and Gomez's ",
+              "weighted t; the tests that need degrees of freedom use Satterthwaite's ",
+              "approximation for each pair (%s df)."),
+              if (diff(range(dft)) < 0.05) fmt(dft[1], 1) else paste(fmt(min(dft), 1), "to", fmt(max(dft), 1))),
+            mix = list(type = type, comp = comp))
+  set_errors(e, m$SE, S, C)
+}
+
 ## An effect's further comparisons (e$extra) as label and display text, each
 ## C.D. replaced by "NS" when the F-test it belongs to is not significant.
 extra_text <- function(e, digits = 3) {
@@ -691,5 +858,24 @@ t_crit <- function(e, alpha) {
   if (is.null(e$t_mix)) return(stats::qt(1 - alpha / 2, e$df))
   w <- e$t_mix$w
   sum(w * stats::qt(1 - alpha / 2, e$t_mix$df)) / sum(w)
+}
+## For an effect whose pairs mix several error mean squares, each pair its
+## own way (a pooled factorial's interactions, see pool_effect()): each pair's
+## weighted t at two-sided level a, and its Satterthwaite degrees of freedom,
+## as matrices over the effect's means.
+mix_t <- function(e, a) {
+  tt <- vapply(e$mix$comp, function(z) sum(z$w * stats::qt(1 - a / 2, z$df)) / sum(z$w), numeric(1))
+  matrix(tt[pmax(e$mix$type, 1L)], nrow(e$mix$type))
+}
+mix_df <- function(e) {
+  dd <- vapply(e$mix$comp, function(z) sum(z$w)^2 / sum(z$w^2 / z$df), numeric(1))
+  matrix(dd[pmax(e$mix$type, 1L)], nrow(e$mix$type))
+}
+## the error degrees of freedom as a table states them
+df_label <- function(e, ix = seq_len(nrow(e$means))) {
+  if (is.null(e$mix)) return(df_text(e$df))
+  r <- range(mix_df(e)[ix, ix][row(diag(length(ix))) != col(diag(length(ix)))])
+  if (diff(r) < 0.05) paste(fmt(r[1], 1), "(Satterthwaite)")
+  else sprintf("%s to %s, by pair (Satterthwaite)", fmt(r[1], 1), fmt(r[2], 1))
 }
 `%||%` <- function(a, b) if (is.null(a)) b else a

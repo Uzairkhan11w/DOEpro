@@ -240,6 +240,10 @@ rd_cd_rule <- function(e, what, digits, tr) {
   if (!is.na(e$cd))
     sprintf("Two %s must differ by more than the C.D., %s, to be declared different at the %s level%s.",
             what, err_text(e, "cd", digits, html = FALSE), lvl, scale)
+  else if (!is.null(e$mix))
+    sprintf(paste("The environment is random, so two %s have the C.D. of the factors in which they differ, at the %s level",
+                  "from %s; the rows under the detailed table give each kind%s."),
+            what, lvl, err_text(e, "cd", digits, html = FALSE), scale)
   else sprintf("With unequal replication each pair of %s has its own C.D. at the %s level, from %s; the Post-hoc tab lists them pair by pair%s.",
                what, lvl, err_text(e, "cd", digits, html = FALSE), scale)
 }
@@ -309,18 +313,39 @@ means_body <- function(e, digits, tr) {
                                f[1], if (d > C) "larger" else "not larger", f[2],
                                if (d > C) "significant" else "not significant", lvl)))
   }
-  ## the means at par with each end: within the C.D. of every mean tied there
+  ## the means at par with each end: within the C.D. of every mean tied
+  ## there. Means that print alike can still differ among themselves when the
+  ## C.D. is finer than the printing, and a mean can then be at par with some
+  ## of them only; it is never called different from one it shares a letter with.
   side <- function(ends_i, word) {
-    par <- setdiff(Reduce(intersect, lapply(ends_i, function(i) rd_par(e, i))), ends_i)
-    rest <- setdiff(seq_len(k), c(ends_i, par))
+    pars <- lapply(ends_i, function(i) rd_par(e, i))
+    at <- function(j) vapply(pars, function(p) j %in% p, logical(1))
+    others <- setdiff(seq_len(k), ends_i)
+    par <- others[vapply(others, function(j) all(at(j)), logical(1))]
+    rest <- others[vapply(others, function(j) !any(at(j)), logical(1))]
+    some <- setdiff(others, c(par, rest))
     ref <- join_and(lab[ends_i])
-    ord <- par[order(shown[par], decreasing = word == "lower")]
-    if (!length(par)) sprintf("Every other %s mean is significantly %s than %s.", v, word,
-                              sprintf("%s of %s", pl(length(ends_i), "that", "those"), ref))
-    else if (!length(rest)) sprintf("No other %s mean differs significantly from %s.", v, ref)
-    else sprintf("%s %s not differ significantly from %s; %s significantly %s.",
-                 rd_named(lab[ord], pr[ord]), pl(length(par), "does", "do"), ref,
-                 rd_rest(lab[rest[order(shown[rest], decreasing = word == "lower")]], v), word)
+    o <- function(ix) ix[order(shown[ix], decreasing = word == "lower")]
+    apart <- length(ends_i) > 1 && !all(vapply(seq_along(ends_i), function(a) all(ends_i %in% pars[[a]]), logical(1)))
+    split <- if (apart) sprintf(paste("%s print alike at %d decimal %s but differ significantly among themselves,",
+                                      "as their letters show; more decimal places would separate them. "),
+                                ref, digits, if (digits == 1) "place" else "places") else ""
+    if (!length(some))
+      return(paste0(split,
+        if (!length(par)) sprintf("Every other %s mean is significantly %s than %s.", v, word,
+                                  sprintf("%s of %s", pl(length(ends_i), "that", "those"), ref))
+        else if (!length(rest)) sprintf("No other %s mean differs significantly from %s.", v, ref)
+        else sprintf("%s %s not differ significantly from %s; %s significantly %s.",
+                     rd_named(lab[o(par)], pr[o(par)]), pl(length(par), "does", "do"), ref,
+                     rd_rest(lab[o(rest)], v), word)))
+    parts <- c(
+      if (length(par)) sprintf("%s %s not differ significantly from any of %s", rd_named(lab[o(par)], pr[o(par)]),
+                               pl(length(par), "does", "do"), ref),
+      vapply(o(some), function(j) sprintf("%s does not differ significantly from %s but is significantly %s than %s",
+                                         rd_named(lab[j], pr[j]), join_and(lab[ends_i[at(j)]]), word,
+                                         join_and(lab[ends_i[!at(j)]])), ""),
+      if (length(rest)) sprintf("%s significantly %s than each of %s", rd_rest(lab[o(rest)], v), word, ref))
+    paste0(split, toupper(substr(parts[1], 1, 1)), substring(paste(parts, collapse = "; "), 2), ".")
   }
   paste(ends, rule, side(top, "lower"), side(bot, "higher"))
 }
@@ -486,6 +511,31 @@ dunnett_pairs_text <- function(x, lsd = NULL) {
   paste(out, collapse = " ")
 }
 
+## The other means of a family against the means tied at one end (`ix`):
+## those this test finds at par with every one of them, with none, and with
+## some only, which are never called different from all of them; and whether
+## the tied means differ among themselves.
+ph_split <- function(fm, ix, k) {
+  at <- function(j) vapply(ix, function(i) !fm$sig[i, j], logical(1))
+  others <- setdiff(seq_len(k), ix)
+  par <- others[vapply(others, function(j) all(at(j)), logical(1))]
+  rest <- others[vapply(others, function(j) !any(at(j)), logical(1))]
+  list(par = par, rest = rest, some = setdiff(others, c(par, rest)), at = at,
+       apart = length(ix) > 1 && any(fm$sig[ix, ix]))
+}
+## the sentence for a tie that some means are at par with only in part
+ph_parts <- function(fm, pr, ix, g, word) {
+  o <- function(z) z[order(fm$mu[z], decreasing = word == "lower")]
+  paste(c(
+    if (length(g$par)) sprintf("%s %s not differ significantly from any of them", rd_named(fm$lab[o(g$par)], pr[o(g$par)]),
+                               pl(length(g$par), "does", "do")),
+    vapply(o(g$some), function(j) sprintf("%s does not differ significantly from %s but is significantly %s than %s",
+                                         rd_named(fm$lab[j], pr[j]), join_and(fm$lab[ix[g$at(j)]]), word,
+                                         join_and(fm$lab[ix[!g$at(j)]])), ""),
+    if (length(g$rest)) sprintf("%s significantly %s than each of them", rd_rest(fm$lab[o(g$rest)]), word)),
+    collapse = "; ")
+}
+
 ## The reading of the post-hoc groups: in each family of means, the highest
 ## and lowest mean, and which means this test finds do not differ from them.
 ## The means are those of the analysis, on the transformed scale when there
@@ -508,18 +558,20 @@ posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
       return(sprintf("%s has the higher mean%s (%s); by this test the other mean is %s.", fm$lab[top], where, pr[top],
                      if (fm$sig[1, 2]) "significantly lower" else "not significantly different from it"))
     end <- function(ix, word, high) {
-      par <- setdiff(Reduce(intersect, lapply(ix, function(i) which(!fm$sig[i, ]))), ix)
-      rest <- setdiff(seq_len(k), c(ix, par))
+      g <- ph_split(fm, ix, k)
       ref <- if (length(ix) == 1) "it" else "them"
-      lead <- sprintf("%s %s the %s mean%s (%s)", join_and(fm$lab[ix]), pl(length(ix), "has", "share"), high, where, pr[ix[1]])
-      if (!length(par)) sprintf("%s; by this test every other mean%s is significantly %s.", lead, where, word)
-      else if (!length(rest)) sprintf("%s; by this test no other mean%s differs significantly from %s.", lead, where, ref)
-      else {
-        o <- par[order(fm$mu[par], decreasing = word == "lower")]
-        sprintf("%s; by this test %s %s not differ significantly from %s, and %s significantly %s.", lead,
-                rd_named(fm$lab[o], pr[o]), pl(length(par), "does", "do"), ref,
-                rd_rest(fm$lab[rest[order(fm$mu[rest], decreasing = word == "lower")]]), word)
-      }
+      lead <- sprintf("%s %s the %s mean%s (%s)%s", join_and(fm$lab[ix]), pl(length(ix), "has", "share"), high, where, pr[ix[1]],
+                      if (g$apart) ", though by this test they differ among themselves" else "")
+      if (!length(g$some)) {
+        if (!length(g$par)) sprintf("%s; by this test every other mean%s is significantly %s.", lead, where, word)
+        else if (!length(g$rest)) sprintf("%s; by this test no other mean%s differs significantly from %s.", lead, where, ref)
+        else {
+          o <- g$par[order(fm$mu[g$par], decreasing = word == "lower")]
+          sprintf("%s; by this test %s %s not differ significantly from %s, and %s significantly %s.", lead,
+                  rd_named(fm$lab[o], pr[o]), pl(length(g$par), "does", "do"), ref,
+                  rd_rest(fm$lab[g$rest[order(fm$mu[g$rest], decreasing = word == "lower")]]), word)
+        }
+      } else sprintf("%s; by this test %s.", lead, ph_parts(fm, pr, ix, g, word))
     }
     paste(end(top, "lower", "highest"), end(bot, "higher", "lowest"))
   }
@@ -528,12 +580,15 @@ posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
   top_only <- function(fm) {
     pr <- fmt(fm$mu, 3); k <- length(pr); top <- at_extreme(pr, max)
     if (length(top) == k) return(sprintf("At %s all the means print as %s.", fm$within, pr[1]))
-    par <- setdiff(Reduce(intersect, lapply(top, function(i) which(!fm$sig[i, ]))), top)
-    sprintf("At %s, %s %s the highest mean (%s), and %s.", fm$within, join_and(fm$lab[top]), pl(length(top), "has", "share"), pr[top[1]],
-            if (!length(par)) "every other mean there is significantly lower"
-            else if (length(par) == k - length(top)) "no other mean there differs significantly from it"
-            else sprintf("%s %s not differ significantly from it", rd_named(fm$lab[par[order(-fm$mu[par])]], pr[par[order(-fm$mu[par])]]),
-                         pl(length(par), "does", "do")))
+    g <- ph_split(fm, top, k)
+    ref <- if (length(top) == 1) "it" else "them"
+    sprintf("At %s, %s %s the highest mean (%s)%s, and %s.", fm$within, join_and(fm$lab[top]), pl(length(top), "has", "share"), pr[top[1]],
+            if (g$apart) ", though by this test they differ among themselves" else "",
+            if (!length(g$par) && !length(g$some)) "every other mean there is significantly lower"
+            else if (!length(g$rest) && !length(g$some)) sprintf("no other mean there differs significantly from %s", ref)
+            else if (!length(g$some)) sprintf("%s %s not differ significantly from %s", rd_named(fm$lab[g$par[order(-fm$mu[g$par])]], pr[g$par[order(-fm$mu[g$par])]]),
+                                              pl(length(g$par), "does", "do"), ref)
+            else ph_parts(fm, pr, top, g, "lower"))
   }
   fams <- x$families
   out <- if (length(fams) == 1 && is.null(fams[[1]]$within)) one(fams[[1]])

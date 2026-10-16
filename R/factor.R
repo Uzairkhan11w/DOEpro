@@ -141,6 +141,10 @@ fa_data <- function(d, vars, factors = NULL, rotation = c("varimax", "promax", "
   L <- L[, o, drop = FALSE]; S <- S[, o, drop = FALSE]; phi <- phi[o, o, drop = FALSE]
   sgn <- vapply(seq_len(factors), function(k) if (L[which.max(abs(round(L[, k], 10))), k] < 0) -1 else 1, 0)
   L <- sweep(L, 2, sgn, "*"); S <- sweep(S, 2, sgn, "*"); phi <- phi * outer(sgn, sgn)
+  ## regression scores of correlated factors are Z R^-1 L phi; factanal
+  ## multiplies by phi only for rotations that return one, which promax does
+  ## not (phi is the identity for varimax and none)
+  S <- S %*% phi
   fn <- paste0("F", seq_len(factors))
   colnames(L) <- colnames(S) <- rownames(phi) <- colnames(phi) <- fn
   rownames(L) <- vars

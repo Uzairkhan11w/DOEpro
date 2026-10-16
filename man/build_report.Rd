@@ -4,7 +4,13 @@
 \alias{build_report}
 \title{Render an analysis as an HTML report}
 \usage{
-build_report(rr, letters_on = TRUE, detailed = TRUE, screen = FALSE)
+build_report(
+  rr,
+  letters_on = TRUE,
+  detailed = TRUE,
+  screen = FALSE,
+  digits = 2
+)
 }
 \arguments{
 \item{rr}{The object returned by \code{\link{run_all}}.}
@@ -18,6 +24,10 @@ If \code{FALSE}, give the compact summary tables only.}
 
 \item{screen}{If \code{TRUE}, return a fragment styled for display inside the
 application. If \code{FALSE}, return a complete standalone HTML document.}
+
+\item{digits}{Decimal places for the means in the tables of means. A
+standard error or critical difference that would print as zero is given
+more.}
 }
 \value{
 A character string of HTML, of length one.

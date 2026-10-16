@@ -14,6 +14,16 @@
 PH_METHODS <- c("LSD (Fisher's protected)", "LSD (Bonferroni-adjusted)",
                 "Tukey HSD", "Duncan's DMRT", "Student-Newman-Keuls", "Scheffe", "Dunnett")
 
+## The reciprocal reverses the order of the values: the highest 1/y is the
+## lowest value as entered, and "higher than the control" means lower.
+## (Every other transformation offered, Box-Cox included, keeps the order.)
+rev_note <- function(res) {
+  if (!identical(res$trans, "reciprocal")) return("")
+  v <- res$orig_resp %||% res$resp
+  sprintf(paste("The comparisons are of 1 / %s, whose order is the reverse of %s as entered: a higher mean here",
+                "is a lower %s, so 'higher' and 'lower' in this output refer to 1 / %s."), v, v, v, v)
+}
+
 ## what each method is called wherever it is shown to the user
 PH_LABELS <- c(
   "LSD (Fisher's protected)"  = "Least significant difference (LSD), Fisher's protected",
@@ -36,8 +46,18 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
           else unname(split(seq_len(nrow(m)), factor(m[[e$slice]], levels = unique(m[[e$slice]]))))
   fams <- fams[lengths(fams) >= 2]
   if (!length(fams)) stop("This effect has fewer than two means.")
-  if (method == "Dunnett") return(posthoc_notes(posthoc_dunnett(e, fams, alpha, control, alternative), e, method, alpha))
+  rn <- rev_note(res)
+  if (method == "Dunnett") {
+    x <- posthoc_notes(posthoc_dunnett(e, fams, alpha, control, alternative), e, method, alpha)
+    if (nzchar(rn)) x$note <- c(x$note, rn)
+    return(x)
+  }
   df <- e$df
+  ## a pooled factorial's interaction: each pair has its own SE(d) and its
+  ## own (Satterthwaite) degrees of freedom
+  mixed <- !is.null(e$mix)
+  dfm <- if (mixed) mix_df(e) else NULL
+  if (mixed) df <- min(dfm[row(dfm) != col(dfm)])
   ranged <- method %in% c("Student-Newman-Keuls", "Duncan's DMRT")
   if (method %in% c("Tukey HSD", "Student-Newman-Keuls", "Duncan's DMRT") && df < 2)
     stop(sprintf(paste0("%s needs at least 2 error degrees of freedom; this effect has %s. ",
@@ -47,7 +67,7 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
   ## the studentized range for p means spanned (p = 2..kmax), divided by
   ## sqrt(2) so that it multiplies a standard error of a difference; computed
   ## once per span, not once per pair
-  qv <- if (ranged) {
+  ranges_for <- function(df) {
     q <- vapply(2:kmax, function(p) {
       pr <- if (method == "Student-Newman-Keuls") 1 - alpha else (1 - alpha)^(p - 1)
       q_tukey(pr, p, df)
@@ -56,7 +76,13 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
     ## df the raw quantiles at his protection levels do, so they are held level
     if (method == "Duncan's DMRT") q <- cummax(q)
     c(Inf, q / sqrt(2))
-  } else NULL
+  }
+  qv <- if (ranged && !mixed) ranges_for(df) else NULL
+  ## per pair, a quantile computed once for each distinct df
+  by_df <- function(D, f) {
+    u <- unique(as.vector(D)); vals <- lapply(u, f)
+    function(i) vals[[match(D[i], u)]]
+  }
 
   run <- function(ix) {
     mu <- m$Mean[ix]; k <- length(mu)
@@ -67,12 +93,23 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
     ## whatever order their levels happen to be in
     span <- outer(seq_len(k), seq_len(k), Vectorize(function(i, j)
       sum(mu >= min(mu[i], mu[j]) & mu <= max(mu[i], mu[j]))))
-    mult <- switch(method,
+    mult <- if (!mixed) switch(method,
       "LSD (Fisher's protected)"  = matrix(t_crit(e, alpha), k, k),
       "LSD (Bonferroni-adjusted)" = matrix(stats::qt(1 - alpha / (2 * nC), df), k, k),
       "Tukey HSD"                 = matrix(q_tukey(1 - alpha, k, df) / sqrt(2), k, k),
       "Scheffe"                   = matrix(sqrt((k - 1) * stats::qf(1 - alpha, k - 1, df)), k, k),
       matrix(qv[span], k, k))
+    else {
+      D <- dfm[ix, ix, drop = FALSE]
+      switch(method,
+        "LSD (Fisher's protected)"  = mix_t(e, alpha)[ix, ix, drop = FALSE],
+        "LSD (Bonferroni-adjusted)" = mix_t(e, alpha / nC)[ix, ix, drop = FALSE],
+        "Tukey HSD"                 = { g <- by_df(D, function(v) q_tukey(1 - alpha, k, v) / sqrt(2))
+                                        matrix(vapply(seq_along(D), g, 0), k, k) },
+        "Scheffe"                   = matrix(sqrt((k - 1) * stats::qf(1 - alpha, k - 1, D)), k, k),
+        { g <- by_df(D, ranges_for)
+          matrix(vapply(seq_along(D), function(i) g(i)[span[i]], 0), k, k) })
+    }
     crit <- mult * S
     raw <- abs(outer(mu, mu, "-")) > crit
     diag(raw) <- FALSE
@@ -130,8 +167,10 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
                check.names = FALSE)
   else NULL
 
-  kramer <- !equal && (method == "Tukey HSD" || ranged)
-  shown <- if (method == "Tukey HSD" && !equal)
+  kramer <- !equal && !mixed && (method == "Tukey HSD" || ranged)
+  shown <- if (mixed && method != "LSD (Fisher's protected)")
+             paste(PH_LABELS[[method]], "with each pair's own SE(d) and degrees of freedom")
+           else if (method == "Tukey HSD" && !equal)
              "Tukey-Kramer procedure (Tukey's HSD for unequal replication)"
            else if (kramer) paste(PH_LABELS[[method]], "with Kramer's adjustment for unequal replication")
            else PH_LABELS[[method]]
@@ -143,7 +182,9 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
               "SE of a mean (SEm)", "SE of a difference (SEd)",
               "Number of means (k)", "Significance level",
               if (one_cd) "Critical difference (C.D.)" else "Critical difference"),
-    Value = c(e$label, shown, fmt(e$mse, 4), df_text(df),
+    Value = c(e$label, shown,
+              if (mixed) "varies by pair - see the notes" else fmt(e$mse, 4),
+              if (mixed) df_label(e) else df_text(df),
               err_text(e, "sem", 3, html = FALSE), err_text(e, "sed", 3, html = FALSE),
               k_txt, p_lab(alpha),
               if (one_cd) fmt(crit_all[1])
@@ -162,10 +203,10 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
                      "comparisons that share one error term. Letters restart in each level, ",
                      "so the same letter in two levels of %s means nothing."), e$slice, e$slice),
     if (!is.null(e$error_desc)) e$error_desc,
-    if (method == "Tukey HSD" && !equal)
+    if (method == "Tukey HSD" && !equal && !mixed)
       paste0("Replication is unequal, so this is the Tukey-Kramer procedure: Tukey's ",
              "studentized range applied to each pair's own standard error of a difference."),
-    if (ranged && !equal)
+    if (ranged && !equal && !mixed)
       paste0("Replication is unequal, so each pair uses its own standard error of a ",
              "difference (Kramer, 1956). agricolae and SAS use the harmonic mean of the ",
              "replications instead, so their critical ranges will differ slightly."),
@@ -183,6 +224,7 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
     if (!isTRUE(all.equal(alpha, e$alpha)))
       sprintf(paste0("These comparisons are at the %s%% level, while the analysis and its ",
                      "tables of means are at the %s%% level."), pct(alpha), pct(e$alpha)))
+  note <- c(note, rn)
   note <- note[nzchar(note)]
 
   list(groups = groups, stats = st, ranges = ranges, pairs = pairs,

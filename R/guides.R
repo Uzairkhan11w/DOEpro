@@ -75,10 +75,16 @@ designs and set the number of treatment factors. The combined analysis then part
 treatment variation into every main effect and interaction, and applies the same rule
 throughout: <b>each treatment effect (a main effect or an interaction among the treatment
 factors) is tested against its own interaction with the environment</b>, and every
-environment &times; treatment interaction is tested against the pooled error. Each effect's
-table of means, pooled over environments, uses the critical difference built from that
-effect's environment interaction. This tells you which main effects and interactions are
-stable enough across environments to be declared real.</p>
+environment &times; treatment interaction is tested against the pooled error. This tells you
+which main effects and interactions are stable enough across environments to be declared
+real. A main effect's table of means, pooled over environments, uses the critical difference
+built from that effect's environment interaction. In an interaction table two means can
+differ in one factor or in several, and since the environment is random their difference
+carries the environment's interaction with each factor in which they differ: with two
+factors A and B, two A means at the same B have SE(d) =
+&radic;(2[(b&minus;1)&middot;M<sub>ExAxB</sub> + M<sub>ExA</sub>] / erb), as in a strip plot with
+the environment as the replication. Each kind of comparison gets its own SE(d) and C.D., the
+C.D. from Gomez &amp; Gomez's weighted t, and the letters use the C.D. of each pair.</p>
 "
 
 GUIDE_ERRORS <- "
@@ -130,7 +136,10 @@ GUIDE_POSTHOC <- "
 <p>All of them are computed from the error mean square of whichever effect you select, so in a
 split or strip plot they automatically use the right error stratum. An interaction in a split
 plot, strip plot or pooled analysis is compared within one level of the main-plot (or strip)
-factor, or one environment, at a time. With unequal replication each pair of means uses its
+factor, or one environment, at a time; an interaction of a pooled factorial gives each pair the
+SE(d) of the factors in which the two means differ, with Satterthwaite's degrees of freedom
+where a test needs them (Dunnett's test is not offered there, as its exact critical value does
+not apply). With unequal replication each pair of means uses its
 own SE(d): Tukey's HSD becomes the Tukey-Kramer procedure, and Duncan's and the
 Student-Newman-Keuls tests use Kramer's adjustment. As everywhere in the app, no letters are
 shown when the effect's F-test is not significant.</p>

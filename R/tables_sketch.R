@@ -21,6 +21,21 @@ TRANS_NOTE <- paste0("<div class='note'>Figures in parentheses are transformed v
   "SE(m), SE(d), C.D. and C.V. refer to the transformed scale; the leading figure ",
   "is the back-transformed mean.</div>")
 
+## The C.V. of the error an effect is compared with: in a split or strip plot
+## CV(a) under the main-plot (or horizontal) factor and CV(b) under the
+## sub-plot (or vertical) one, named, since the last C.V. alone would give the
+## main-plot factor a figure about three times too small
+effect_cv <- function(fin, e) {
+  cv <- fin$cv
+  if (length(cv) == 1) return(fmt(cv, 2))
+  hit <- names(fin$errors)[vapply(fin$errors, function(z) isTRUE(all.equal(z$ms, e$mse)), logical(1))]
+  if (length(hit) == 1 && grepl("^Error [(].[)]$", hit)) {
+    k <- substr(hit, 8, 8)
+    return(sprintf("%s (%s)", fmt(cv[[sprintf("CV(%s) (%%)", k)]], 2), k))
+  }
+  paste(sprintf("%s = %s", sub(" [(]%[)]$", "", names(cv)), fmt(cv, 2)), collapse = "; ")
+}
+
 cd_or_ns <- function(e, digits = 2) if (effect_sig(e)) err_text(e, "cd", digits) else "NS"
 
 ## the heading of a C.D. row, at the level the user chose
@@ -29,7 +44,7 @@ cd_head <- function(alpha) sprintf("C.D. (P&le;%s)", p_lab(alpha))
 ## does any effect in the analysis have unequal replication?
 any_unequal <- function(rr)
   any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e)
-    !isTRUE(e$equal_rep), logical(1))), logical(1)))
+    !isTRUE(e$equal_rep) && is.null(e$mix), logical(1))), logical(1)))
 
 ## A raw HTML table: `head` is a character vector of <th> labels, `body` a list
 ## of character vectors (one per row), `foot` a list of character vectors.
@@ -63,7 +78,12 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
   if (!length(fits)) return("")
   resps <- names(fits)
 
-  lv <- as.character(fits[[1]]$final$effects[[fac]]$means[[fac]])
+  ## every level any response has, in the design's order: a level with no
+  ## data for the first response must not vanish from the others' columns
+  lvs <- lapply(fits, function(f) levels(f$final$data[[fac]]))
+  lv <- lvs[[which.max(lengths(lvs))]]
+  for (x in lvs) for (i in seq_along(x)) if (!x[i] %in% lv)
+    lv <- append(lv, x[i], after = if (i == 1) 0 else match(x[i - 1], lv))
   alpha <- fits[[1]]$final$alpha
   any_tr <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
   cells <- lapply(fits, function(f) {
@@ -72,7 +92,8 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
     idx <- match(lv, as.character(m[[fac]]))
     lets <- if ("Letter" %in% names(m)) m$Letter[idx] else rep("", length(lv))
     bt <- if (!identical(f$trans, "none") && "Mean_bt" %in% names(m)) m$Mean_bt[idx] else NULL
-    ms_cell(m$Mean[idx], m$SE[idx], lets, digits, letters_on, mu_bt = bt)
+    out <- ms_cell(m$Mean[idx], m$SE[idx], ifelse(is.na(lets), "", lets), digits, letters_on, mu_bt = bt)
+    ifelse(is.na(idx), "-", out)
   })
 
   body <- lapply(seq_along(lv), function(i)
@@ -84,7 +105,7 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
     c("SE(d) &plusmn;",   vapply(ef, function(e) err_text(e, "sed", digits), character(1))),
     c(sprintf("%s &nbsp; <b>%s</b>", cd_head(alpha), fac),
                           vapply(ef, function(e) cd_or_ns(e, digits), character(1))),
-    c("C.V. (%)",         vapply(fits, function(f) fmt(f$final$cv[length(f$final$cv)], 2),
+    c("C.V. (%)",         vapply(fits, function(f) effect_cv(f$final, f$final$effects[[fac]]),
                                  character(1))))
 
   hdr <- c(toupper(fac), vapply(fits, function(f) f$header, character(1)))
@@ -181,7 +202,6 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
 ## A compact summary card: design, observations, and grand mean + C.V. per response.
 means_summary_card <- function(rr, digits = 2) {
   fits <- rr$fits
-  f1 <- fits[[1]]$final
   chips <- vapply(names(fits), function(nm) {
     f <- fits[[nm]]; fin <- f$final
     cv <- if (length(fin$cv) == 1) fmt(fin$cv, 2)
@@ -192,20 +212,26 @@ means_summary_card <- function(rr, digits = 2) {
             f$header, fmt(fin$grand, digits),
             if (length(fin$cv) > 1) "C.V." else "C.V. (%)", cv)
   }, character(1))
+  layout <- function(fin) paste0(nrow(fin$data), " observations",
+    if (fin$balanced) sprintf(" &middot; %d replication(s), balanced", fin$reps)
+    else if (length(fin$n_range) == 2L && fin$n_range[1] != fin$n_range[2])
+      sprintf(" &middot; unequal replication (%d to %d per treatment)", fin$n_range[1], fin$n_range[2])
+    else " &middot; unbalanced (the treatments do not appear equally often in every block)")
+  ## one line for all the responses only when it is true of each of them
+  lay <- vapply(fits, function(f) layout(f$final), "")
+  shared <- length(unique(lay)) == 1L
+  if (!shared)
+    chips <- vapply(seq_along(chips), function(i)
+      sub("</div></div>$", sprintf("</div><div class='ms-chip-row'><span>%s</span></div></div>", lay[i]), chips[i]), "")
   sprintf(paste0("<div class='ms-summary'>",
-                 "<div class='ms-summary-head'>%s &nbsp;&middot;&nbsp; %d observations",
-                 "%s</div><div class='ms-chip-wrap'>%s</div></div>"),
-          names(DESIGNS)[match(rr$design, DESIGNS)], nrow(f1$data),
-          if (f1$balanced) sprintf(" &middot; %d replication(s), balanced", f1$reps)
-          else if (length(f1$n_range) == 2L && f1$n_range[1] != f1$n_range[2])
-            sprintf(" &middot; unequal replication (%d to %d per treatment)",
-                    f1$n_range[1], f1$n_range[2])
-          else " &middot; unbalanced (the treatments do not appear equally often in every block)",
+                 "<div class='ms-summary-head'>%s%s</div><div class='ms-chip-wrap'>%s</div></div>"),
+          names(DESIGNS)[match(rr$design, DESIGNS)],
+          if (shared) paste0(" &nbsp;&middot;&nbsp; ", lay[1]) else "",
           paste(chips, collapse = ""))
 }
 
 ## A key to the notation, shown once at the foot of the section.
-means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE) {
+means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE, mixed = FALSE) {
   items <- c(
     "<b>mean &plusmn; SE</b> &mdash; treatment mean with its standard error",
     if (any_letters) sprintf("<b><sup>a b c</sup></b> &mdash; means sharing a letter are not significantly different at the %s%% level", pct(alpha)) else NULL,
@@ -215,6 +241,9 @@ means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE) {
     if (unequal) paste0("<b>0.96&ndash;1.13</b> (a range of two numbers) &mdash; the data are unbalanced, ",
                         "so SE(d) and C.D. depend on which two means are compared; the range is shown, ",
                         "and each mean carries its own SE") else NULL,
+    if (mixed) paste0("in an interaction of a pooled factorial, SE(d) and C.D. depend on the factors in which two means ",
+                      "differ, since the environment is random; the range is shown, and each kind is listed under the ",
+                      "detailed table") else NULL,
     "<b>C.V.</b> coefficient of variation (%)",
     if (any_trans) "figures <b>in parentheses</b> are transformed values; the leading figure is the back-transformed mean" else NULL)
   paste0("<div class='ms-legend'><b>How to read these tables</b><ul><li>",
@@ -281,7 +310,8 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
       det, "</div>")
   }
 
-  out <- c(out, means_legend(letters_on, any_trans, rr$alpha, any_unequal(rr)), "</div>")
+  mixed <- any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e) !is.null(e$mix), logical(1))), logical(1)))
+  out <- c(out, means_legend(letters_on, any_trans, rr$alpha, any_unequal(rr), mixed), "</div>")
   paste(out, collapse = "\n")
 }
 
@@ -290,7 +320,10 @@ combined_anova_html <- function(rr) {
   fits <- rr$fits
   a1 <- fits[[1]]$final$anova
   src <- a1$Source
-  ok <- all(vapply(fits, function(f) identical(f$final$anova$Source, src), logical(1)))
+  ## one d.f. column only when it is true of every response: one with a
+  ## plot missing has fewer error and total d.f., so it gets tables of its own
+  ok <- all(vapply(fits, function(f) identical(f$final$anova$Source, src) &&
+                     isTRUE(all.equal(f$final$anova$Df, a1$Df)), logical(1)))
   if (!ok) return(NULL)
   body <- lapply(seq_along(src), function(i)
     c(src[i], if (is.na(a1$Df[i])) "-" else as.character(a1$Df[i]),

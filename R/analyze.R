@@ -92,6 +92,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
   ## check calls "not a number" (0x10, 5,6, 45%) is left out here too, and a
   ## number typed with an unusual minus sign is still read
   d[[resp]] <- response_values(d[[resp]])
+  ## Inf or NaN (a division by zero) is not a measurement: the row is left
+  ## out, and excluded_rows() names the entry
+  d[[resp]][!is.finite(d[[resp]])] <- NA
 
   facs <- switch(design,
     CRD = map$treat, RCBD = map$treat, LSD = map$treat,
@@ -119,7 +122,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
   for (v in c(facs, blks)) {
     s <- trimws(as.character(d[[v]]))
     gone <- is.na(s) | s == "" | tolower(s) %in% MISSING_MARKS
-    if (any(gone)) { x <- as.character(d[[v]]); x[gone] <- NA; d[[v]] <- x }
+    ## emptied in place, so a factor keeps the level order it was given and a
+    ## numeric column stays numeric
+    if (any(gone)) { x <- d[[v]]; x[gone] <- NA; d[[v]] <- x }
   }
   ## rows without a usable response or factor are left out, and recorded with
   ## the reason, so the user is told rather than finding fewer plots
@@ -132,7 +137,12 @@ analyze <- function(d, design, map, alpha = 0.05) {
                           pl(nrow(d), "row", "rows")), why()), call. = FALSE)
   ## levels in natural order, so tables and plots run D0, D60, D120 and
   ## T1, T2, ..., T10 instead of alphabetically
-  for (v in c(facs, blks)) d[[v]] <- factor(d[[v]], levels = natural_levels(d[[v]]))
+  ## numeric codes in numeric order, labelled as written (100000, not 1e+05)
+  for (v in c(facs, blks)) {
+    x <- d[[v]]
+    d[[v]] <- if (is.numeric(x)) { lab <- num_text(x); factor(lab, levels = unique(lab[order(x)])) }
+              else factor(x, levels = natural_levels(x))
+  }
 
   ## a layout refused because rows were left out says so first: correcting
   ## those entries may be all that is needed, before anything is deleted
@@ -239,9 +249,10 @@ analyze <- function(d, design, map, alpha = 0.05) {
         "SE(d): two main-plot means at the same sub plot",
         paste0(cdl, ": two main-plot means at the same sub plot"))),
       extra_p = c(NA, rAB$p, NA, rAB$p),
-      notes = paste0("Letters 'within MP' compare sub-plot means inside one main plot (",
+      ## the C.D.s and letters only when the interaction's F-test allows them
+      notes = if (isTRUE(rAB$p < alpha)) paste0("Letters 'within MP' compare sub-plot means inside one main plot (",
         cdl, " = ", fmt(cd_b), "). Letters 'within SP' compare main-plot means at one ",
-        "sub-plot level (", cdl, " = ", fmt(cd_a), ", weighted t = ", fmt(tw, 2), ")."))
+        "sub-plot level (", cdl, " = ", fmt(cd_a), ", weighted t = ", fmt(tw, 2), ").") else "")
 
     res$anova <- an
     res$mse <- Eb$ms; res$dfe <- Eb$df
@@ -316,9 +327,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
         sprintf("SE(d): two %s means at the same level of %s", B, A),
         sprintf("%s: two %s means at the same level of %s", cdl, B, A))),
       extra_p = c(NA, rAB$p, NA, rAB$p),
-      notes = paste0("The strip-plot interaction uses a weighted t. Letters 'within ", A,
+      notes = if (isTRUE(rAB$p < alpha)) paste0("The strip-plot interaction uses a weighted t. Letters 'within ", A,
         "' compare ", B, " means at a fixed ", A, "; letters 'within ", B, "' compare ",
-        A, " means at a fixed ", B, "."),
+        A, " means at a fixed ", B, ".") else "",
       t_mix = list(w = w, df = wdf),
       error_desc = sprintf(paste0("Comparisons of %s means at the same level of %s ",
         "combine Error (b) and Error (c). The critical difference uses the weighted t ",
@@ -518,6 +529,7 @@ analyze <- function(d, design, map, alpha = 0.05) {
     subsets <- unlist(lapply(1:k, function(mm) utils::combn(fs, mm, simplify = FALSE)),
                       recursive = FALSE)
     trt_block <- list(); ext_block <- list(); effects <- list()
+    ms_et <- c(); df_et <- c(); p_et <- c(); inter <- list()
     for (S in subsets) {
       Trow  <- find_src(S)
       ETrow <- find_src(c(E, S))
@@ -530,10 +542,25 @@ analyze <- function(d, design, map, alpha = 0.05) {
       ext_block[[length(ext_block) + 1]] <- data.frame(
         Source = paste0(E, " x ", lbl), Df = ETrow$Df, SS = ETrow$SS, MS = ETrow$MS,
         F = Fet["F"], p = Fet["p"])
-      effects[[paste(S, collapse = ":")]] <- new_effect(
-        d, resp, S, ETrow$MS, ETrow$Df, unname(Ft["p"]), unname(Ft["F"]), alpha,
-        label = lbl)
+      sk <- paste(S, collapse = ":")
+      ms_et[sk] <- ETrow$MS; df_et[sk] <- ETrow$Df; p_et[paste0(E, " x ", lbl)] <- Fet["p"]
+      if (length(S) == 1)
+        effects[[sk]] <- new_effect(d, resp, S, ETrow$MS, ETrow$Df, unname(Ft["p"]),
+                                    unname(Ft["F"]), alpha, label = lbl)
+      else {
+        inter[[sk]] <- list(S = S, p = unname(Ft["p"]), F = unname(Ft["F"]),
+                                                  ms = ETrow$MS, df = ETrow$Df, lbl = lbl)
+      }
     }
+    ## an interaction's means need every E x V mean square, so they come after
+    nlev <- vapply(fs, function(f) nlevels(d[[f]]), numeric(1))
+    for (sk in names(inter)) {
+      z <- inter[[sk]]
+      effects[[sk]] <- pool_effect(d, resp, z$S, nlev, ms_et, df_et, e, r, alpha, z$p, z$F,
+                                   z$lbl, z$ms, z$df)
+    }
+    effects <- effects[vapply(subsets, paste, "", collapse = ":")]
+    effects <- effects[!vapply(effects, is.null, logical(1))]
 
     ## assemble the ANOVA table -----------------------------------------------
     anrows <- list(data.frame(Source = paste0("Environment (", E, ")"),
@@ -565,7 +592,9 @@ analyze <- function(d, design, map, alpha = 0.05) {
       label = paste0(E, " x ", paste(fs, collapse = " x ")),
       se = sqrt(err$ms / r), sed = sed_we, tcrit = t_we, mse = err$ms, df = err$df,
       alpha = alpha, p = unname(Ffull["p"]), Fv = unname(Ffull["F"]), extra = NULL,
-      notes = gxe_note(Ffull["p"], alpha, E, "treatment", cd_we, cd_name(alpha), factorial = TRUE),
+      notes = gxe_note(Ffull["p"], alpha, E, "treatment", cd_we, cd_name(alpha), factorial = TRUE,
+                       lower = p_et[setdiff(names(p_et), paste0(E, " x ", paste(fs, collapse = " x ")))],
+                       fs = fs),
       env = E, is_gxe = TRUE)
 
     res$effects <- c(effects, stats::setNames(list(eEnv), E),
@@ -594,23 +623,43 @@ cd_name <- function(alpha) sprintf("C.D. (%s%%)", pct(alpha))
 
 ## The note under a pooled analysis's environment x treatment table. A
 ## non-significant interaction is reported as insufficient evidence, not as
-## proof that the treatments behave alike everywhere. In a factorial this is
-## the interaction with the full treatment combination only; the interactions
-## of the environment with each factor are separate rows of the ANOVA.
-gxe_note <- function(p, alpha, E, what, cd, cdl, factorial = FALSE) {
+## proof that the treatments behave alike everywhere. In a factorial the table
+## tests the environment's interaction with the full treatment combination;
+## its interactions with single factors and smaller combinations are rows of
+## the ANOVA of their own (`lower`, their p-values named by row), and one that
+## is significant is named, so the note never says the pooled means summarise
+## treatment differences that the ANOVA finds changing between environments.
+gxe_note <- function(p, alpha, E, what, cd, cdl, factorial = FALSE, lower = NULL, fs = NULL) {
+  full <- if (factorial && length(fs)) paste(fs, collapse = " x ") else what
   if (!is.na(p) && p < alpha)
-    paste0("The ", E, " x ", what, " interaction is significant at the ", pct(alpha),
-      "% level: ", what, " performance is shown separately for each environment below. ",
+    return(paste0("The ", E, " x ", full, " interaction is significant at the ", pct(alpha),
+      "% level: ", if (factorial) "the treatment combinations are" else "treatment performance is",
+      " shown separately for each environment below. ",
       "Letters compare means within one environment only (pooled error, ", cdl, " = ",
-      fmt(cd), ").")
-  else
-    paste0("The ", E, " x ", what, " interaction is <b>not significant</b> at the ",
+      fmt(cd), ")."))
+  if (!factorial)
+    return(paste0("The ", E, " x ", what, " interaction is <b>not significant</b> at the ",
       pct(alpha), "% level (NS). There is insufficient evidence that the differences ",
-      "between ", if (factorial) "treatment combinations" else "treatments",
-      " change from one environment to another, so the pooled tables above summarise ",
-      "them and the individual environment cells are not compared.",
-      if (factorial) paste0(" The interactions of ", E, " with each single factor are ",
-                            "tested separately in the ANOVA table.") else "")
+      "between treatments change from one environment to another, so the pooled tables ",
+      "above summarise them and the individual environment cells are not compared."))
+  low <- lower[!is.na(lower) & lower < alpha]
+  terms <- sub(paste0("^", E, " x "), "", names(low))
+  diffs <- ifelse(grepl(" x ", terms, fixed = TRUE), paste("the", terms, "interaction"),
+                  paste("the", terms, "differences"))
+  paste0("The ", E, " x ", full, " interaction is <b>not significant</b> at the ",
+    pct(alpha), "% level (NS): there is insufficient evidence that the ", full,
+    " interaction changes from one environment to another, so the individual environment ",
+    "cells are not compared.",
+    if (length(low))
+      paste0(" ", join_and(names(low)), if (length(low) == 1) " is" else " are",
+        " significant at the ", pct(alpha), "% level, however: there is evidence that ",
+        join_and(diffs), if (length(low) == 1 && grepl(" x ", terms, fixed = TRUE)) " changes" else " change",
+        " from one environment to another, so the pooled means of ",
+        join_and(unique(unlist(strsplit(terms, " x ", fixed = TRUE)))),
+        " average over environments that behave differently.")
+    else paste0(" Nor is any interaction of ", E, " with a single factor or a smaller ",
+                "combination significant, so the pooled tables above summarise the ",
+                "treatment differences."))
 }
 
 ## columns the tables of means add, which a design factor must not be called
@@ -693,6 +742,12 @@ check_layout <- function(d, design, map, facs, blks) {
         "environment, so DOEpro stops rather than print approximate results. Remove ",
         "the incomplete replication(s), or analyse each environment on its own as an ",
         "RCBD, which does handle a missing plot."), call. = FALSE)
+    if (nrep[[1]] < 2)
+      stop(paste0("A combined analysis needs at least two replications in every environment, to ",
+        "estimate the pooled error; here each environment has one. With one replication, analyse the ",
+        "data as ", if (design == "POOLFRCBD") "a factorial RCBD" else "an RCBD",
+        " with the environment as the block: the treatments are then tested against their interaction ",
+        "with the environment, as the combined analysis would test them."), call. = FALSE)
     return(list(balanced = TRUE, reps = nrep[[1]], n_range = rep(nrep[[1]], 2)))
   }
 
@@ -711,6 +766,13 @@ check_layout <- function(d, design, map, facs, blks) {
         "results. Analyse each environment on its own as a CRD, which does handle unequal ",
         "replication."), common, join_and(head_more(lab))), call. = FALSE)
     }
+    if (tab$Freq[1] < 2)
+      stop(paste0("A combined analysis needs at least two observations in every environment x treatment ",
+        "cell, to estimate the pooled error; here each cell has one. With one value for each treatment in ",
+        "each environment (environment means, for instance), analyse the data as ",
+        if (design == "POOLFCRD") "a factorial RCBD" else "an RCBD",
+        " with the environment as the block: the treatments are then tested against their interaction ",
+        "with the environment, as the combined analysis would test them."), call. = FALSE)
     return(list(balanced = TRUE, reps = tab$Freq[1], n_range = rep(tab$Freq[1], 2)))
   }
 

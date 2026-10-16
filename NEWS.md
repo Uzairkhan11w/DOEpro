@@ -227,6 +227,73 @@
   tables already did. A p-value exactly at the level is not significant
   everywhere, as the stars have it.
 * Dr. Imran Khan (SKUAST-Kashmir) is listed as a contributor.
+* An accuracy audit of the whole package (October 2026) found and fixed the
+  following.
+  - **Pooled factorial interactions.** With the environment random, two
+    cell means of an interaction carry the environment's interaction with
+    each factor in which they differ. Their SE(d) used MS(E x A x B) alone,
+    so the C.D. was too small whenever the environment interacted with a
+    single factor: in simulation, two treatments with no real difference
+    were declared different 42% of the time at 5%. Each kind of comparison
+    now has its own SE(d) from the expected mean squares (for two factors,
+    the strip-plot formula with the environment as the replication; checked
+    against the spread of the per-environment differences) and a C.D. with
+    Gomez and Gomez's weighted t; post-hoc tests use Satterthwaite's
+    degrees of freedom pair by pair, and Dunnett's test, whose exact
+    critical value does not apply there, is refused for these means.
+  - The note under a pooled factorial's environment table no longer says the
+    treatment differences do not change between environments when an
+    environment-by-factor interaction is significant; it names it.
+  - A combined analysis with one observation per environment and treatment
+    is refused with a plain message instead of R's internal error.
+  - A missing entry in a design column no longer reorders its levels:
+    numeric codes keep numeric order and are written as typed (100000, not
+    1e+05), and a factor keeps the level order it was given, so Dunnett's
+    default control no longer moves.
+  - Adjusted means are kept for responses of any size; values near 1e-8 (on
+    the reciprocal scale, say) had fallen back to the plain averages.
+  - Inf, NaN and hexadecimal entries (0x10) are no longer read as numbers:
+    the data check lists them and the analysis leaves those rows out with
+    the reason, instead of analysing 16 or stopping with R's error.
+  - Pasted text whose lines have more values than the header (decimal
+    commas in comma-separated text) is refused, as an uploaded file is,
+    instead of shifting every column one place.
+  - A % sign typed into one cell of a number column is refused, as the data
+    check treats it, instead of storing 62 for 62% beside 0.45.
+  - Sowing dates (25 Oct, 10 Nov), numeric dates (15/06/2023, day first)
+    and fractions (1/4 RDF) are ordered as people mean them; doses such as
+    120/60/40 keep their order.
+  - The table of means for several responses keeps every level any response
+    has; the summary card and run note give each response's own count.
+  - Each factor's table in a split or strip plot gives the C.V. of its own
+    error (CV(a) under the main-plot factor), not the last one.
+  - A split- or strip-plot interaction that is not significant no longer
+    quotes C.D.s for letters that are not shown.
+  - Means that print alike but differ among themselves (small values at two
+    decimals) are no longer called significantly different from a mean they
+    share a letter with, in the means and post-hoc readings; an SE or C.D.
+    never prints as 0.00, and the report uses the decimals chosen on screen.
+  - The transformation adviser no longer orders a transformation from a
+    mean-variance slope or Box-Cox interval that is not significant (one
+    stray value made it choose 1/y and turn a significant result
+    non-significant); it points to the flagged row instead. It suggests
+    only transformations defined for the data, calls a 0-1 response a
+    proportion only when its name says so, and Box-Cox is refused when
+    there is no optimum (zeros, or a profile still rising at -2 or 2)
+    rather than applying lambda = 1.
+  - The Interpretation tab and report judge the CV as the readings do (not
+    on a transformed scale or for a negative mean), name the best treatment
+    by its back-transformed mean (1/y reverses the order) and every level
+    tied there, claim no significance for an exact fit, read a three-way
+    interaction as what its test asks, and say the recommendation is
+    judged on the values as entered. Post-hoc output on the 1/y scale says
+    the order is reversed.
+  - The assumption table's mean-variance verdict follows the slope's own
+    test; the combined ANOVA table is split by response when their d.f.
+    differ (a missing plot in one trait).
+  - Promax factor scores are now regression scores of correlated factors
+    (multiplied by the factor correlations); they had standard deviations
+    above 1 and errors five times too large.
 
 # DOEpro 2.0.1
 

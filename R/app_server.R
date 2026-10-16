@@ -86,8 +86,14 @@ doepro_server <- function(input, output, session) {
       d[[j]][info$row] <- NA
     } else if (is.numeric(d[[j]])) {
       r <- read_entries(val)
-      if (r$kind %in% c("text", "ambiguous", "unit") || (r$kind == "mark")) {
-        msg <- if (r$kind == "ambiguous")
+      ## a % sign typed in one cell of a number column is as uncertain as the
+      ## data check finds it: 62% beside 0.45 could mean 0.62
+      if (r$kind %in% c("text", "ambiguous", "unit", "percent") || (r$kind == "mark")) {
+        msg <- if (r$kind == "percent")
+          sprintf(paste0("'%s' carries a %% sign, which the other values of '%s' do not, so row %s was not ",
+                         "changed. Type the value in the column's own units (0.62 rather than 62%% if the ",
+                         "column holds proportions)."), val, v, rn)
+        else if (r$kind == "ambiguous")
           sprintf("'%s' could mean %s or %s, so row %s of '%s' was not changed. Type %s or %s, whichever you meant.",
                   val, gsub(",", "", val, fixed = TRUE), sub(",", ".", val, fixed = TRUE), rn, v,
                   gsub(",", "", val, fixed = TRUE), sub(",", ".", val, fixed = TRUE))
@@ -322,12 +328,20 @@ doepro_server <- function(input, output, session) {
       if (grepl("left out of this analysis", r$err, fixed = TRUE) &&
           grepl("decimal comma|not a number|% sign|unit after|thousands separator|read two ways", r$err))
         p("The data check on the Data tab lists these entries and corrects those it safely can; correct the others in the table, then run the analysis again.") else NULL))
-    f1 <- r$fits[[1]]$final
+    ## each response's own count and CV: a response with rows left out is
+    ## analysed on fewer observations than the others
+    nobs <- vapply(r$fits, function(f) nrow(f$final$data), 0L)
+    cvs <- vapply(r$fits, function(f) paste(sprintf("%s = %s", names(f$final$cv), fmt(f$final$cv, 2)),
+                                           collapse = " | "), "")
+    unb <- Filter(function(f) !f$final$balanced, r$fits)
     tagList(
       div(class = "box", HTML(sprintf(
-        "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %d observations &nbsp;|&nbsp; %s",
-        names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits), nrow(f1$data),
-        paste(sprintf("%s = %s", names(f1$cv), fmt(f1$cv, 2)), collapse = " | ")))),
+        "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %s &nbsp;|&nbsp; %s",
+        names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits),
+        if (length(unique(nobs)) == 1) sprintf("%d observations", nobs[1])
+        else paste(sprintf("%s: %d observations", vapply(r$fits, `[[`, "", "header"), nobs), collapse = ", "),
+        if (length(r$fits) == 1) cvs[1]
+        else paste(sprintf("%s: %s", vapply(r$fits, `[[`, "", "header"), cvs), collapse = " &nbsp;|&nbsp; ")))),
       ## rows left out, response by response, so no plot disappears unnoticed
       {
         ex <- Filter(nzchar, vapply(r$fits, function(f) {
@@ -336,28 +350,31 @@ doepro_server <- function(input, output, session) {
         }, character(1)))
         if (length(ex)) div(class = "warn", HTML(paste(ex, collapse = "<br>"))) else NULL
       },
-      if (!f1$balanced) div(class = "warn", HTML(paste0(
-        "<b>The data are unbalanced</b>: ",
+      if (length(unb)) div(class = "warn", HTML(paste0(
+        "<b>The data are unbalanced</b>",
+        if (length(unb) < length(r$fits)) paste0(" for ", join_and(vapply(unb, `[[`, "", "header"))) else "", ": ",
         switch(r$design,
           CRD = "the treatments have unequal numbers of replications. ",
           FCRD = "the treatment combinations have unequal numbers of replications. ",
           LSD = "a plot is missing from the Latin square. ",
           "a plot is missing from a block, or the treatments are unequally replicated. "),
         "Each mean is given its own standard error, and each pair of means its own SE(d) and C.D.",
-        if (isTRUE(f1$adjusted_ss))
+        if (any(vapply(unb, function(f) isTRUE(f$final$adjusted_ss), logical(1))))
           " The means are adjusted (least-squares) means, and each ANOVA term is tested after allowing for every other term (Type III)."
         else ""))) else NULL,
-      if (isTRUE(f1$pooled) && !is.null(f1$homogeneity)) {
-        h <- f1$homogeneity
+      ## Bartlett's test of the environments' error variances, for every response
+      lapply(Filter(function(f) isTRUE(f$final$pooled) && !is.null(f$final$homogeneity), r$fits), function(f) {
+        h <- f$final$homogeneity
         homog <- isTRUE(h$p >= r$alpha)
         div(class = if (homog) "sugbox" else "warn", HTML(sprintf(
-          "<b>Homogeneity of error variances across environments (Bartlett):</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
+          "<b>Homogeneity of error variances across environments (Bartlett)%s:</b> &chi;<sup>2</sup> = %s, df = %d, %s. %s",
+          if (length(r$fits) > 1) paste0(", ", f$header) else "",
           fmt(h$chisq, 3), h$df, p_eq(h$p, r$alpha),
           if (homog)
             sprintf("There is insufficient evidence at the %s%% level that the environments' error variances differ, so pooling the errors is reasonable; a small difference may have gone undetected.", pct(r$alpha))
           else
             sprintf("The error variances are <b>heterogeneous</b> at the %s%% level. The pooled F-tests should be read with caution; consider a variance-stabilising transformation (see the Assumptions tab) or analysing the environments separately.", pct(r$alpha)))))
-      } else NULL)
+      }))
   })
 
   output$anovaOut <- renderUI({
@@ -404,10 +421,11 @@ doepro_server <- function(input, output, session) {
   output$sugbox <- renderUI({
     f <- aFit()
     div(class = if (identical(f$sug$method, "none")) "sugbox" else "warn",
-        HTML(sprintf("<b>Suggested transformation: %s.</b> %s%s",
+        HTML(sprintf("<b>Suggested transformation%s: %s.</b> %s%s",
+          if (identical(f$trans, "none")) "" else ", judged on the values as entered",
           TRANS[[f$sug$method]]$lab, f$sug$why,
           if (identical(f$trans, "none")) ""
-          else sprintf("<br><b>Applied:</b> %s.", TRANS[[f$trans]]$lab))))
+          else sprintf("<br><b>Applied:</b> %s; the checks on this tab are on that scale.", TRANS[[f$trans]]$lab))))
   })
 
   output$bcPlot <- renderPlot({
@@ -470,9 +488,12 @@ doepro_server <- function(input, output, session) {
     if (!is.null(x$err)) return(div(class = "err", x$err))
     e <- pFit()$final$effects[[input$phEff]]
     tagList(
-      div(class = "box", HTML(sprintf(
+      div(class = "box", HTML(if (is.null(e$mix)) sprintf(
         "Comparisons use the error term of <b>%s</b>: MSE = %s on %s degrees of freedom, at the %s%% significance level.",
-        e$label, fmt(e$mse, 4), df_text(e$df), pct(e$alpha)))),
+        e$label, fmt(e$mse, 4), df_text(e$df), pct(e$alpha))
+        else sprintf(paste("Comparisons of <b>%s</b> means use, for each pair, the environment interactions of the factors",
+                           "in which the two differ, with Satterthwaite's degrees of freedom for each pair, at the %s%% significance level."),
+                     e$label, pct(e$alpha)))),
       if (!is.null(x$note)) div(class = "warn", HTML(paste(x$note, collapse = "<br><br>"))) else NULL)
   })
 
@@ -1166,8 +1187,9 @@ doepro_server <- function(input, output, session) {
     filename = function() paste0("DOEpro_plot_", Sys.Date(), ".png"),
     content = function(f) ggsave(f, mp(), width = 9, height = 6, dpi = 300))
 
+  ## the report prints the means to the decimals chosen on the Means tab
   report <- reactive(build_report(ok(), letters_on = isTRUE(input$letters),
-                                  detailed = isTRUE(input$detailed)))
+                                  detailed = isTRUE(input$detailed), digits = input$digits %||% 2))
 
   ## The report download is done in the browser (a JavaScript Blob), not through
   ## downloadHandler. This behaves identically on a real Shiny server and in the

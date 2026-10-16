@@ -55,7 +55,15 @@ run_all <- function(d, design, map, responses, alpha = 0.05,
     if (identical(tr, "none")) {
       fin <- base; asm <- asm0
     } else {
+      ## Box-Cox needs positive values for its profile; without one there is
+      ## no optimal lambda, and applying lambda = 1 would only subtract 1
+      if (identical(tr, "boxcox") && is.na(asm0$lambda))
+        stop(sprintf("The Box-Cox transformation needs every value of '%s' to be positive, so no optimal lambda can be found; choose another transformation.", v))
+      if (identical(tr, "boxcox") && abs(lam) >= 2 - 1e-9)
+        stop(sprintf(paste("The Box-Cox profile of '%s' is still rising at lambda = %s, the end of the range searched (-2 to 2),",
+                           "so no optimal lambda was found there; choose another transformation, such as 1 / y."), v, fmt(lam, 0)))
       y <- response_values(d[[v]])
+      y[!is.finite(y)] <- NA          # Inf is left out, as analyze() leaves it out
       z <- suppressWarnings(TRANS[[tr]]$f(y, lam))
       if (any(!is.finite(z[!is.na(y)])))   # entries that are not numbers are left out, not "out of range"
         stop(sprintf("The %s transformation is not defined for '%s' - the column has values outside its permitted range (e.g. zero or negative).",
@@ -93,7 +101,8 @@ auto_scan <- function(d, design, map, candidates, alpha = 0.05, dtype = "auto") 
                           else if (a$levene$dropped > 0) " (Levene, some cells)" else ""),
                  `Taylor b` = fmt(a$slope, 2),
                  `Box-Cox lambda` = fmt(a$lambda, 2),
-                 `CV (%)` = fmt(r$cv[length(r$cv)], 2),
+                 `CV (%)` = if (length(r$cv) == 1) fmt(r$cv, 2)
+                            else paste(sprintf("%s %s", sub(" [(]%[)]$", "", names(r$cv)), fmt(r$cv, 2)), collapse = "; "),
                  `Suggested transformation` = TRANS[[s$method]]$lab,
                  Why = s$why, check.names = FALSE, stringsAsFactors = FALSE)
     }, error = function(e) NULL)

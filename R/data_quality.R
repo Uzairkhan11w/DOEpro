@@ -330,10 +330,18 @@ check_data <- function(d) {
     x <- d[[v]]
     if (is.numeric(x)) {
       numeric_cols <- c(numeric_cols, v)
-      miss <- at(which(is.na(x)))
+      miss <- at(which(is.na(x) & !is.nan(x)))
       if (length(miss))
         add(v, "note", sprintf("In '%s', %s %s empty, so %s left out of any analysis that uses '%s'.",
           v, rows_text(miss), pl(length(miss), "is", "are"), pl(length(miss), "it is", "they are"), v), miss)
+      ## Inf, -Inf or NaN (a division by zero, say) is not a measurement
+      odd <- intersect(which(is.nan(x) | is.infinite(x)), keep)
+      if (length(odd))
+        add(v, "check", sprintf(paste0("In '%s', %s %s %s (%s). Correct %s in the table; until then %s ",
+          "left out of any analysis of '%s'."), v, rows_text(at(odd)), pl(length(odd), "has", "have"),
+          pl(length(odd), "an entry that is not a number", "entries that are not numbers"),
+          eg_text(as.character(x[odd])), pl(length(odd), "it", "them"),
+          pl(length(odd), "that row is", "those rows are"), v), at(odd), fixable = FALSE)
       next
     }
     a <- assess_column(x)
@@ -640,6 +648,10 @@ convert_lossless <- function(col) {
   conv <- utils::type.convert(col, as.is = TRUE, na.strings = c("NA", ""))
   if (!is.numeric(conv)) return(conv)
   s <- trimws(col); ok <- !is.na(col) & s != ""
+  ## only plain numbers are converted: type.convert also reads R's own
+  ## literals (0x10 as 16, Inf, NaN), which stay text for the data check
+  if (!all(grepl("^[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?$", s[ok]))) return(col)
+  if (any(!is.finite(conv[ok]))) return(col)
   if (length(unique(s[ok])) > length(unique(conv[ok]))) col else conv
 }
 
@@ -688,7 +700,8 @@ excluded_rows <- function(raw, d, keep) {
   idx <- which(miss[drop, , drop = FALSE], arr.ind = TRUE)
   r <- drop[idx[, 1]]; cols <- keep[idx[, 2]]
   vals <- vapply(seq_along(r), function(j) {
-    z <- raw[[cols[j]]][r[j]]; if (is.na(z)) "" else trimws(as.character(z)) }, "")
+    z <- raw[[cols[j]]][r[j]]
+    if (is.na(z) && !(is.numeric(z) && is.nan(z))) "" else trimws(as.character(z)) }, "")
   out <- data.frame(row = row_ids(raw)[r], column = cols, kind = read_entries(vals)$kind,
                     value = vals, stringsAsFactors = FALSE, row.names = NULL)
   out[order(out$row), , drop = FALSE]

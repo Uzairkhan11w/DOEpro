@@ -124,6 +124,14 @@ DUNNETT_ALT <- c(two.sided = "two-sided: does each treatment differ from the con
 ## factor at a time).
 posthoc_dunnett <- function(e, fams, alpha, control, alternative = "two.sided") {
   if (!alternative %in% names(DUNNETT_ALT)) stop("Unknown alternative.")
+  ## the comparisons of a pooled factorial's interaction means with a control
+  ## combine different error mean squares, so they have different degrees of
+  ## freedom and correlations far from the form the exact calculation needs
+  if (!is.null(e$mix))
+    stop(sprintf(paste0("Dunnett's test is not available for the %s means of a pooled factorial: their ",
+      "comparisons with a control combine different error terms, so Dunnett's critical value cannot be ",
+      "computed exactly. Compare them with the control using the LSD or the Bonferroni-adjusted LSD, which ",
+      "give each pair its own SE(d), or use Dunnett's test on a main effect."), e$label), call. = FALSE)
   m <- e$means
   vary <- setdiff(e$vars, e$slice)
   lab_vary <- apply(m[vary], 1, function(z) paste(trimws(z), collapse = " : "))
@@ -179,7 +187,8 @@ posthoc_dunnett <- function(e, fams, alpha, control, alternative = "two.sided") 
     Item = c("Effect", "Method", "Control", "Error mean square", "Error df", "SE of a mean (SEm)",
              "SE of a difference (SEd)", "Comparisons with the control", "Significance level",
              "Critical value (multivariate t)", if (one_cd) "Critical difference (C.D.)" else "Critical difference"),
-    Value = c(e$label, paste("Dunnett's test,", DUNNETT_ALT[[alternative]]), control, fmt(e$mse, 4), df_text(e$df),
+    Value = c(e$label, paste("Dunnett's test,", DUNNETT_ALT[[alternative]]), control,
+              fmt(e$mse, 4), df_text(e$df),
               err_text(e, "sem", 3, html = FALSE), err_text(e, "sed", 3, html = FALSE),
               if (is.null(within)) as.character(out[[1]]$k)
               else sprintf("%d within each level of %s", out[[1]]$k, e$slice),

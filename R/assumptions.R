@@ -256,13 +256,15 @@ suggest_transform <- function(res, asm, dtype = "auto") {
 
   nm <- if (!is.null(res$orig_resp)) res$orig_resp else res$resp
   has_frac    <- any(abs(y - round(y)) > 1e-8)
-  looks_prop  <- min(y) >= 0 && max(y) <= 1 && has_frac
-  looks_count <- min(y) >= 0 && !has_frac
-  in_pct_range <- min(y) >= 0 && max(y) <= 100 && !looks_prop
-  ## a 0-100 range alone does NOT make a variable a percentage (most yields and
-  ## heights live there too), so auto-detection also needs the column name to say so
-  pct_name <- grepl("perc|pct|%|incid|sever|infest|germinat|surviv|mortal|infect|damage",
+  ## a 0-100 (or 0-1) range alone does NOT make a variable a percentage (or a
+  ## proportion): most yields and heights live there too, and a height in
+  ## metres lies between 0 and 1, so auto-detection also needs the name to say so
+  pct_name <- grepl("perc|pct|%|proportion|fraction|incid|sever|infest|germinat|surviv|mortal|infect|damage",
                     tolower(nm))
+  in_unit <- min(y) >= 0 && max(y) <= 1 && has_frac
+  looks_prop  <- in_unit && pct_name
+  looks_count <- min(y) >= 0 && !has_frac
+  in_pct_range <- min(y) >= 0 && max(y) <= 100 && !in_unit
   looks_pct   <- in_pct_range && pct_name
   count_slope <- !is.na(b) && b >= 0.5 && b < 1.5
 
@@ -283,6 +285,23 @@ suggest_transform <- function(res, asm, dtype = "auto") {
   slope_evidence <- !is.na(b) && b >= 0.5 && isTRUE(asm$slope_p < res$alpha)
   if (ok && !hov_full && slope_evidence) ok <- FALSE
   all_tested <- !is.na(pn) && hov_full
+  ## What may point to a particular transformation once a check has failed:
+  ## the mean-variance slope when the variances were found unequal or the
+  ## slope is itself significant, and the Box-Cox profile when its interval
+  ## leaves out 1 and its peak lies inside the range searched. A departure
+  ## from normality caused by one stray value is not a reason to transform.
+  hov_fail <- !is.na(ph) && ph < res$alpha
+  b_ok <- !is.na(b) && (hov_fail || isTRUE(asm$slope_p < res$alpha))
+  bc_ok <- !is.na(lam) && !is.null(asm$bc) && abs(lam) < 2 - 1e-9 &&
+    !(asm$bc$ci[1] <= 1 && asm$bc$ci[2] >= 1)
+  ## only a transformation defined for every value is suggested
+  pick <- function(method, why, optional = FALSE) {
+    if (trans_defined(method, y)) return(list(method = method, optional = optional, why = why))
+    list(method = "none", optional = FALSE,
+         why = paste(why, sprintf(paste("However, %s is not defined for some of the values here (zero or",
+                                        "negative ones), so it cannot be applied; no transformation is suggested."),
+                                  TRANS[[method]]$lab)))
+  }
 
   ## When the diagnostics are satisfactory we still name the conventional
   ## transformation for data that are plainly counts or percentages, flagged as
@@ -295,16 +314,16 @@ suggest_transform <- function(res, asm, dtype = "auto") {
           else if (nzchar(fine)) paste0(fine, "; the checks that could be run give no reason for a transformation.")
           else "Neither normality nor equal variances could be tested, so the checks give no reason for a transformation."
     if (looks_prop)
-      return(list(method = "arcsine01", optional = TRUE,
-        why = paste(so, "The response is a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.")))
+      return(pick("arcsine01", optional = TRUE,
+        paste(so, sprintf("'%s' lies between 0 and 1 and is named as a proportion, however, and convention is to analyse proportions on the angular (arcsine square-root) scale.", nm))))
     ## only a slope that is itself significant shows the variance rising
     ## with the mean; otherwise the claim would rest on noise
     if (looks_count && count_slope && slope_evidence)
-      return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt", optional = TRUE,
-        why = sprintf("%s The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", so, b)))
+      return(pick(if (min(y) < 1) "sqrt0.5" else "sqrt", optional = TRUE,
+        sprintf("%s The response is nevertheless integer-valued with variance proportional to the mean (Taylor slope b = %.2f) - i.e. count data, for which the square root is conventional.", so, b)))
     if (looks_pct)
-      return(list(method = "arcsine", optional = TRUE,
-        why = sprintf("%s '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", so, nm)))
+      return(pick("arcsine", optional = TRUE,
+        sprintf("%s '%s' is bounded by 0 and 100 and named as a percentage, for which the angular (arcsine square-root) transformation is conventional.", so, nm)))
     return(list(method = "none", optional = FALSE,
       why = if (all_tested) paste0(fine, " - no transformation is needed.")
             else if (nzchar(fine)) paste0(fine, "; the checks that could be run give no reason for a transformation.")
@@ -313,44 +332,59 @@ suggest_transform <- function(res, asm, dtype = "auto") {
 
   ## user-declared data type wins over any guessing
   if (dtype == "percent")
-    return(list(method = if (max(y) <= 1) "arcsine01" else "arcsine",
-      why = "You declared the response to be a percentage/proportion, so the angular (arcsine square-root) transformation applies."))
+    return(pick(if (max(y) <= 1) "arcsine01" else "arcsine",
+      "You declared the response to be a percentage/proportion, so the angular (arcsine square-root) transformation applies."))
   if (dtype == "count")
-    return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt",
-      why = "You declared the response to be a count, so the square-root transformation applies (sqrt(y+0.5) when zeros are present)."))
+    return(pick(if (min(y) < 1) "sqrt0.5" else "sqrt",
+      "You declared the response to be a count, so the square-root transformation applies (sqrt(y+0.5) when zeros are present)."))
 
   if (looks_prop)
-    return(list(method = "arcsine01",
-      why = "The response lies between 0 and 1 and is not integer - it behaves like a proportion, so the angular (arcsine square-root) transformation applies."))
+    return(pick("arcsine01",
+      sprintf("'%s' lies between 0 and 1, is not integer and is named as a proportion, so the angular (arcsine square-root) transformation applies.", nm)))
 
-  if (looks_count && count_slope)
-    return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt",
-      why = sprintf("The response is integer-valued and the variance rises in proportion to the mean (Taylor slope b = %.2f) - the classic signature of count data, so the square root is indicated.", b)))
+  if (looks_count && count_slope && b_ok)
+    return(pick(if (min(y) < 1) "sqrt0.5" else "sqrt",
+      sprintf("The response is integer-valued and the variance rises in proportion to the mean (Taylor slope b = %.2f) - the classic signature of count data, so the square root is indicated.", b)))
 
-  if (looks_pct && !(looks_count && count_slope))
-    return(list(method = "arcsine",
-      why = sprintf("'%s' is bounded between 0 and 100 and its name suggests a percentage, so the angular (arcsine square-root) transformation applies.", nm)))
+  if (looks_pct && !(looks_count && count_slope && b_ok))
+    return(pick("arcsine",
+      sprintf("'%s' is bounded between 0 and 100 and its name suggests a percentage, so the angular (arcsine square-root) transformation applies.", nm)))
 
-  if (!is.na(b)) {
+  if (b_ok) {
     if (b >= 0.5 && b < 1.5)
-      return(list(method = if (min(y) < 1) "sqrt0.5" else "sqrt",
-        why = sprintf("Variance rises roughly in proportion to the mean (Taylor slope b = %.2f) - square root is indicated.", b)))
+      return(pick(if (min(y) < 1) "sqrt0.5" else "sqrt",
+        sprintf("Variance rises roughly in proportion to the mean (Taylor slope b = %.2f) - square root is indicated.", b)))
     if (b >= 1.5 && b < 2.5)
-      return(list(method = if (min(y) <= 0) "log1" else "log",
-        why = sprintf("Variance rises with the square of the mean (b = %.2f) - the logarithmic transformation is indicated.", b)))
+      return(pick(if (min(y) <= 0) "log1" else "log",
+        sprintf("Variance rises with the square of the mean (b = %.2f) - the logarithmic transformation is indicated.", b)))
     if (b >= 2.5)
-      return(list(method = "reciprocal",
-        why = sprintf("Variance rises faster than the square of the mean (b = %.2f) - the reciprocal transformation is indicated.", b)))
+      return(pick("reciprocal",
+        sprintf("Variance rises faster than the square of the mean (b = %.2f) - the reciprocal transformation is indicated.", b)))
   }
-  if (!is.na(lam)) {
+  if (bc_ok) {
     m <- if (abs(lam) < 0.15) "log" else if (abs(lam - 0.5) < 0.2) "sqrt" else
          if (abs(lam + 1) < 0.25) "reciprocal" else "boxcox"
-    return(list(method = m, why = sprintf("The Box-Cox profile peaks at lambda = %.2f.", lam)))
+    return(pick(m, sprintf("The Box-Cox profile peaks at lambda = %.2f, and its interval leaves out 1 (no transformation).", lam)))
   }
   hint <- if (in_pct_range && !pct_name)
     " Note: your response lies between 0 and 100. If it really is a percentage, set 'Nature of the response' to 'Percentage / proportion' and the angular transformation will be applied." else ""
+  stray <- if (!is.na(pn) && pn < res$alpha && length(asm$outliers))
+    sprintf(paste(" The residuals depart from normality, but neither the spread of the treatments nor the Box-Cox",
+                  "profile points to a transformation; the possible %s (%s) may be the cause, so check %s first."),
+            pl(length(asm$outliers), "outlier", "outliers"), rows_text(asm$outliers),
+            pl(length(asm$outliers), "it", "them"))
+    else ""
   list(method = "none",
-       why = paste0("No clear transformation is indicated. If normality is badly violated, consider a non-parametric test (Kruskal-Wallis / Friedman).", hint))
+       why = paste0("No clear transformation is indicated.", stray,
+                    " If normality is badly violated, consider a non-parametric test (Kruskal-Wallis / Friedman).", hint))
+}
+
+## Is transformation `m` defined for every value of y?
+trans_defined <- function(m, y) {
+  y <- y[!is.na(y)]
+  switch(m, none = TRUE, log = all(y > 0), log1 = all(y > -1), sqrt = all(y >= 0),
+         sqrt0.5 = all(y >= -0.5), arcsine = all(y >= 0 & y <= 100), arcsine01 = all(y >= 0 & y <= 1),
+         reciprocal = all(y != 0), boxcox = all(y > 0), TRUE)
 }
 
 #' The transformations DOEpro offers
