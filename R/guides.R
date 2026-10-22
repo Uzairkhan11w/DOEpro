@@ -11,10 +11,10 @@ tab_guide <- function(title, html)
 
 GUIDE_START <- "
 <ol>
-<li>Put your data in <b>long format</b> - one row per plot, one column per variable - and paste it in on the Data tab.</li>
-<li>Choose the design and map your columns to their roles. You may select <b>several response variables at once</b>; each is analysed separately with the same design and appears side by side in the tables of means.</li>
-<li>The app screens every numeric column and says which transformation, if any, it needs. Press <i>Apply all suggested</i> to accept the advice.</li>
-<li>Press <b>Run analysis</b>.</li>
+<li>Put your data in <b>long format</b> - one row per plot, one column per variable - and paste it in, upload a CSV, or load an example.</li>
+<li>Under <b>Design and variables</b>, choose the design and the column that plays each role. You may choose <b>several response variables at once</b>; each is analysed separately with the same design and appears side by side in the tables of means.</li>
+<li>The quick summary and the screening below update at once. The screening says which transformation, if any, each response may need.</li>
+<li>Check the assumptions on the <b>Assumptions &amp; Diagnostics</b> tab, where you choose the scale of each response; then read the <b>ANOVA</b>, the <b>Means &amp; Comparisons</b>, the plots and the report. Every result follows your choices at once: there is no button to press.</li>
 </ol>
 "
 
@@ -84,7 +84,7 @@ carries the environment's interaction with each factor in which they differ: wit
 factors A and B, two A means at the same B have SE(d) =
 &radic;(2[(b&minus;1)&middot;M<sub>ExAxB</sub> + M<sub>ExA</sub>] / erb), as in a strip plot with
 the environment as the replication. Each kind of comparison gets its own SE(d) and C.D., the
-C.D. from Gomez &amp; Gomez's weighted t, and the letters use the C.D. of each pair.</p>
+C.D. from Gomez &amp; Gomez's weighted t.</p>
 "
 
 GUIDE_ERRORS <- "
@@ -124,6 +124,9 @@ the back-transformed mean with the transformed value in parentheses.</p>
 "
 
 GUIDE_POSTHOC <- "
+<p>A table of means shows <b>one</b> comparison at a time: the critical difference (C.D.) at the foot of
+the table, or the letters of a procedure beside the means, never both, since they are different
+procedures and can disagree. With <i>Means only</i> no comparison is made.</p>
 <ul>
 <li><b>Least significant difference (LSD), Fisher's protected</b>: only after a significant F-test, and best with few treatments.</li>
 <li><b>Tukey's honestly significant difference (HSD)</b>: controls the error rate over all pairwise comparisons; the safe default.</li>

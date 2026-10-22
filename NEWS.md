@@ -1,5 +1,69 @@
 # DOEpro (development version)
 
+* The workflow follows the work: Data (with the design and the columns), then
+  Exploration & Diagnostics, Assumptions & Diagnostics, ANOVA, Means &
+  Comparisons, Plots, and Interpretation & Report. The design, the response
+  variable(s), the role of every column and the significance level are set on
+  the Data tab, and every result follows each choice at once: there is no
+  Run button, and no table, letter or reading is ever left from an earlier
+  choice (the significance level included). The column mapping is drawn even
+  while the Data tab is hidden, so nothing waits for a tab to be visited.
+* The Data tab shows, as soon as data are loaded: a quick summary of each
+  chosen response (n, missing, mean, SD, the SE of the mean, median,
+  quartiles, range and CV where it means something), and the automatic
+  screening of the chosen responses only, from the model for the design
+  (residual normality, equal variances, the mean-variance slope, Box-Cox and
+  the suggested transformation). Previously every numeric column was
+  screened, and only after the Design tab had been opened. New function
+  `quick_describe()` (internal) and the screening's `screen_rows()`.
+* A new example, a factorial CRD (3 varieties x 3 nitrogen levels, four
+  replications) with two responses, yield and plant height; loading any
+  example now sets its design, its columns' roles and its responses at once.
+  The examples are described as demonstration data built for illustration.
+* Exploration & Diagnostics has three sections: exploratory visualisations,
+  a new table of the data's structure and quality (every column's role,
+  storage, analytical type, totals, missing values and distinct values; the
+  type follows the role, so a treatment coded 1, 2, 3 is categorical), and
+  the other exploratory analyses.
+* Assumptions & Diagnostics comes before the ANOVA. Each response has a
+  nature (continuous, count, percentage) and a scale chosen there; the values
+  as entered are analysed until a transformation is chosen (it was applied
+  automatically before). A summary sets each check beside its result, its
+  meaning and the action it calls for, and separates what can be tested
+  from what the design must ensure (independence). New checks: Tukey's
+  one-degree-of-freedom test of additivity for designs with blocks, and
+  Cook's distance with a plot. Counts and percentages are no longer treated
+  as automatically normal, and the text says a transformation does not
+  guarantee the assumptions.
+* The ANOVA tab gives each response its own "Analysis of Variance (...)"
+  heading and table, with the significance column headed by the level. The
+  combined table of mean squares and the guides under the tables are gone
+  (the guides are on the Data tab). A significant interaction is pointed out
+  above its reading, with the way to read it.
+* Means and Post-hoc are one tab, Means & Comparisons. By default the
+  tables show the means alone. The comparison chosen decides what is added:
+  the critical difference (C.D., Fisher's protected LSD) at the foot, or
+  the superscript letters of Tukey's HSD, Duncan's, SNK, Scheffe's or the
+  Bonferroni-adjusted LSD, or Dunnett's comparisons with a control, never a
+  C.D. and letters together. The C.D. is labelled with the level, "C.D.
+  (5%)". An interaction can be compared within each level of one of its
+  factors (simple effects). Readings, the CSV, the plots and the report
+  follow the comparison chosen. New exported function `comparison()`;
+  `build_report()` takes `comparison` (its `letters_on` is no longer used).
+* Every graph has a download menu in its corner: PNG at 300 dpi, or SVG,
+  named StatLabX_<graph>_<response>, with "Generated with StatLabX" at its
+  foot. A new Interaction plots section draws each cell mean's confidence
+  interval where one can be given (designs with one error term) and says
+  why not elsewhere; its reading follows the interaction's F-test, not the
+  lines alone. One plot style throughout, with a colour-blind-safe palette.
+* The report prints: "Print / Save as PDF" opens the browser's print dialog
+  without saving a file first, on A4 with tables kept whole and wide tables
+  on landscape pages where the browser allows; "Download HTML" stays; a PDF
+  download is offered only where a renderer is installed. The report carries
+  the StatLabX credit, the version and the date.
+* Dr. Pradeep Mishra (Assistant Professor, JNKVV, Madhya Pradesh) is listed
+  last among the developers, wherever they are shown, and, like Dr. Imran
+  Khan, is not among the citation's authors.
 * StatLabX has a website as its front page (doepro.pages.dev): plain HTML,
   CSS and JavaScript that appears at once, while R starts in the background.
   It shows the worked example's real results, what the app covers, the

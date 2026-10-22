@@ -207,7 +207,8 @@ test_that("the cluster tab clusters, reads and draws", {
   })
   shiny::testServer(doepro_server, {
     rv$data <- d
-    session$setInputs(design = "CRD", resp = "Yield", treat = "Variety")
+    session$setInputs(design = "CRD")
+    set_map(session, rv$ver, resp = "Yield", treat = "Variety")
     expect_match(output$clGroupUI$html, '<option value="Variety" selected>', fixed = TRUE)
   })
 })

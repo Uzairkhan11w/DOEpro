@@ -48,6 +48,7 @@ Authors:
 Other contributors:
 \itemize{
   \item Imran Khan \email{imrankhan@skuastkashmir.ac.in} [contributor]
+  \item Pradeep Mishra [contributor]
 }
 
 }

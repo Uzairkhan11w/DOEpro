@@ -28,6 +28,34 @@ csv_string <- function(df) {
         collapse = "\n")
 }
 
+## Bytes as base64 text, for handing a file to the browser: done in base R, as
+## the package has no dependency that offers it.
+b64_raw <- function(r) {
+  r <- as.integer(r); n <- length(r)
+  if (!n) return("")
+  pad <- (3 - n %% 3) %% 3
+  m <- matrix(c(r, integer(pad)), nrow = 3)
+  v <- m[1, ] * 65536L + m[2, ] * 256L + m[3, ]
+  idx <- rbind(v %/% 262144L, (v %/% 4096L) %% 64L, (v %/% 64L) %% 64L, v %% 64L) + 1L
+  s <- c(LETTERS, letters, 0:9, "+", "/")[idx]
+  if (pad) s[(length(s) - pad + 1L):length(s)] <- "="
+  paste(s, collapse = "")
+}
+
+## Save plot `p` to `file` as a PNG at 300 dpi or as an SVG, `w` by `h` inches.
+## The PNG goes through the device Shiny itself draws plots with, so it works
+## wherever the plots on screen do.
+save_plot_file <- function(p, file, fmt = "png", w = 8, h = 5) {
+  if (identical(fmt, "svg")) {
+    grDevices::svg(file, width = w, height = h)
+    on.exit(grDevices::dev.off(), add = TRUE)
+    print(p)
+  } else {
+    shiny::plotPNG(function() print(p), filename = file, width = round(w * 300), height = round(h * 300), res = 300)
+  }
+  invisible(file)
+}
+
 #' The DOEpro server logic
 #'
 #' The Shiny server function. Called by \code{\link{run_DOEpro}}; you should not
@@ -38,7 +66,24 @@ csv_string <- function(df) {
 #' @keywords internal
 doepro_server <- function(input, output, session) {
 
-  rv <- reactiveValues(data = NULL)
+  ## `ver` counts the data sets loaded: the selectors of the column mapping,
+  ## the transformations and the natures of the responses carry it in their
+  ## ids, so a choice made for one data set is never read for the next.
+  ## `trans` and `nature` hold each response's choices; `keep` the mapping
+  ## last chosen for this data set, which a change of design starts from.
+  rv <- reactiveValues(data = NULL, dq_log = NULL, ver = 0L, source = NULL, demo = NULL,
+                       design_hint = NULL, nfac_hint = NULL, trans = list(), nature = list(),
+                       keep = list())
+
+  save_browser <- function(filename, content, mime)
+    session$sendCustomMessage("doepro_save",
+      list(filename = filename, content = content, mime = mime))
+
+  set_data <- function(d, source, demo = NULL) {
+    rv$data <- d; rv$dq_log <- NULL; rv$ver <- isolate(rv$ver) + 1L
+    rv$source <- source; rv$demo <- demo
+    rv$trans <- list(); rv$nature <- list(); rv$keep <- list()
+  }
 
   ## ------------------------------------------------------------ data input --
   observeEvent(input$load, {
@@ -47,22 +92,36 @@ doepro_server <- function(input, output, session) {
     d <- tryCatch(read_pasted(txt, input$sep, input$header), error = function(e) NULL)
     if (is.null(d) || !ncol(d))
       showNotification("Could not read the pasted text - check the separator.", type = "error")
-    else { rv$data <- d; rv$dq_log <- NULL; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
+    else { set_data(d, "paste"); showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
   })
 
   observeEvent(input$file, {
     d <- tryCatch(read_upload(input$file$datapath), error = function(e) conditionMessage(e))
     if (is.character(d)) showNotification(paste("Could not read that file.", d), type = "error",
                                           duration = NULL)
-    else { rv$data <- d; rv$dq_log <- NULL; showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
+    else { set_data(d, "file"); showNotification(sprintf("Loaded %d rows.", nrow(d)), type = "message") }
   })
 
+  ## An example comes with its design and the role of each column, so the
+  ## mapping, the screening and every analysis follow at once.
   observeEvent(input$loaddemo, {
-    rv$data <- demo_data(input$demo); rv$dq_log <- NULL
-    des <- switch(input$demo, POOLFACT = "POOLFRCBD", POOLFACTC = "POOLFCRD", input$demo)
-    updateSelectInput(session, "design", selected = des)
-    showNotification(paste("Loaded the", input$demo, "example."), type = "message")
+    key <- input$demo
+    dm <- DEMO_MAPS[[key]]
+    set_data(demo_data(key), "demo", key)
+    rv$design_hint <- dm$design
+    nf <- length(dm$map$factors)
+    if (nf >= 2) { rv$nfac_hint <- nf; updateSliderInput(session, "nfac", value = nf) }
+    updateSelectInput(session, "design", selected = dm$design)
+    showNotification(sprintf("Loaded the %s example.", names(DEMO_CHOICES)[match(key, DEMO_CHOICES)]), type = "message")
   })
+
+  ## The design and number of factors an example sets are used at once, before
+  ## the selectors on the page report them back; any change of the selector,
+  ## the user's or the example's, ends that.
+  observeEvent(input$design, rv$design_hint <- NULL, priority = 100, ignoreInit = TRUE)
+  observeEvent(input$nfac, rv$nfac_hint <- NULL, priority = 100, ignoreInit = TRUE)
+  design_now <- reactive(rv$design_hint %||% input$design %||% "RCBD")
+  nfac_now <- reactive(rv$nfac_hint %||% input$nfac %||% 2)
 
   ## Row numbers are shown, because every message from the data check and the
   ## analysis names rows by them; they cannot be edited.
@@ -120,6 +179,10 @@ doepro_server <- function(input, output, session) {
       "Paste your data, upload a CSV, or load one of the examples. ",
       "Data must be in long format: one row per plot, one column per variable. ",
       "You may analyse several response variables at once."))
+    if (identical(rv$source, "demo"))
+      return(div(class = "slx-demo", tags$b("Demonstration data. "),
+                 sprintf("The %s example: %s", names(DEMO_CHOICES)[match(rv$demo, DEMO_CHOICES)],
+                         sub("^Demonstration data: ", "", DEMO_NOTE))))
     NULL
   })
 
@@ -150,198 +213,350 @@ doepro_server <- function(input, output, session) {
   })
 
   ## ------------------------------------------------------- column mapping ---
+  ## the id of a role's selector for the data set now loaded
+  map_id <- function(role) paste0("map_", role, "_", rv$ver)
+
+  ## The selectors start from the example's own roles, then from the choices
+  ## already made for these data (a change of design keeps what still
+  ## applies), then from a guess. They are drawn even while the Data tab is
+  ## hidden, so the analysis never waits for the tab to be visited.
   output$mapUI <- renderUI({
     d <- rv$data; req(d)
-    cn  <- names(d)
-    ## columns of numbers as the data check sees them, so a response still
-    ## written with decimal commas or "-" is suggested all the same
+    des <- design_now(); nf <- nfac_now()
+    roles <- design_roles(des, nf)
+    cn <- names(d)
     num <- intersect(cn, chk()$numeric)
-    des <- input$design
-    nf  <- input$nfac %||% 2
-
-    guess_resp <- if (length(num)) utils::tail(num, 1) else utils::tail(cn, 1)
-    oth <- setdiff(cn, guess_resp)
-    p <- function(i) if (length(oth) >= i) oth[i] else cn[1]
-
+    keep <- isolate(rv$keep)
+    demo <- isolate(rv$demo)
+    dm <- if (!is.null(demo) && identical(DEMO_MAPS[[demo]]$design, des)) map_to_roles(DEMO_MAPS[[demo]]$map) else list()
+    guess <- guess_map(d, roles, num)
+    pick <- function(r) {
+      for (src in list(keep, dm)) {
+        x <- src[[r]]
+        if (length(x) && all(x %in% cn)) return(x)
+      }
+      guess[[r]]
+    }
+    resp <- if (!is.null(demo) && identical(DEMO_MAPS[[demo]]$design, des) && !length(keep$resp))
+      DEMO_MAPS[[demo]]$response else pick("resp")
     tagList(
-      selectizeInput("resp", "Response variable(s)", cn, selected = guess_resp,
-                     multiple = TRUE, options = list(placeholder = "choose one or more")),
-      switch(des,
-        CRD  = selectInput("treat", "Treatment", cn, selected = p(1)),
-        RCBD = tagList(selectInput("block", "Block", cn, selected = p(1)),
-                       selectInput("treat", "Treatment", cn, selected = p(2))),
-        LSD  = tagList(selectInput("row", "Row", cn, selected = p(1)),
-                       selectInput("col", "Column", cn, selected = p(2)),
-                       selectInput("treat", "Treatment", cn, selected = p(3))),
-        FCRD = tagList(lapply(seq_len(nf), function(i)
-                 selectInput(paste0("f", i), paste("Factor", LETTERS[i]), cn, selected = p(i)))),
-        FRCBD = tagList(selectInput("block", "Block", cn, selected = p(1)),
-                 lapply(seq_len(nf), function(i)
-                   selectInput(paste0("f", i), paste("Factor", LETTERS[i]), cn, selected = p(i + 1)))),
-        SPLIT = tagList(selectInput("rep", "Replication", cn, selected = p(1)),
-                        selectInput("main", "Main-plot factor", cn, selected = p(2)),
-                        selectInput("sub", "Sub-plot factor", cn, selected = p(3))),
-        STRIP = tagList(selectInput("rep", "Replication", cn, selected = p(1)),
-                        selectInput("main", "Factor A (horizontal strips)", cn, selected = p(2)),
-                        selectInput("sub", "Factor B (vertical strips)", cn, selected = p(3))),
-        POOLRCBD = tagList(
-          selectInput("env", "Environment (location / year / season)", cn, selected = p(1)),
-          selectInput("rep", "Replication / block (within environment)", cn, selected = p(2)),
-          selectInput("treat", "Treatment", cn, selected = p(3))),
-        POOLCRD = tagList(
-          selectInput("env", "Environment (location / year / season)", cn, selected = p(1)),
-          selectInput("treat", "Treatment", cn, selected = p(2))),
-        POOLFRCBD = tagList(
-          selectInput("env", "Environment (location / year / season)", cn, selected = p(1)),
-          selectInput("rep", "Replication / block (within environment)", cn, selected = p(2)),
-          lapply(seq_len(nf), function(i)
-            selectInput(paste0("f", i), paste("Treatment factor", LETTERS[i]), cn, selected = p(i + 2)))),
-        POOLFCRD = tagList(
-          selectInput("env", "Environment (location / year / season)", cn, selected = p(1)),
-          lapply(seq_len(nf), function(i)
-            selectInput(paste0("f", i), paste("Treatment factor", LETTERS[i]), cn, selected = p(i + 1))))))
+      selectizeInput(map_id("resp"), "Response variable(s)", cn, selected = intersect(resp, cn),
+                     multiple = TRUE, width = "100%",
+                     options = list(placeholder = "choose one or more columns of numbers")),
+      div(class = "slx-map-grid",
+          lapply(roles, function(r) selectInput(map_id(r), role_label(r, des), cn, selected = pick(r)))))
   })
+  outputOptions(output, "mapUI", suspendWhenHidden = FALSE)
 
-  mapping <- reactive({
-    des <- input$design; req(input$resp)
-    nf <- input$nfac %||% 2
-    m <- list(response = input$resp)
-    if (des %in% c("CRD", "RCBD", "LSD")) { req(input$treat); m$treat <- input$treat }
-    if (des %in% c("RCBD", "FRCBD"))      { req(input$block); m$block <- input$block }
-    if (des == "LSD") { req(input$row, input$col); m$row <- input$row; m$col <- input$col }
-    if (des %in% c("FCRD", "FRCBD")) {
-      fs <- unlist(lapply(seq_len(nf), function(i) input[[paste0("f", i)]]))
-      req(length(fs) == nf); m$factors <- fs
-    }
-    if (des %in% c("SPLIT", "STRIP")) {
-      req(input$rep, input$main, input$sub)
-      m$rep <- input$rep; m$main <- input$main; m$sub <- input$sub
-    }
-    if (des == "POOLRCBD") {
-      req(input$env, input$rep, input$treat)
-      m$env <- input$env; m$rep <- input$rep; m$treat <- input$treat
-    }
-    if (des == "POOLCRD") {
-      req(input$env, input$treat)
-      m$env <- input$env; m$treat <- input$treat
-    }
-    if (des %in% c("POOLFRCBD", "POOLFCRD")) {
-      req(input$env)
-      m$env <- input$env
-      if (des == "POOLFRCBD") { req(input$rep); m$rep <- input$rep }
-      fs <- unlist(lapply(seq_len(nf), function(i) input[[paste0("f", i)]]))
-      req(length(fs) == nf)
-      m$factors <- fs
-    }
-    req(all(nzchar(unlist(m))))
-    if (anyDuplicated(unlist(m))) return(NULL)
-    m
-  })
-
-  ## ------------------------------------------- automatic screening / advice --
-  scan_tab <- reactive({
+  ## the roles as the selectors hold them now, and what stops them from
+  ## making an analysis: NULL `map` until every selector is there
+  map_state <- reactive({
     d <- rv$data; req(d)
-    m <- mapping(); req(!is.null(m))
-    used <- unlist(m[setdiff(names(m), "response")])
-    cand <- intersect(names(d), chk()$numeric)
-    cand <- cand[vapply(cand, function(v) length(unique(stats::na.omit(read_entries(d[[v]])$value))) > 2, logical(1))]
-    cand <- setdiff(cand, used)
-    req(length(cand) > 0)
-    withProgress(message = "Screening the response variables", value = 0.5,
-      auto_scan(d, input$design, m, cand, as.numeric(input$alpha), input$dtype %||% "auto"))
+    des <- design_now(); nf <- nfac_now()
+    roles <- design_roles(des, nf)
+    resp <- input[[map_id("resp")]]
+    vals <- stats::setNames(lapply(roles, function(r) input[[map_id(r)]]), roles)
+    if (any(vapply(vals, is.null, logical(1))))
+      return(list(map = NULL, partial = c(list(resp = resp), Filter(Negate(is.null), vals)), problem = NULL))
+    vals <- c(list(resp = resp), vals)
+    cn <- names(d)
+    problem <- if (!length(resp)) "Choose at least one response variable."
+      else if (!all(unlist(vals) %in% cn)) "Some of the chosen columns are not in these data; choose again."
+      else {
+        used <- unlist(vals[roles])
+        twice <- unique(used[duplicated(used)])
+        both <- intersect(resp, used)
+        notnum <- setdiff(resp, chk()$numeric)
+        if (length(twice)) sprintf("%s %s chosen for two roles; each role needs its own column.",
+                                   join_and(sprintf("'%s'", twice)), pl(length(twice), "is", "are"))
+        else if (length(both)) sprintf("%s %s chosen both as a response and as a design column.",
+                                       join_and(sprintf("'%s'", both)), pl(length(both), "is", "are"))
+        else if (length(notnum)) sprintf(paste("%s %s not a column of numbers, so it cannot be analysed as a response;",
+                                               "choose a column of measurements."), join_and(sprintf("'%s'", notnum)),
+                                         pl(length(notnum), "is", "are"))
+        else NULL
+      }
+    list(map = if (is.null(problem)) roles_to_map(vals) else NULL, partial = vals, problem = problem)
   })
 
-  output$scanTab <- renderDT({
-    s <- scan_tab()
-    validate(need(!is.null(s), "No numeric response columns to screen."))
-    datatable(s[, setdiff(names(s), "Why")], rownames = FALSE,
-              options = list(dom = "t", ordering = FALSE, scrollX = TRUE))
+  ## the last workable mapping, which a change of design starts from
+  observe({
+    st <- map_state()
+    if (!is.null(st$map)) rv$keep <- modifyList(isolate(rv$keep), map_to_roles(st$map))
   })
 
-  output$scanNote <- renderUI({
-    s <- tryCatch(scan_tab(), error = function(e) NULL)
-    if (is.null(s)) return(NULL)
-    div(class = "sugbox", HTML(paste0("<b>Advice</b><ul>",
-      paste(sprintf("<li><b>%s</b> &rarr; <b>%s</b>. %s</li>",
-                    s$Variable, s$`Suggested transformation`, s$Why), collapse = ""),
-      "</ul>")))
+  ## the roles chosen so far, complete or not, as analyze() names them
+  map_partial <- reactive({
+    st <- tryCatch(map_state(), error = function(e) NULL)
+    if (is.null(st)) return(list())
+    p <- st$partial
+    roles_to_map(p[!vapply(p, is.null, logical(1))])
   })
 
-  ## per-response suggestion, used to pre-set the transformation selectors
-  sugs <- reactive({
-    d <- rv$data; m <- mapping(); req(d, !is.null(m))
-    stats::setNames(lapply(m$response, function(v) {
-      tryCatch({
-        r <- analyze(d, input$design, modifyList(m, list(response = v)),
-                     as.numeric(input$alpha))
-        suggest_transform(r, check_assumptions(r), input$dtype %||% "auto")
-      }, error = function(e) list(method = "none", optional = FALSE, why = ""))
-    }), m$response)
+  output$mapNote <- renderUI({
+    st <- map_state()
+    if (!is.null(st$problem)) div(class = "warn", st$problem) else NULL
   })
 
-  output$transUI <- renderUI({
-    m <- mapping(); req(!is.null(m))
-    sg <- tryCatch(sugs(), error = function(e) NULL)
-    tagList(lapply(seq_along(m$response), function(i) {
-      v <- m$response[i]
-      s <- if (!is.null(sg)) sg[[v]] else list(method = "none", optional = FALSE)
-      opt <- isTRUE(s$optional)
-      lab <- sprintf("%s %s", v,
-        if (identical(s$method, "none")) "<span class='note'>(no transformation needed)</span>"
-        else sprintf("<span class='note'>(suggested: %s%s)</span>",
-                     TRANS[[s$method]]$lab, if (opt) ", optional" else ""))
-      selectInput(paste0("tr_", i), HTML(lab), trans_choices(),
-                  selected = if (opt) "none" else s$method)
-    }))
+  ## Everything an analysis is made from, once the mapping is complete
+  setup <- reactive({
+    st <- map_state()
+    req(!is.null(st$map))
+    m <- st$map
+    list(d = rv$data, design = design_now(), map = m[setdiff(names(m), "response")], responses = m$response,
+         alpha = as.numeric(input$alpha %||% "0.05"), ver = rv$ver)
   })
 
-  observeEvent(input$applysug, {
-    m <- mapping(); req(!is.null(m)); sg <- sugs()
-    for (i in seq_along(m$response))
-      updateSelectInput(session, paste0("tr_", i), selected = sg[[m$response[i]]]$method)
+  ## Each response's analysis as entered, its checks and the transformation
+  ## advice: the screening on the Data tab and the start of every analysis.
+  ## A response that cannot be analysed carries its reason, and the others
+  ## go ahead.
+  base_fits <- reactive({
+    s <- setup()
+    nat <- rv$nature
+    out <- lapply(s$responses, function(v)
+      tryCatch(fit_base(s$d, s$design, s$map, v, s$alpha, nat[[v]] %||% "auto"),
+               error = function(e) list(resp = v, err = conditionMessage(e))))
+    stats::setNames(out, s$responses)
   })
 
-  ## --------------------------------------------------------------- analysis --
-  res <- eventReactive(input$run, {
-    req(input$run > 0)
-    d <- rv$data; req(d)
-    m <- mapping()
-    if (is.null(m)) return(list(err = "The same column is mapped to two different roles."))
-    tr <- stats::setNames(lapply(seq_along(m$response), function(i)
-      input[[paste0("tr_", i)]] %||% "none"), m$response)
-    tryCatch(
-      withProgress(message = "Running the analysis", value = 0.5,
-        run_all(d, input$design, m, m$response, as.numeric(input$alpha), tr,
-                input$dtype %||% "auto")),
-      error = function(e) list(err = conditionMessage(e)))
+  ## The analysis of every response on the scale chosen for it. It follows
+  ## every choice at once, the significance level included, so no table,
+  ## letter or reading is ever left from an earlier choice.
+  res <- reactive({
+    s <- setup(); bf <- base_fits(); tr <- rv$trans
+    fits <- list(); errs <- list()
+    for (v in names(bf)) {
+      b <- bf[[v]]
+      if (!is.null(b$err)) { errs[[v]] <- b$err; next }
+      t <- tr[[v]] %||% "none"
+      if (!t %in% trans_ok(b)) t <- "none"
+      f <- tryCatch(fit_final(b, s$d, s$design, s$map, t), error = function(e) e)
+      if (inherits(f, "error")) errs[[v]] <- conditionMessage(f) else fits[[v]] <- f
+    }
+    rr_of(s$design, s$alpha, s$map, s$responses, fits, errs)
   })
 
   ok <- reactive({
     r <- res()
-    validate(need(is.null(r$err), r$err))
+    validate(need(length(r$fits) > 0, paste(c("No response could be analysed.",
+      sprintf("%s: %s", names(r$errors), unlist(r$errors))), collapse = " ")))
     r
   })
 
+  ## a response's fit chosen on a tab, or the first while the choice catches up
+  fit_of <- function(r, v) r$fits[[if (isTRUE(v %in% names(r$fits))) v else names(r$fits)[1]]]
+
+  ## ------------------------------------------- quick look and screening --
+  output$quickOut <- renderUI({
+    d <- rv$data
+    if (is.null(d)) return(div(class = "note", "Load data first."))
+    st <- tryCatch(map_state(), error = function(e) NULL)
+    resp <- intersect(st$partial$resp %||% character(0), chk()$numeric)
+    if (!length(resp)) return(div(class = "note", "Choose the response variable(s) above to see their summary."))
+    HTML(paste0("<div class='slx-scroll'>", quick_describe_html(quick_describe(d, resp), d), "</div>"))
+  })
+
+  output$screenOut <- renderUI({
+    d <- rv$data
+    if (is.null(d)) return(div(class = "note", "Load data first."))
+    st <- map_state()
+    if (!is.null(st$problem)) return(div(class = "warn", st$problem))
+    if (is.null(st$map)) return(div(class = "note", "Choose the design's columns above; the screening follows at once."))
+    bf <- base_fits()
+    HTML(paste0("<div class='slx-scroll'>", screening_html(screen_rows(bf), setup()$alpha), "</div>"))
+  })
+
+  observeEvent(input$dl_quick, {
+    d <- rv$data; req(d)
+    resp <- intersect(map_partial()$response %||% character(0), chk()$numeric); req(length(resp) > 0)
+    save_browser(paste0("StatLabX_quick-summary_", Sys.Date(), ".csv"), csv_string(quick_describe(d, resp)), "text/csv")
+  })
+
+  output$structOut <- renderUI({
+    d <- rv$data
+    if (is.null(d)) return(div(class = "box", "Load data on the Data tab first."))
+    HTML(paste0("<div class='slx-card'><div class='slx-card-h'>Data structure and quality</div>",
+                "<p class='slx-lead'>Every column of the data: the role it plays in the analysis, how it is stored, ",
+                "what kind of variable it is and how complete it is. Entries the data check queries are listed on the Data tab.</p>",
+                "<div class='slx-scroll'>", data_structure_html(data_structure(d, map_partial(), design_now())), "</div></div>"))
+  })
+
+  ## --------------------------------------------------- analysis context --
+  ## the chips at the top of each analysis tab: what is analysed, and how
+  ctx_ui <- function() renderUI({
+    s <- tryCatch(setup(), error = function(e) NULL)
+    if (is.null(s)) return(div(class = "warn",
+      "Load data and choose the design and the variables on the Data tab; the results appear here at once."))
+    tr <- rv$trans
+    resp <- vapply(s$responses, function(v) {
+      t <- tr[[v]] %||% "none"
+      if (identical(t, "none")) v else sprintf("%s on %s", v, TRANS[[t]]$lab)
+    }, character(1))
+    m <- input$phMethod %||% "none"
+    div(class = "slx-ctx",
+        span("Design: ", tags$b(names(DESIGNS)[match(s$design, DESIGNS)])),
+        span(if (length(resp) > 1) "Responses: " else "Response: ", tags$b(paste(resp, collapse = ", "))),
+        span("Significance level: ", tags$b(paste0(pct(s$alpha), "%"))),
+        span("Comparison: ", tags$b(if (identical(m, "none")) "means only" else CMP_NAME[[m]])),
+        if (identical(rv$source, "demo")) span(tags$b("Demonstration data")))
+  })
+  output$ctxAssum <- ctx_ui(); output$ctxAnova <- ctx_ui(); output$ctxMeans <- ctx_ui()
+  output$ctxPlots <- ctx_ui(); output$ctxReport <- ctx_ui()
+
+  ## ------------------------------------------------------------ assumptions --
+  ## Each response's nature and the scale it is analysed on. The selectors
+  ## start at the values as entered (no transformation): a transformation is
+  ## the user's decision, made with the suggestion in view.
+  output$transUI <- renderUI({
+    s <- setup(); bf <- base_fits()
+    head <- tags$tr(tags$th("Response"), tags$th("Nature of the response"), tags$th("Analysed on the scale"))
+    rows <- lapply(s$responses, function(v) {
+      b <- bf[[v]]; k <- match(v, names(s$d))
+      if (!is.null(b$err)) return(tags$tr(tags$td(tags$b(v)), tags$td(colspan = 2, div(class = "err", b$err))))
+      allowed <- trans_ok(b)
+      cur <- isolate(rv$trans[[v]]) %||% "none"
+      sg <- b$sug
+      tags$tr(
+        tags$td(tags$b(v)),
+        tags$td(selectInput(paste0("nat_", s$ver, "_", k), NULL, stats::setNames(names(NATURE), NATURE),
+                            selected = isolate(rv$nature[[v]]) %||% "auto", width = "100%")),
+        tags$td(selectInput(paste0("tr_", s$ver, "_", k), NULL, trans_choices()[match(allowed, names(TRANS))],
+                            selected = if (cur %in% allowed) cur else "none", width = "100%"),
+                div(class = "note", if (identical(sg$method, "none")) "Suggested: no transformation."
+                    else sprintf("Suggested: %s%s.", TRANS[[sg$method]]$lab, if (isTRUE(sg$optional)) " (optional)" else ""))))
+    })
+    tags$table(class = "slx-settings", tags$thead(head), tags$tbody(rows))
+  })
+  outputOptions(output, "transUI", suspendWhenHidden = FALSE)
+
+  ## the choices on the page, kept with each response
+  observe({
+    s <- tryCatch(setup(), error = function(e) NULL)
+    req(s)
+    for (v in s$responses) {
+      k <- match(v, names(s$d))
+      tv <- input[[paste0("tr_", s$ver, "_", k)]]
+      nv <- input[[paste0("nat_", s$ver, "_", k)]]
+      if (!is.null(tv) && !identical(tv, isolate(rv$trans[[v]]) %||% "none")) rv$trans[[v]] <- tv
+      if (!is.null(nv) && !identical(nv, isolate(rv$nature[[v]]) %||% "auto")) rv$nature[[v]] <- nv
+    }
+  })
+
+  observeEvent(input$applysug, {
+    s <- tryCatch(setup(), error = function(e) NULL); req(s)
+    bf <- base_fits()
+    for (v in s$responses) {
+      b <- bf[[v]]
+      if (!is.null(b$err)) next
+      m <- if (b$sug$method %in% trans_ok(b)) b$sug$method else "none"
+      rv$trans[[v]] <- m
+      updateSelectInput(session, paste0("tr_", s$ver, "_", match(v, names(s$d))), selected = m)
+    }
+  })
+
+  output$aRespUI <- renderUI({
+    r <- ok(); keep <- isolate(input$aResp)
+    selectInput("aResp", "Show the checks for", names(r$fits),
+                selected = if (isTRUE(keep %in% names(r$fits))) keep else names(r$fits)[1])
+  })
+  aFit <- reactive(fit_of(ok(), input$aResp))
+
+  output$asmSummary <- renderUI({
+    f <- aFit()
+    HTML(paste0("<div class='slx-scroll'>",
+                assum_summary_html(assum_summary(f, rv$nature[[f$resp]] %||% "auto"),
+                                   if (identical(f$trans, "none")) f$resp else sprintf("%s, analysed on %s", f$resp, TRANS[[f$trans]]$lab)),
+                "</div><div class='note'>Tested: a check made from the data, at the ", pct(f$final$alpha),
+                "% level. Visual check: judged from the plots below. Design requirement: cannot be tested from the data; ",
+                "it rests on how the experiment was laid out and run.</div>"))
+  })
+  output$assumtxt <- renderUI(HTML(assum_table_html(aFit()$asm)))
+  output$asmText <- renderUI({ f <- aFit(); HTML(rd_html(assum_text(f$final, f$asm, f$trans), "What the checks show.")) })
+  ## each plot's note, empty when the plot cannot be drawn (it says why)
+  output$bcText <- renderUI({ f <- aFit(); HTML(rd_note(boxcox_text(f$asm, f$trans))) })
+  output$mvText <- renderUI({ f <- aFit(); HTML(rd_note(meanvar_text(f$final, f$asm))) })
+  output$diagFitText   <- renderUI({ f <- aFit(); HTML(rd_note(resid_text(f$final, f$asm))) })
+  output$diagQQText    <- renderUI({ f <- aFit(); HTML(rd_note(qq_aov_text(f$final, f$asm))) })
+  output$diagHistText  <- renderUI({ f <- aFit(); HTML(rd_note(hist_aov_text(f$final, f$asm))) })
+  output$diagScaleText <- renderUI({ f <- aFit(); HTML(rd_note(scale_text(f$final, f$asm))) })
+  output$diagCookText  <- renderUI({ f <- aFit(); HTML(rd_note(cooks_text(f$final))) })
+
+  output$sugbox <- renderUI({
+    f <- aFit()
+    div(class = if (identical(f$sug$method, "none")) "sugbox" else "warn",
+        HTML(sprintf("<b>Suggested transformation%s: %s.</b> %s%s",
+          if (identical(f$trans, "none")) "" else ", judged on the values as entered",
+          TRANS[[f$sug$method]]$lab, esc(f$sug$why),
+          if (identical(f$trans, "none")) {
+            if (identical(f$sug$method, "none")) ""
+            else " <br>It is not applied: choose it above, for this response, to analyse on that scale. A transformation does not guarantee the assumptions; check the plots again after applying it."
+          } else sprintf("<br><b>Applied:</b> %s; the checks on this tab are on that scale.", TRANS[[f$trans]]$lab))))
+  })
+
+  ## ---------------------------------------------------------- the graphs --
+  ## Every graph is drawn by a function kept here as well, so its download
+  ## button can draw it again for the file: the same plot, at print size.
+  plots <- new.env(parent = emptyenv())
+  plot_out <- function(id, fun, what, resp = NULL) {
+    plots[[id]] <- list(fun = fun, what = what, resp = resp)
+    output[[id]] <- renderPlot(fun())
+  }
+
+  plot_out("bcPlot", function() {
+    a <- aFit()$asm
+    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no Box-Cox profile to draw."))
+    p <- plot_boxcox(a)
+    validate(need(!is.null(p), "The Box-Cox profile needs a strictly positive response."))
+    p }, "box-cox-profile", function() aFit()$resp)
+  plot_out("mvPlot", function() {
+    a <- aFit()$asm
+    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no error variance to relate to the mean."))
+    p <- plot_meanvar(a)
+    validate(need(!is.null(p), "Too few cells with a positive mean and variance to estimate the mean-variance slope."))
+    p }, "mean-variance", function() aFit()$resp)
+  ## plot_diag() returns four plots; a single renderPlot() would print each in
+  ## turn and show only the last, so each gets its own output. An exact fit has
+  ## only rounding residue for residuals, which is not drawn as if it were data.
+  diag_plots <- reactive({
+    f <- aFit()
+    validate(need(!isTRUE(f$asm$exact), "The model fits every value exactly, so there are no residuals to plot."))
+    plot_diag(f$final)
+  })
+  plot_out("diagFit",   function() diag_plots()[[1]], "residuals-vs-fitted", function() aFit()$resp)
+  plot_out("diagQQ",    function() diag_plots()[[2]], "residual-qq-plot", function() aFit()$resp)
+  plot_out("diagHist",  function() diag_plots()[[3]], "residual-histogram", function() aFit()$resp)
+  plot_out("diagScale", function() diag_plots()[[4]], "scale-location", function() aFit()$resp)
+  plot_out("diagCook",  function() {
+    f <- aFit()
+    validate(need(!isTRUE(f$asm$exact), "The model fits every value exactly, so no plot can change the fit."))
+    p <- plot_cooks(f$final)
+    validate(need(!is.null(p), "Cook's distance is not defined for any plot here."))
+    p }, "cooks-distance", function() aFit()$resp)
+
+  ## ------------------------------------------------------------------ ANOVA --
   output$runNote <- renderUI({
     r <- res()
-    if (!is.null(r$err)) return(div(class = "err", r$err,
-      if (grepl("left out of this analysis", r$err, fixed = TRUE) &&
-          grepl("decimal comma|not a number|% sign|unit after|thousands separator|read two ways", r$err))
-        p("The data check on the Data tab lists these entries and corrects those it safely can; correct the others in the table, then run the analysis again.") else NULL))
+    errs <- if (length(r$errors)) div(class = "err", HTML(paste0(
+      "<b>Not analysed.</b><ul>", paste0("<li><b>", esc(names(r$errors)), ":</b> ", esc(unlist(r$errors)), "</li>", collapse = ""),
+      "</ul>", if (any(grepl("left out of this analysis", unlist(r$errors), fixed = TRUE)))
+        "<p>The data check on the Data tab lists the entries left out and corrects those it safely can.</p>" else "")))
+    if (!length(r$fits)) return(errs)
     ## each response's own count and CV: a response with rows left out is
     ## analysed on fewer observations than the others
     nobs <- vapply(r$fits, function(f) nrow(f$final$data), 0L)
-    cvs <- vapply(r$fits, function(f) paste(sprintf("%s = %s", names(f$final$cv), fmt(f$final$cv, 2)),
-                                           collapse = " | "), "")
     unb <- Filter(function(f) !f$final$balanced, r$fits)
+    sug <- Filter(function(f) identical(f$trans, "none") && !identical(f$sug$method, "none") && !isTRUE(f$sug$optional), r$fits)
     tagList(
-      div(class = "box", HTML(sprintf(
-        "<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %s &nbsp;|&nbsp; %s",
+      errs,
+      div(class = "box", HTML(sprintf("<b>%s</b> &nbsp;|&nbsp; %d response variable(s) &nbsp;|&nbsp; %s",
         names(DESIGNS)[match(r$design, DESIGNS)], length(r$fits),
         if (length(unique(nobs)) == 1) sprintf("%d observations", nobs[1])
-        else paste(sprintf("%s: %d observations", vapply(r$fits, `[[`, "", "header"), nobs), collapse = ", "),
-        if (length(r$fits) == 1) cvs[1]
-        else paste(sprintf("%s: %s", vapply(r$fits, `[[`, "", "header"), cvs), collapse = " &nbsp;|&nbsp; ")))),
+        else paste(sprintf("%s: %d observations", vapply(r$fits, `[[`, "", "header"), nobs), collapse = ", ")))),
+      if (length(sug)) div(class = "warn", HTML(sprintf(paste(
+        "<b>A transformation is suggested</b> for %s but not applied: the analysis below is of the values as entered.",
+        "Choose it on the Assumptions &amp; Diagnostics tab if you decide to use it."),
+        join_and(sprintf("%s (%s)", vapply(sug, `[[`, "", "resp"), vapply(sug, function(f) TRANS[[f$sug$method]]$lab, "")))))),
       ## rows left out, response by response, so no plot disappears unnoticed
       {
         ex <- Filter(nzchar, vapply(r$fits, function(f) {
@@ -358,7 +573,7 @@ doepro_server <- function(input, output, session) {
           FCRD = "the treatment combinations have unequal numbers of replications. ",
           LSD = "a plot is missing from the Latin square. ",
           "a plot is missing from a block, or the treatments are unequally replicated. "),
-        "Each mean is given its own standard error, and each pair of means its own SE(d) and C.D.",
+        "Each mean is given its own standard error, and each pair of means its own SE(d).",
         if (any(vapply(unb, function(f) isTRUE(f$final$adjusted_ss), logical(1))))
           " The means are adjusted (least-squares) means, and each ANOVA term is tested after allowing for every other term (Type III)."
         else ""))) else NULL,
@@ -377,166 +592,211 @@ doepro_server <- function(input, output, session) {
       }))
   })
 
+  ## the note that leads from the main effects to the cell means
+  inter_alert <- function(f) {
+    t <- inter_alert_text(f$final)
+    if (nzchar(t)) div(class = "warn", HTML(t)) else NULL
+  }
+
   output$anovaOut <- renderUI({
     r <- ok()
-    anv <- combined_anova_html(r)
-    tagList(
-      if (!is.null(anv)) HTML(paste0(anv, rd_html(anova_combined_text(r)))) else NULL,
-      tags$hr(),
-      HTML(paste(vapply(names(r$fits), function(nm) paste0(
-        "<h4>", r$fits[[nm]]$header, "</h4>",
-        df_html(anova_display(r$fits[[nm]]$final$anova, r$alpha)),
-        anova_note(r$fits[[nm]]$final),
-        rd_html(anova_text(r$fits[[nm]]$final, r$fits[[nm]]$trans))), character(1)), collapse = "")))
+    tagList(lapply(names(r$fits), function(nm) {
+      f <- r$fits[[nm]]
+      div(class = "slx-card",
+          h3(class = "slx-card-h", anova_heading(f$header)),
+          HTML(paste0("<div class='slx-scroll'>", df_html(anova_show(f$final$anova, r$alpha)), "</div>")),
+          HTML(anova_note(f$final)),
+          inter_alert(f),
+          HTML(rd_html(anova_text(f$final, f$trans), "What the table shows.")))
+    }))
   })
 
-  ## ------------------------------------------------------------------ means --
-  output$meansOut <- renderUI({
+  ## ---------------------------------------------------- means and comparisons --
+  output$cmpRespUI <- renderUI({
+    r <- ok(); ch <- names(r$fits)
+    keep <- intersect(isolate(input$cmpResp), ch)
+    selectizeInput("cmpResp", "Response(s)", ch, selected = if (length(keep)) keep else ch, multiple = TRUE)
+  })
+  ## the analysis restricted to the responses chosen on this tab
+  cmp_rr <- reactive({
     r <- ok()
-    HTML(means_section_html(r, digits = input$digits %||% 2,
-                            letters_on = isTRUE(input$letters),
-                            detailed = isTRUE(input$detailed), readings = TRUE))
+    v <- intersect(input$cmpResp, names(r$fits))
+    if (!length(v)) v <- names(r$fits)
+    r$fits <- r$fits[v]
+    r
   })
 
-  ## --------------------------------------------------- per-response pickers --
-  output$aRespUI  <- renderUI({ r <- ok(); selectInput("aResp",  "Response variable", names(r$fits)) })
-  output$aRespUI2 <- renderUI({ r <- ok(); selectInput("aResp2", "Response variable", names(r$fits)) })
-  output$aRespUI3 <- renderUI({ r <- ok(); selectInput("aResp3", "Response variable", names(r$fits)) })
-
-  aFit <- reactive({ r <- ok(); r$fits[[input$aResp  %||% names(r$fits)[1]]] })
-  pFit <- reactive({ r <- ok(); r$fits[[input$aResp2 %||% names(r$fits)[1]]] })
-  gFit <- reactive({ r <- ok(); r$fits[[input$aResp3 %||% names(r$fits)[1]]] })
-
-  ## ------------------------------------------------------------ assumptions --
-  output$assumtxt <- renderUI(HTML(assum_table_html(aFit()$asm)))
-  output$asmText <- renderUI({ f <- aFit(); HTML(rd_html(assum_text(f$final, f$asm, f$trans), "What the checks show.")) })
-  ## each plot's note, empty when the plot cannot be drawn (it says why)
-  output$bcText <- renderUI({ f <- aFit(); HTML(rd_note(boxcox_text(f$asm, f$trans))) })
-  output$mvText <- renderUI({ f <- aFit(); HTML(rd_note(meanvar_text(f$final, f$asm))) })
-  output$diagFitText   <- renderUI({ f <- aFit(); HTML(rd_note(resid_text(f$final, f$asm))) })
-  output$diagQQText    <- renderUI({ f <- aFit(); HTML(rd_note(qq_aov_text(f$final, f$asm))) })
-  output$diagHistText  <- renderUI({ f <- aFit(); HTML(rd_note(hist_aov_text(f$final, f$asm))) })
-  output$diagScaleText <- renderUI({ f <- aFit(); HTML(rd_note(scale_text(f$final, f$asm))) })
-
-  output$sugbox <- renderUI({
-    f <- aFit()
-    div(class = if (identical(f$sug$method, "none")) "sugbox" else "warn",
-        HTML(sprintf("<b>Suggested transformation%s: %s.</b> %s%s",
-          if (identical(f$trans, "none")) "" else ", judged on the values as entered",
-          TRANS[[f$sug$method]]$lab, f$sug$why,
-          if (identical(f$trans, "none")) ""
-          else sprintf("<br><b>Applied:</b> %s; the checks on this tab are on that scale.", TRANS[[f$trans]]$lab))))
+  output$phEffectUI <- renderUI({
+    r <- ok(); ef <- r$fits[[1]]$final$effects
+    keep <- isolate(input$phEff)
+    selectInput("phEff", "Effect to compare in detail",
+                stats::setNames(names(ef), vapply(ef, `[[`, "", "label")),
+                selected = if (isTRUE(keep %in% names(ef))) keep else names(ef)[1])
+  })
+  ph_effect <- reactive({
+    r <- ok(); ef <- r$fits[[1]]$final$effects
+    if (isTRUE(input$phEff %in% names(ef))) input$phEff else names(ef)[1]
   })
 
-  output$bcPlot <- renderPlot({
-    a <- aFit()$asm
-    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no Box-Cox profile to draw."))
-    p <- plot_boxcox(a)
-    validate(need(!is.null(p), "The Box-Cox profile needs a strictly positive response."))
-    p })
-  output$mvPlot <- renderPlot({
-    a <- aFit()$asm
-    validate(need(!isTRUE(a$exact), "The model fits every value exactly, so there is no error variance to relate to the mean."))
-    p <- plot_meanvar(a)
-    validate(need(!is.null(p), "Too few cells with a positive mean and variance to estimate the mean-variance slope."))
-    p })
-  ## plot_diag() returns four plots; a single renderPlot() would print each in
-  ## turn and show only the last, so each gets its own output. An exact fit has
-  ## only rounding residue for residuals, which is not drawn as if it were data.
-  diag_plots <- reactive({
-    f <- aFit()
-    validate(need(!isTRUE(f$asm$exact), "The model fits every value exactly, so there are no residuals to plot."))
-    plot_diag(f$final)
+  ## an interaction of a design with one error term may be compared within
+  ## the levels of one of its factors (simple effects)
+  output$phByUI <- renderUI({
+    r <- ok(); e <- r$fits[[1]]$final$effects[[ph_effect()]]
+    if (is.null(e) || length(e$vars) < 2) return(NULL)
+    if (!is.null(e$slice))
+      return(div(class = "note", sprintf("These means are compared within each level of %s, the only comparisons that share one error term.", e$slice)))
+    if (!is.null(e$mix))
+      return(div(class = "note", "Every pair of these means is compared, each with the SE(d) of the factors in which the two differ."))
+    keep <- isolate(input$phBy %||% "")
+    ch <- c("All the cell means together" = "", stats::setNames(e$vars, paste("Within each level of", e$vars)))
+    radioButtons("phBy", "Compare the cell means", ch, selected = if (keep %in% ch) keep else "")
   })
-  output$diagFit   <- renderPlot(diag_plots()[[1]])
-  output$diagQQ    <- renderPlot(diag_plots()[[2]])
-  output$diagHist  <- renderPlot(diag_plots()[[3]])
-  output$diagScale <- renderPlot(diag_plots()[[4]])
-
-  ## ---------------------------------------------------------------- posthoc --
-  output$phEffectUI <- renderUI(selectInput("phEff", "Effect", names(pFit()$final$effects)))
-
-  ## the post-hoc tests run at the level the analysis was run at, so the
-  ## letters here and in the tables of means always mean the same thing; and,
-  ## as everywhere, no letters or verdicts are shown under a non-significant F
-  ph <- reactive({
-    f <- pFit(); req(input$phEff)
-    validate(need(input$phEff %in% names(f$final$effects), "Choose an effect."))
-    ## just after the effect changes the control can still name a level of
-    ## the previous one; the first level stands in until the selector updates
-    ctrl <- NULL
-    if (identical(input$phMethod, "Dunnett")) {
-      lv <- dunnett_levels(f$final$effects[[input$phEff]])
-      ctrl <- if (isTRUE(input$phControl %in% lv)) input$phControl else lv[1]
-    }
-    tryCatch(gate_posthoc(posthoc(f$final, input$phEff, input$phMethod, f$final$alpha,
-                                  control = ctrl, alternative = input$phAlt %||% "two.sided")),
-             error = function(e) list(err = conditionMessage(e)))
+  ph_by <- reactive({
+    r <- ok(); e <- r$fits[[1]]$final$effects[[ph_effect()]]
+    b <- input$phBy %||% ""
+    if (nzchar(b) && !is.null(e) && b %in% e$vars && is.null(e$slice) && is.null(e$mix)) b else NULL
   })
 
   ## the control is chosen from the levels the comparisons run over; a level
   ## with no number (Control, Check) comes first in their natural order
   output$phControlUI <- renderUI({
-    f <- pFit(); req(input$phEff %in% names(f$final$effects))
-    lv <- dunnett_levels(f$final$effects[[input$phEff]])
+    r <- ok(); e <- r$fits[[1]]$final$effects[[ph_effect()]]
+    req(e)
+    lv <- dunnett_levels(effect_by(e, ph_by()))
     keep <- isolate(input$phControl %||% "")
     selectInput("phControl", "Control", lv, selected = if (keep %in% lv) keep else lv[1])
   })
 
-  output$phNote <- renderUI({
-    x <- ph()
-    if (!is.null(x$err)) return(div(class = "err", x$err))
-    e <- pFit()$final$effects[[input$phEff]]
-    tagList(
-      div(class = "box", HTML(if (is.null(e$mix)) sprintf(
-        "Comparisons use the error term of <b>%s</b>: MSE = %s on %s degrees of freedom, at the %s%% significance level.",
-        e$label, fmt(e$mse, 4), df_text(e$df), pct(e$alpha))
-        else sprintf(paste("Comparisons of <b>%s</b> means use, for each pair, the environment interactions of the factors",
-                           "in which the two differ, with Satterthwaite's degrees of freedom for each pair, at the %s%% significance level."),
-                     e$label, pct(e$alpha)))),
-      if (!is.null(x$note)) div(class = "warn", HTML(paste(x$note, collapse = "<br><br>"))) else NULL)
+  ## The comparison chosen, as every table, plot and export follows it. Just
+  ## after the effect changes the control can still name a level of the
+  ## previous one; the first level stands in until the selector updates.
+  cmp_now <- reactive({
+    m <- input$phMethod %||% "none"
+    if (!m %in% CMP_CHOICES) m <- "none"
+    ctrl <- NULL
+    if (identical(m, "Dunnett")) {
+      r <- ok(); e <- r$fits[[1]]$final$effects[[ph_effect()]]
+      lv <- dunnett_levels(effect_by(e, ph_by()))
+      ctrl <- if (isTRUE(input$phControl %in% lv)) input$phControl else lv[1]
+    }
+    comparison(m, control = ctrl, alternative = input$phAlt %||% "two.sided", effect = ph_effect())
   })
 
-  output$phTab <- renderDT({
-    x <- ph(); validate(need(is.null(x$err), x$err))
-    formatRound(datatable(x$groups, rownames = FALSE,
-                          options = list(pageLength = 25, dom = "tp")),
-                intersect(c("Mean", "Unadjusted mean", "SE"), names(x$groups)), 3)
+  output$meansOut <- renderUI({
+    HTML(means_section_html(cmp_rr(), digits = input$digits %||% 2, cmp = cmp_now(),
+                            detailed = isTRUE(input$detailed), readings = TRUE))
   })
 
-  output$phPairs <- renderDT({
-    x <- ph(); validate(need(is.null(x$err), x$err))
-    formatRound(datatable(x$pairs, rownames = FALSE,
-                          options = list(pageLength = 15, dom = "tp", scrollX = TRUE)),
-                c("Difference", "SEd", "Critical value", "Critical difference"), 3)
+  output$phOut <- renderUI({
+    r <- cmp_rr(); cmp <- cmp_now(); eff <- ph_effect()
+    e <- r$fits[[1]]$final$effects[[eff]]
+    head <- sprintf("<div class='ms-h'><span class='ms-badge'>D</span>Comparisons of %s</div>", esc(e$label))
+    if (identical(cmp$kind, "none"))
+      return(HTML(paste0("<div class='ms-section'>", head,
+        "<div class='note'>Choose how to compare the means (left): the critical difference, a procedure that ",
+        "gives letters, or Dunnett's test against a control. The tables above then show its result, and every ",
+        "comparison is listed here.</div></div>")))
+    HTML(paste0("<div class='ms-section'>", head,
+                paste(vapply(names(r$fits), function(nm) cmp_effect_html(r$fits[[nm]], eff, cmp, ph_by()), ""), collapse = ""),
+                "</div>"))
   })
 
-  output$phStats <- renderDT({
-    x <- ph(); validate(need(is.null(x$err), x$err))
-    datatable(x$stats, rownames = FALSE, options = list(dom = "t", ordering = FALSE))
+  ## ------------------------------------------------------------------ plots --
+  output$aRespUI3 <- renderUI({
+    r <- ok(); keep <- isolate(input$aResp3)
+    selectInput("aResp3", "Response variable", names(r$fits),
+                selected = if (isTRUE(keep %in% names(r$fits))) keep else names(r$fits)[1])
+  })
+  gFit <- reactive(fit_of(ok(), input$aResp3))
+  output$plEffectUI <- renderUI({
+    ef <- gFit()$final$effects; keep <- isolate(input$plEff)
+    selectInput("plEff", "Effect", stats::setNames(names(ef), vapply(ef, `[[`, "", "label")),
+                selected = if (isTRUE(keep %in% names(ef))) keep else names(ef)[1])
   })
 
-  ## what the chosen test does, and what it finds here
-  output$phText <- renderUI({
-    x <- ph(); req(is.null(x$err))
-    f <- pFit(); e <- f$final$effects[[input$phEff]]
-    HTML(sprintf("<div class='box'><b>What the test does.</b> %s<br><b>Here.</b> %s</div>",
-                 esc(PH_WHAT[[input$phMethod]]), esc(posthoc_groups_text(x, e, f$trans, isTRUE(f$asm$exact)))))
-  })
-  output$phPairsText <- renderUI({
-    x <- ph(); req(is.null(x$err))
-    f <- pFit(); e <- f$final$effects[[input$phEff]]
-    lsd <- if (isTRUE(x$f_sig) && input$phMethod != PH_METHODS[1])
-      tryCatch(posthoc(f$final, input$phEff, PH_METHODS[1], f$final$alpha), error = function(err) NULL)
-    HTML(rd_html(posthoc_pairs_text(x, e, input$phMethod, lsd, isTRUE(f$asm$exact))))
+  ## for an interaction, which factor runs along the X-axis: the app suggests
+  ## the time factor (or a quantitative one) and the user can change it
+  output$plXUI <- renderUI({
+    f <- gFit(); req(input$plEff)
+    e <- f$final$effects[[input$plEff]]
+    if (is.null(e) || length(e$vars) < 2) return(NULL)
+    selectInput("plX", "Factor on the X-axis", e$vars, selected = default_x(e, f$final$data))
   })
 
-  output$phRangesUI <- renderUI({
-    x <- ph()
-    if (!is.null(x$err) || is.null(x$ranges)) return(NULL)
-    tagList(h4("Critical ranges"), HTML(df_html(x$ranges)),
-      div(class = "note",
-          "p is the number of means spanned by the comparison once the means are ranked in order."))
+  ## When the effect changes, input$plX still holds the previous effect's
+  ## choice until the new selector reports back. Remember which effect the
+  ## choice was made for, and use the default until the two agree, so a stale
+  ## choice never draws the wrong axis.
+  plx_for <- reactiveVal(NULL)
+  observeEvent(input$plX, plx_for(isolate(input$plEff)))
+
+  ## letters on a plot only from a procedure that gives letters, the one
+  ## chosen on the Means & Comparisons tab
+  output$plLettersUI <- renderUI({
+    cmp <- cmp_now()
+    if (identical(cmp$kind, "letters"))
+      checkboxInput("plLetters", sprintf("Show the letters of %s", CMP_NAME[[cmp$method]]), isolate(input$plLetters) %||% TRUE)
+    else div(class = "note", paste("Letters appear here when the means are compared by a procedure that gives letters",
+                                   "(Tukey's HSD, for instance) on the Means & Comparisons tab."))
+  })
+  plot_letters <- function(f, eff) {
+    cmp <- cmp_now()
+    if (!identical(cmp$kind, "letters") || !isTRUE(input$plLetters)) return(NULL)
+    cmp_letters(f$final, eff, cmp)$letters
+  }
+
+  mp <- reactive({
+    f <- gFit(); req(input$plEff)
+    validate(need(input$plEff %in% names(f$final$effects), "Choose an effect."))
+    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
+    cmp <- cmp_now()
+    plot_main(f$final, input$plEff, input$plType, plot_letters(f, input$plEff), xv,
+              method = if (identical(cmp$kind, "letters")) CMP_NAME[[cmp$method]] else NULL)
+  })
+  plot_out("mainPlot", function() mp(), function() paste0("means-", input$plType %||% "bar"), function() gFit()$resp)
+  output$mainPlotText <- renderUI({
+    f <- gFit(); req(input$plEff %in% names(f$final$effects))
+    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
+    lets <- if (is.null(plot_letters(f, input$plEff))) FALSE else CMP_NAME[[cmp_now()$method]]
+    HTML(rd_note(main_plot_text(f$final, input$plEff, input$plType, lets, xv, input$digits %||% 2)))
+  })
+
+  ## the interaction plots: any effect of two or more factors
+  output$ipRespUI <- renderUI({
+    r <- ok(); keep <- isolate(input$ipResp)
+    selectInput("ipResp", "Response variable", names(r$fits),
+                selected = if (isTRUE(keep %in% names(r$fits))) keep else names(r$fits)[1])
+  })
+  iFit <- reactive(fit_of(ok(), input$ipResp))
+  inter_effects <- reactive({
+    ef <- iFit()$final$effects
+    ef[vapply(ef, function(e) length(e$vars) >= 2, logical(1))]
+  })
+  output$ipEffectUI <- renderUI({
+    ef <- inter_effects()
+    if (!length(ef)) return(div(class = "note", "This design has no interaction of two or more factors to plot."))
+    keep <- isolate(input$ipEff)
+    selectInput("ipEff", "Interaction", stats::setNames(names(ef), vapply(ef, `[[`, "", "label")),
+                selected = if (isTRUE(keep %in% names(ef))) keep else names(ef)[1])
+  })
+  ip_effect <- reactive({
+    ef <- inter_effects(); req(length(ef) > 0)
+    if (isTRUE(input$ipEff %in% names(ef))) input$ipEff else names(ef)[1]
+  })
+  output$ipXUI <- renderUI({
+    f <- iFit(); e <- f$final$effects[[ip_effect()]]
+    selectInput("ipX", "Factor on the X-axis", e$vars, selected = default_x(e, f$final$data))
+  })
+  ipx_for <- reactiveVal(NULL)
+  observeEvent(input$ipX, ipx_for(isolate(ip_effect())))
+  ip_x <- reactive(if (identical(ipx_for(), ip_effect())) input$ipX else NULL)
+  plot_out("interPlot", function() {
+    f <- iFit()
+    plot_interaction(f$final, ip_effect(), ip_x(), isTRUE(input$ipCI))
+  }, "interaction-plot", function() iFit()$resp)
+  output$interPlotText <- renderUI({
+    f <- iFit()
+    HTML(rd_note(interaction_text(f$final, ip_effect(), ip_x(), isTRUE(input$ipCI), input$digits %||% 2)))
   })
 
   ## ---------------------------------------------------------- descriptives --
@@ -547,7 +807,7 @@ doepro_server <- function(input, output, session) {
     d <- rv$data; req(d)
     num <- chk()$numeric
     validate(need(length(num) > 0, "No column holds numbers."))
-    used <- tryCatch({ m <- mapping(); unlist(m[setdiff(names(m), "response")]) },
+    used <- tryCatch({ m <- map_partial(); unlist(m[setdiff(names(m), "response")]) },
                      error = function(e) character(0))
     def <- explore_defaults(num, used)
     ## the sidebar is drawn again when the data or the design mapping change;
@@ -621,10 +881,10 @@ doepro_server <- function(input, output, session) {
       paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading))
       else esc(t$reading)))
   })
-  output$descHist <- renderPlot(desc_plot(plot_hist(rv$data, desc_v()), "hist"))
-  output$descDens <- renderPlot(desc_plot(plot_density(rv$data, desc_v()), "density"))
-  output$descBox  <- renderPlot(desc_plot(plot_box(rv$data, desc_v(), desc_group()), "box"))
-  output$descQQ   <- renderPlot(desc_plot(plot_qq(rv$data, desc_v()), "qq"))
+  plot_out("descHist", function() desc_plot(plot_hist(rv$data, desc_v()), "hist"), "histogram", function() desc_v())
+  plot_out("descDens", function() desc_plot(plot_density(rv$data, desc_v()), "density"), "density", function() desc_v())
+  plot_out("descBox", function() desc_plot(plot_box(rv$data, desc_v(), desc_group()), "box"), "box-plot", function() desc_v())
+  plot_out("descQQ", function() desc_plot(plot_qq(rv$data, desc_v()), "qq"), "qq-plot", function() desc_v())
   output$descHistText <- desc_note("hist")
   output$descDensText <- desc_note("density")
   output$descBoxText  <- desc_note("box")
@@ -632,7 +892,7 @@ doepro_server <- function(input, output, session) {
 
   observeEvent(input$dl_desc, {
     tab <- tryCatch(desc_tab(), error = function(e) NULL); req(tab)
-    save_browser(paste0("DOEpro_descriptives_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
+    save_browser(paste0("StatLabX_descriptives_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
   })
 
   ## ------------------------------------------------------------ correlation --
@@ -644,7 +904,7 @@ doepro_server <- function(input, output, session) {
   ## fewer than two columns to start from
   cor_default <- reactive({
     num <- chk()$numeric
-    used <- tryCatch({ m <- mapping(); unlist(m[setdiff(names(m), "response")]) },
+    used <- tryCatch({ m <- map_partial(); unlist(m[setdiff(names(m), "response")]) },
                      error = function(e) character(0))
     def <- setdiff(num, used)
     def[!is_id_name(def)]
@@ -694,7 +954,7 @@ doepro_server <- function(input, output, session) {
   })
   output$corText <- renderUI(div(class = "box", HTML(paste0("<b>What the table shows.</b> ", esc(cor_text(cor_tab()))))))
   output$corPairs <- renderUI(HTML(cor_pairs_html(cor_tab())))
-  output$corHeat <- renderPlot(plot_cor_heat(cor_tab(), cor_vars()))
+  plot_out("corHeat", function() plot_cor_heat(cor_tab(), cor_vars()), "correlation-heat-map", NULL)
   output$corHeatText <- renderUI({
     t <- cor_heat_text(cor_tab(), length(cor_vars()))
     div(class = "note", HTML(paste0("<b>What it shows.</b> ", esc(t$what), "<br><b>Here.</b> ", esc(t$reading))))
@@ -704,12 +964,12 @@ doepro_server <- function(input, output, session) {
     req(input$corX %in% num, input$corY %in% num)
     c(input$corX, input$corY)
   })
-  output$corScatter <- renderPlot({
+  plot_out("corScatter", function() {
     xy <- cor_xy()
     p <- plot_cor_scatter(rv$data, xy[1], xy[2], cor_method(), cor_alpha())
     validate(need(!is.null(p), cor_scatter_text(rv$data, xy[1], xy[2], cor_method(), cor_alpha())$reading))
     p
-  })
+  }, "scatter-plot", function() paste(cor_xy(), collapse = "-vs-"))
   output$corScatterText <- renderUI({
     xy <- cor_xy()
     t <- cor_scatter_text(rv$data, xy[1], xy[2], cor_method(), cor_alpha())
@@ -721,7 +981,7 @@ doepro_server <- function(input, output, session) {
     tab <- tryCatch(cor_tab(), error = function(e) NULL); req(tab)
     out <- tab; attr(out, "method") <- NULL; attr(out, "alpha") <- NULL
     out$Method <- COR_NAMES[[cor_method()]]; out$alpha <- cor_alpha()
-    save_browser(paste0("DOEpro_correlation_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_correlation_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
   ## ------------------------------------------------------------- regression --
@@ -733,7 +993,7 @@ doepro_server <- function(input, output, session) {
   ## sidebar is drawn again.
   reg_defaults <- reactive({
     num <- chk()$numeric
-    m <- tryCatch(mapping(), error = function(e) list())
+    m <- tryCatch(map_partial(), error = function(e) list())
     used <- unlist(m[setdiff(names(m), "response")])
     def <- setdiff(num, used); def <- def[!is_id_name(def)]
     resp <- c(intersect(m$response, def), rev(def))[1]
@@ -788,28 +1048,28 @@ doepro_server <- function(input, output, session) {
   output$regText  <- renderUI(div(class = "box", HTML(paste0("<b>What the model shows.</b> ", esc(reg_text(reg_res()))))))
   output$regAnova <- renderUI(HTML(reg_anova_html(reg_res())))
   output$regChecks <- renderUI(HTML(reg_checks_html(reg_res())))
-  output$regMain <- renderPlot(plot_reg_main(reg_res(), input$regShow))
+  plot_out("regMain", function() plot_reg_main(reg_res(), input$regShow), "regression", function() reg_res()$response)
   output$regMainText <- renderUI(reg_note(reg_main_text(reg_res(), input$regShow)))
-  output$regResid <- renderPlot({
+  plot_out("regResid", function() {
     r <- reg_res(); p <- plot_reg_resid(r)
     validate(need(!is.null(p), reg_resid_text(r)$reading))
     p
-  })
+  }, "regression-residuals", function() reg_res()$response)
   output$regResidText <- renderUI(reg_note(reg_resid_text(reg_res())))
-  output$regQQ <- renderPlot({
+  plot_out("regQQ", function() {
     r <- reg_res(); p <- plot_reg_qq(r)
     validate(need(!is.null(p), reg_qq_text(r)$reading))
     p
-  })
+  }, "regression-qq-plot", function() reg_res()$response)
   output$regQQText <- renderUI(reg_note(reg_qq_text(reg_res())))
-  output$regObs <- renderPlot(plot_reg_obs(reg_res()))
+  plot_out("regObs", function() plot_reg_obs(reg_res()), "observed-vs-predicted", function() reg_res()$response)
   output$regObsText <- renderUI(reg_note(reg_obs_text(reg_res())))
 
   observeEvent(input$dl_reg, {
     r <- tryCatch(reg_res(), error = function(e) NULL); req(r)
     out <- r$coefficients
     out$Response <- r$response; out$alpha <- r$alpha
-    save_browser(paste0("DOEpro_regression_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_regression_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
   ## -------------------------------------------------------- principal components --
@@ -827,7 +1087,7 @@ doepro_server <- function(input, output, session) {
   output$pcaGroupUI <- renderUI({
     d <- rv$data; req(d)
     grp <- group_choices(d)
-    m <- tryCatch(mapping(), error = function(e) list())
+    m <- tryCatch(map_partial(), error = function(e) list())
     ## intersect() gives NULL when nothing is mapped yet, so the first match
     ## is taken with a fallback rather than indexed
     first <- c(intersect(c(m$treat, m$factors, m$main), grp), "")[1]
@@ -874,19 +1134,19 @@ doepro_server <- function(input, output, session) {
   output$pcaEigen <- renderUI(HTML(pca_eigen_html(pca_res())))
   output$pcaText <- renderUI(div(class = "box", HTML(paste0("<b>What the analysis shows.</b> ", esc(pca_text(pca_res()))))))
   output$pcaLoadings <- renderUI(HTML(pca_loadings_html(pca_res())))
-  output$pcaScree <- renderPlot(plot_pca_scree(pca_res()))
+  plot_out("pcaScree", function() plot_pca_scree(pca_res()), "pca-scree-plot", NULL)
   output$pcaScreeText <- renderUI(pca_note(pca_scree_text(pca_res())))
-  output$pcaScores <- renderPlot({
+  plot_out("pcaScores", function() {
     p <- pca_res(); validate(need(p$m >= 2, "Only one component has any variance, so there is nothing to plot against it."))
     plot_pca_scores(p, pca_ax(), pca_grp())
-  })
+  }, "pca-scores", NULL)
   output$pcaScoresText <- renderUI({
     p <- pca_res(); req(p$m >= 2)
     pca_note(pca_scores_text(p, pca_ax(), pca_grp(), input$pcaGroup))
   })
-  output$pcaLoadPlot <- renderPlot({ p <- pca_res(); req(p$m >= 2); plot_pca_loadings(p, pca_ax()) })
+  plot_out("pcaLoadPlot", function() { p <- pca_res(); req(p$m >= 2); plot_pca_loadings(p, pca_ax()) }, "pca-loadings", NULL)
   output$pcaLoadText <- renderUI({ p <- pca_res(); req(p$m >= 2); pca_note(pca_loadings_text(p, pca_ax())) })
-  output$pcaBiplot <- renderPlot({ p <- pca_res(); req(p$m >= 2); plot_pca_biplot(p, pca_ax(), pca_grp()) })
+  plot_out("pcaBiplot", function() { p <- pca_res(); req(p$m >= 2); plot_pca_biplot(p, pca_ax(), pca_grp()) }, "pca-biplot", NULL)
   output$pcaBiplotText <- renderUI({ p <- pca_res(); req(p$m >= 2); pca_note(pca_biplot_text(p, pca_ax())) })
   output$pcaScoreTable <- renderUI(HTML(pca_scores_html(pca_res())))
   observeEvent(input$dl_pca_load, {
@@ -894,12 +1154,12 @@ doepro_server <- function(input, output, session) {
     out <- data.frame(Variable = p$vars, round(p$loadings, 6), check.names = FALSE)
     names(out)[-1] <- paste0(colnames(p$loadings), "_loading")
     out <- cbind(out, stats::setNames(as.data.frame(round(p$vectors, 6)), paste0(colnames(p$vectors), "_eigenvector")))
-    save_browser(paste0("DOEpro_pca_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_pca_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
   observeEvent(input$dl_pca_scores, {
     p <- tryCatch(pca_res(), error = function(e) NULL); req(p)
     out <- data.frame(Row = p$rows, round(p$scores, 6), check.names = FALSE)
-    save_browser(paste0("DOEpro_pca_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_pca_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
   ## ----------------------------------------------------------- cluster analysis --
@@ -916,7 +1176,7 @@ doepro_server <- function(input, output, session) {
   output$clGroupUI <- renderUI({
     d <- rv$data; req(d)
     grp <- group_choices(d)
-    m <- tryCatch(mapping(), error = function(e) list())
+    m <- tryCatch(map_partial(), error = function(e) list())
     first <- c(intersect(c(m$treat, m$factors, m$main), grp), "")[1]
     keep <- isolate(input$clGroup %||% NA)
     selectInput("clGroup", "Items to cluster", c("Each row" = "", stats::setNames(grp, paste("The means of each level of", grp))),
@@ -961,18 +1221,18 @@ doepro_server <- function(input, output, session) {
   output$clText <- renderUI(div(class = "box", HTML(paste0("<b>What the clustering shows.</b> ", esc(cl_text(cl_res()))))))
   output$clMembers <- renderUI(HTML(cl_members_html(cl_res())))
   output$clMeans <- renderUI(HTML(cl_means_html(cl_res())))
-  output$clDendro <- renderPlot(plot_cl_dendro(cl_res()))
+  plot_out("clDendro", function() plot_cl_dendro(cl_res()), "dendrogram", NULL)
   output$clDendroText <- renderUI(cl_note(cl_dendro_text(cl_res())))
-  output$clPcs <- renderPlot(plot_cl_pcs(cl_res()))
+  plot_out("clPcs", function() plot_cl_pcs(cl_res()), "clusters-on-components", NULL)
   output$clPcsText <- renderUI(cl_note(cl_pcs_text(cl_res())))
-  output$clSil <- renderPlot(plot_cl_silhouette(cl_res()))
+  plot_out("clSil", function() plot_cl_silhouette(cl_res()), "silhouette", NULL)
   output$clSilText <- renderUI(cl_note(cl_silhouette_text(cl_res())))
   output$clItems <- renderUI(HTML(cl_items_html(cl_res())))
   observeEvent(input$dl_cl, {
     cl <- tryCatch(cl_res(), error = function(e) NULL); req(cl)
     out <- data.frame(Item = cl$items, Cluster = cl$cluster, Silhouette = round(cl$silhouette, 6))
     names(out)[1] <- if (is.null(cl$group)) "Row" else cl$group
-    save_browser(paste0("DOEpro_clusters_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_clusters_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
   ## ------------------------------------------------------------ factor analysis --
@@ -1035,93 +1295,112 @@ doepro_server <- function(input, output, session) {
   output$faLoadings <- renderUI(HTML(fa_loadings_html(fa_res())))
   output$faVariance <- renderUI(HTML(fa_variance_html(fa_res())))
   output$faPhi <- renderUI(HTML(fa_phi_html(fa_res())))
-  output$faScree <- renderPlot(plot_fa_scree(fa_res()))
+  plot_out("faScree", function() plot_fa_scree(fa_res()), "factor-scree-plot", NULL)
   output$faScreeText <- renderUI(fa_note(fa_scree_text(fa_res())))
-  output$faHeat <- renderPlot(plot_fa_heat(fa_res()))
+  plot_out("faHeat", function() plot_fa_heat(fa_res()), "factor-loadings-heat-map", NULL)
   output$faHeatText <- renderUI(fa_note(fa_heat_text(fa_res())))
-  output$faLoadPlot <- renderPlot({
+  plot_out("faLoadPlot", function() {
     f <- fa_res(); validate(need(f$factors >= 2, "With one factor there is no second axis to plot the loadings against."))
     plot_fa_loadings(f, fa_ax())
-  })
+  }, "factor-loadings", NULL)
   output$faLoadText <- renderUI({ f <- fa_res(); req(f$factors >= 2); fa_note(fa_loadings_text(f, fa_ax())) })
   output$faScores <- renderUI(HTML(fa_scores_html(fa_res())))
   observeEvent(input$dl_fa_load, {
     f <- tryCatch(fa_res(), error = function(e) NULL); req(f)
     out <- data.frame(Variable = f$vars, round(f$loadings, 6), Communality = round(f$communality, 6),
                       Uniqueness = round(f$uniqueness, 6), check.names = FALSE)
-    save_browser(paste0("DOEpro_factor_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_factor_loadings_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
   observeEvent(input$dl_fa_scores, {
     f <- tryCatch(fa_res(), error = function(e) NULL); req(f)
     out <- data.frame(Row = f$rows, round(f$scores, 6), check.names = FALSE)
-    save_browser(paste0("DOEpro_factor_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_factor_scores_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
-  ## ------------------------------------------------------------------ plots --
-  output$plEffectUI <- renderUI(selectInput("plEff", "Effect", names(gFit()$final$effects)))
-
-  ## for an interaction, which factor runs along the X-axis: the app suggests
-  ## the time factor (or a quantitative one) and the user can change it
-  output$plXUI <- renderUI({
-    f <- gFit(); req(input$plEff)
-    e <- f$final$effects[[input$plEff]]
-    if (is.null(e) || length(e$vars) < 2) return(NULL)
-    selectInput("plX", "Factor on the X-axis", e$vars, selected = default_x(e, f$final$data))
-  })
-
-  ## When the effect changes, input$plX still holds the previous effect's
-  ## choice until the new selector reports back. Remember which effect the
-  ## choice was made for, and use the default until the two agree, so a stale
-  ## choice never draws the wrong axis.
-  plx_for <- reactiveVal(NULL)
-  observeEvent(input$plX, plx_for(isolate(input$plEff)))
-
-  mp <- reactive({
-    f <- gFit(); req(input$plEff)
-    validate(need(input$plEff %in% names(f$final$effects), "Choose an effect."))
-    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
-    plot_main(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv)
-  })
-  output$mainPlot <- renderPlot(mp())
-  output$mainPlotText <- renderUI({
-    f <- gFit(); req(input$plEff %in% names(f$final$effects))
-    xv <- if (identical(plx_for(), input$plEff)) input$plX else NULL
-    HTML(rd_note(main_plot_text(f$final, input$plEff, input$plType, isTRUE(input$plLetters), xv,
-                                input$digits %||% 2)))
-  })
 
   ## -------------------------------------------------------- interpretation --
   output$interpOut <- renderUI({
-    r <- ok()
+    r <- ok(); cmp <- cmp_now()
     HTML(paste(vapply(names(r$fits), function(nm) {
       f <- r$fits[[nm]]
-      paste0("<h3>", f$header, "</h3>",
-             as.character(interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab)))
-    }, character(1)), collapse = "<hr>"))
+      paste0("<div class='slx-card'><h3 class='slx-card-h'>", esc(f$header), "</h3>",
+             as.character(interpret(f$final, f$asm, f$sug, TRANS[[f$trans]]$lab, cmp)), "</div>")
+    }, character(1)), collapse = ""))
   })
 
+  ## A PDF is offered for download only where a renderer can make one; in the
+  ## browser, and wherever none is installed, the print dialog makes the PDF.
   output$pdfBtn <- renderUI({
     eng <- pdf_engine()
-    if (!is.na(eng))
-      downloadButton("dl_pdf", sprintf("Download report (PDF, via %s)", eng),
-                     class = "btn-primary")
-    else if (is_wasm())
-      div(class = "box", HTML(paste0(
-        "<b>To save the report as a PDF:</b> click <b>Download report (HTML)</b> on the left, ",
-        "open the downloaded file in your browser, then print it (<b>Ctrl&nbsp;+&nbsp;P</b> ",
-        "&rarr; <b>Save as PDF</b>). The page footer carries the citation line. ",
-        "<span class='note'>Direct PDF export is only available in the desktop R version of DOEpro.</span>")))
-    else div(class = "warn", HTML(paste0(
-      "<b>PDF export is not available on this machine.</b> Install one of ",
-      "<code>pagedown</code> (needs Chrome or Chromium), <code>weasyprint</code>, or ",
-      "<code>wkhtmltopdf</code>. Until then, download the HTML report and print it to PDF ",
-      "from your browser (Ctrl+P &rarr; Save as PDF).")))
+    if (is.na(eng)) return(NULL)
+    downloadButton("dl_pdf", sprintf("Download PDF (via %s)", eng), class = "btn-default")
   })
 
+  ## the report prints the means to the decimals and with the comparison
+  ## chosen on the Means & Comparisons tab
+  report <- reactive({
+    r <- ok()
+    nat <- vapply(names(r$fits), function(v) rv$nature[[v]] %||% "auto", character(1))
+    build_report(r, comparison = cmp_now(), detailed = isTRUE(input$detailed),
+                 digits = input$digits %||% 2, nature = nat)
+  })
+
+  ## The report is handed to the browser (a JavaScript Blob), not through
+  ## downloadHandler, which behaves the same on a Shiny server and in the
+  ## browser build, where downloadHandler's shim is unreliable. Printing goes
+  ## through a hidden frame, so no file needs saving first.
+  observeEvent(input$dl_html, {
+    save_browser(paste0("StatLabX_report_", Sys.Date(), ".html"), report(), "text/html")
+  })
+  observeEvent(input$print_report, {
+    session$sendCustomMessage("doepro_print", list(html = report()))
+  })
+
+  output$dl_pdf <- downloadHandler(
+    filename = function() paste0("StatLabX_report_", Sys.Date(), ".pdf"),
+    content = function(f) {
+      okp <- withProgress(message = "Compiling the PDF", value = 0.5, save_pdf(report(), f))
+      if (!isTRUE(okp))
+        stop("The PDF could not be compiled. Use Print / Save as PDF instead.")
+    })
+
   ## -------------------------------------------------------------- downloads --
-  save_browser <- function(filename, content, mime)
-    session$sendCustomMessage("doepro_save",
-      list(filename = filename, content = content, mime = mime))
+  ## a saved graph: the plot as drawn, at print size, with the platform named
+  ## at its foot; PNG at 300 dpi, or SVG where the device is available
+  observeEvent(input$plot_dl, {
+    q <- input$plot_dl
+    reg <- plots[[q$id %||% ""]]
+    if (is.null(reg)) return()
+    p <- tryCatch(isolate(reg$fun()), error = function(e) e)
+    if (inherits(p, "error") || !inherits(p, "ggplot")) {
+      showNotification(paste("This graph cannot be saved:",
+                             if (inherits(p, "error") && nzchar(conditionMessage(p))) conditionMessage(p) else "it is not drawn yet."),
+                       type = "warning")
+      return()
+    }
+    what <- if (is.function(reg$what)) isolate(reg$what()) else reg$what
+    resp <- if (is.function(reg$resp)) tryCatch(isolate(reg$resp()), error = function(e) NULL) else NULL
+    w <- suppressWarnings(as.numeric(q$w)); h <- suppressWarnings(as.numeric(q$h))
+    ratio <- if (length(w) && length(h) && isTRUE(w > 0 && h > 0)) h / w else 0.62
+    win <- 8; hin <- max(3.5, min(11, win * ratio))
+    fmt <- if (identical(q$fmt, "svg")) "svg" else "png"
+    f <- tempfile(fileext = paste0(".", fmt))
+    made <- tryCatch({ save_plot_file(plot_brand(p), f, fmt, win, hin); TRUE }, error = function(e) e)
+    if (!isTRUE(made) && fmt == "svg") {
+      showNotification("SVG cannot be made here, so the graph is saved as a PNG instead.", type = "warning")
+      fmt <- "png"; f <- tempfile(fileext = ".png")
+      made <- tryCatch({ save_plot_file(plot_brand(p), f, fmt, win, hin); TRUE }, error = function(e) e)
+    }
+    if (!isTRUE(made)) {
+      showNotification(paste("The graph could not be saved:", conditionMessage(made)), type = "error")
+      return()
+    }
+    on.exit(unlink(f), add = TRUE)
+    bytes <- readBin(f, "raw", file.info(f)$size)
+    session$sendCustomMessage("doepro_save_b64", list(
+      filename = plot_file(what, resp, fmt), b64 = b64_raw(bytes),
+      mime = if (fmt == "svg") "image/svg+xml" else "image/png"))
+  })
 
   observeEvent(input$dl_anova, {
     r <- ok()
@@ -1130,87 +1409,45 @@ doepro_server <- function(input, output, session) {
       data.frame(Response = r$fits[[nm]]$header, a, Signif = star(a$p, r$alpha),
                  alpha = r$alpha, row.names = NULL, check.names = FALSE)
     }))
-    save_browser(paste0("DOEpro_anova_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_anova_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
   })
 
-  ## One row per mean. SEm is that mean's own standard error (for a split,
-  ## strip or pooled interaction, the SE(m) for comparisons within one level of
-  ## its slicing factor). SEd and CD are filled only when one value applies to
-  ## every pair they describe; otherwise they are left empty and the note says
-  ## where the pairwise values are, rather than writing one figure that fits
-  ## only some pairs.
+  ## One row per mean; the columns follow the comparison chosen (means_csv())
   observeEvent(input$dl_means, {
-    r <- ok()
-    out <- do.call(rbind, lapply(names(r$fits), function(nm) {
-      fit <- r$fits[[nm]]
-      do.call(rbind, lapply(names(fit$final$effects), function(en) {
-        e <- fit$final$effects[[en]]; m <- gate_letters(e)
-        g <- intersect(LETTER_COLS, names(m))
-        xt <- extra_text(e)
-        note <- c(
-          if (is.na(e$sed)) "SEd and CD differ between pairs of means; see the pairwise comparisons on the post-hoc tab."
-          else if (!isTRUE(e$equal_rep)) "SEm differs between means.",
-          if (!is.null(e$slice))
-            sprintf("SEd and CD apply to means at the same level of %s. %s", e$slice,
-                    paste(sprintf("%s = %s", names(xt), xt), collapse = "; ")))
-        data.frame(
-          Response = nm, Transformation = TRANS[[fit$trans]]$lab, Effect = e$label,
-          Level = apply(m[e$vars], 1, paste, collapse = " x "),
-          Mean = m$Mean,
-          Unadjusted_mean = if ("Raw_mean" %in% names(m)) m$Raw_mean else NA_real_,
-          Back_transformed = if ("Mean_bt" %in% names(m)) m$Mean_bt else NA_real_,
-          N = m$N, SD = m$SD, SEm = m$SE, SEd = e$sed,
-          CD = if (effect_sig(e)) e$cd else NA_real_, alpha = e$alpha, p_value = e$p,
-          Group  = if (length(g) >= 1) m[[g[1]]] else NA_character_,
-          Group2 = if (length(g) >= 2) m[[g[2]]] else NA_character_,
-          Note = paste(note, collapse = " "),
-          row.names = NULL, check.names = FALSE)
-      }))
-    }))
-    save_browser(paste0("DOEpro_means_", Sys.Date(), ".csv"), csv_string(out), "text/csv")
+    save_browser(paste0("StatLabX_means_", Sys.Date(), ".csv"), csv_string(means_csv(cmp_rr(), cmp_now())), "text/csv")
   })
 
-  ## the post-hoc exports say which test and level produced them
-  ph_csv <- function(x, tab) cbind(Method = x$method, alpha = x$alpha, x[[tab]])
-
-  observeEvent(input$dl_ph, {
-    x <- ph(); req(is.null(x$err))
-    save_browser(paste0("DOEpro_posthoc_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "groups")), "text/csv")
-  })
-
-  observeEvent(input$dl_ph_pairs, {
-    x <- ph(); req(is.null(x$err))
-    save_browser(paste0("DOEpro_pairwise_", Sys.Date(), ".csv"), csv_string(ph_csv(x, "pairs")), "text/csv")
-  })
-
-  output$dl_plot <- downloadHandler(
-    filename = function() paste0("DOEpro_plot_", Sys.Date(), ".png"),
-    content = function(f) ggsave(f, mp(), width = 9, height = 6, dpi = 300))
-
-  ## the report prints the means to the decimals chosen on the Means tab
-  report <- reactive(build_report(ok(), letters_on = isTRUE(input$letters),
-                                  detailed = isTRUE(input$detailed), digits = input$digits %||% 2))
-
-  ## The report download is done in the browser (a JavaScript Blob), not through
-  ## downloadHandler. This behaves identically on a real Shiny server and in the
-  ## browser (shinylive/webR) build, where downloadHandler's shim is unreliable.
-  observeEvent(input$dl_html, {
-    session$sendCustomMessage("doepro_save", list(
-      filename = paste0("DOEpro_report_", Sys.Date(), ".html"),
-      content  = report(),
-      mime     = "text/html"))
-  })
-
-  output$dl_pdf <- downloadHandler(
-    filename = function() paste0("DOEpro_report_", Sys.Date(), ".pdf"),
-    content = function(f) {
-      okp <- withProgress(message = "Compiling the PDF", value = 0.5, save_pdf(report(), f))
-      if (!isTRUE(okp))
-        stop("The PDF could not be compiled. Download the HTML report and print it to PDF from your browser.")
+  ## the comparisons of the effect chosen, response by response, saying which
+  ## procedure and level produced them
+  ph_tables <- function(tab) {
+    r <- cmp_rr(); cmp <- cmp_now(); eff <- ph_effect()
+    if (identical(cmp$kind, "none")) {
+      showNotification("Choose how to compare the means first.", type = "warning")
+      return(NULL)
+    }
+    out <- lapply(names(r$fits), function(nm) {
+      f <- r$fits[[nm]]$final
+      x <- tryCatch(gate_posthoc(posthoc(f, eff, cmp$method, f$alpha, control = cmp$control,
+                                         alternative = cmp$alternative, by = ph_by())), error = function(e) NULL)
+      if (is.null(x)) return(NULL)
+      g <- x[[tab]]
+      if (identical(tab, "groups") && identical(cmp$kind, "cd")) g$Group <- NULL
+      cbind(Response = r$fits[[nm]]$header, Effect = f$effects[[eff]]$label, Method = x$method, alpha = x$alpha, g)
     })
+    out <- Filter(Negate(is.null), out)
+    if (!length(out)) return(NULL)
+    do.call(rbind, out)
+  }
+  observeEvent(input$dl_ph, {
+    tab <- ph_tables("groups"); req(tab)
+    save_browser(paste0("StatLabX_comparisons_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
+  })
+  observeEvent(input$dl_ph_pairs, {
+    tab <- ph_tables("pairs"); req(tab)
+    save_browser(paste0("StatLabX_pairwise_", Sys.Date(), ".csv"), csv_string(tab), "text/csv")
+  })
 
-  ## ------------------------------------------------------------------- help --
-
+  ## ------------------------------------------------------------------ about --
   output$about <- renderUI({
     author_li <- paste(vapply(AUTHORS, function(a) {
       orc <- if (!is.null(a$orcid) && !is.na(a$orcid))
@@ -1230,11 +1467,11 @@ doepro_server <- function(input, output, session) {
   <span class='slx-chip'><span class='slx-dot'></span>Free and open source, with R on your own computer</span>
   <h1 class='slx-h1'>Designed for the <span class='slx-grad'>field</span></h1>
   <p class='slx-lead'>Analysis of variance for %s experimental designs, with means, critical differences and
-  post-hoc tests, and regression, correlation, principal components, cluster and factor analysis.
+  multiple comparisons, and regression, correlation, principal components, cluster and factor analysis.
   R runs on your own computer, so your data never leave it.</p>
   <div class='slx-chips'>
     <span class='slx-chip'>%d designs</span>
-    <span class='slx-chip'>%d post-hoc tests</span>
+    <span class='slx-chip'>%d comparison procedures</span>
     <span class='slx-chip'>Checked against Gomez &amp; Gomez (1984)</span>
     <span class='slx-chip'>Readings in plain language</span>
     <span class='slx-chip'>Powered by the %s R package, v%s</span>
@@ -1266,7 +1503,7 @@ carry out in tools such as OPSTAT. It is the browser version of the %s package f
 
 <div class='slx-section'>
 <h3>How to cite</h3>
-<div class='box'>Shah, I. A., Khan, U. J. and Jeelani, M. I. (%s).
+<div class='box'>%s (%s).
 <i>%s: analysis of designed agricultural experiments.</i> Version %s. Zenodo.
 doi:<a href='https://doi.org/%s' target='_blank'>%s</a></div>
 <p class='note'>This is the concept DOI: it always resolves to the most recent release.</p>
@@ -1284,15 +1521,14 @@ Every release is archived on Zenodo and carries a DOI.</p>
 <h3>Statistical methods</h3>
 <p>The analysis of variance is fitted with <code>stats::aov</code>, using
 <code>Error(Rep/Main)</code> for split plots and <code>Error(Rep/(A+B))</code> for strip
-plots. Levene's test, the Box-Cox profile likelihood and all %s multiple-comparison
-procedures, Dunnett's critical values among them, are implemented directly in the package,
+plots. Levene's test, the Box-Cox profile likelihood, Tukey's test of additivity and all %s
+comparison procedures, Dunnett's critical values among them, are implemented directly in the package,
 so it depends only on <b>shiny</b>, <b>DT</b>, <b>ggplot2</b> and <b>rlang</b> (with
 <b>bslib</b>, which shiny itself uses).</p>
 <p class='note'>%s</p>
 </div>",
       LOGO_URI, words[n_des], n_des, n_ph, APP_NAME, APP_VERSION, APP_NAME, author_li,
-      format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
+      CITE_AUTHORS, format(Sys.Date(), "%Y"), APP_NAME, APP_VERSION, APP_DOI, APP_DOI,
       APP_URL, APP_URL, words[n_ph], CREDIT_LONG))
   })
 }
-

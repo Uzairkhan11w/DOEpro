@@ -35,7 +35,8 @@ demo_report <- function(nm, alpha) {
     POOLRCBD = list("POOLRCBD", list(env = "Location", rep = "Rep", treat = "Variety")),
     POOLFACT = list("POOLFRCBD", list(env = "Location", rep = "Rep",
                                       factors = c("Nitrogen", "Variety"))))
-  build_report(run_all(demo_data(nm), s[[1]], s[[2]], "Yield", alpha = alpha))
+  build_report(run_all(demo_data(nm), s[[1]], s[[2]], "Yield", alpha = alpha),
+               comparison = comparison("LSD (Fisher's protected)"))
 }
 
 ## ---------------------------------------------------- critical differences --
@@ -111,13 +112,19 @@ test_that("letters follow the F-test at the chosen level", {
   expect_true(any(nzchar(gate_letters(e05)$Letter)))
   expect_false(any(nzchar(gate_letters(e01)$Letter)))
 
-  # the tables of means agree: letters and a C.D. at 5%, "NS" and none at 1%
+  # the tables of means agree: a procedure's letters at 5% and none at 1%, a
+  # C.D. at 5% and "NS" at 1%, and never letters beside a C.D.
   sup_letter <- "<sup>[a-z]+</sup>"
-  h05 <- means_section_html(run_all(d, "CRD", list(treat = "Treatment"), "Yield", alpha = 0.05))
-  h01 <- means_section_html(run_all(d, "CRD", list(treat = "Treatment"), "Yield", alpha = 0.01))
-  expect_match(h05, sup_letter)
-  expect_false(grepl(sup_letter, h01))
-  expect_match(h01, "C.D. (P&le;0.01)", fixed = TRUE)
+  rr05 <- run_all(d, "CRD", list(treat = "Treatment"), "Yield", alpha = 0.05)
+  rr01 <- run_all(d, "CRD", list(treat = "Treatment"), "Yield", alpha = 0.01)
+  tk <- comparison("Tukey HSD"); cd <- comparison("LSD (Fisher's protected)")
+  expect_match(means_section_html(rr05, cmp = tk), sup_letter)
+  expect_false(grepl(sup_letter, means_section_html(rr01, cmp = tk)))
+  h05 <- means_section_html(rr05, cmp = cd)
+  h01 <- means_section_html(rr01, cmp = cd)
+  expect_match(h05, "C.D. (5%)", fixed = TRUE)
+  expect_false(grepl(sup_letter, h05))
+  expect_match(h01, "C.D. (1%)", fixed = TRUE)
   expect_match(h01, ">NS<", fixed = TRUE)
 })
 
@@ -159,8 +166,6 @@ test_that("significance stars are set by the chosen level", {
 test_that("labels name the chosen level", {
   expect_identical(cd_name(0.01), "C.D. (1%)")
   expect_identical(cd_name(0.05), "C.D. (5%)")
-  expect_identical(cd_head(0.01), "C.D. (P&le;0.01)")
-  expect_identical(cd_head(0.1), "C.D. (P&le;0.1)")
   # plot captions too
   d <- crd_between()
   e01 <- analyze(d, "CRD", list(response = "Yield", treat = "Treatment"),
@@ -176,25 +181,25 @@ test_that("labels name the chosen level", {
 test_that("a report at 1% never mentions 5%", {
   for (nm in c("CRD", "RCBD", "LSD", "FRCBD", "SPLIT", "STRIP", "POOLRCBD", "POOLFACT")) {
     h <- demo_report(nm, 0.01)
-    expect_match(h, "P&le;0.01", fixed = TRUE, info = nm)
-    expect_false(grepl("P&le;0.05", h, fixed = TRUE), info = nm)
+    expect_match(h, "C.D. (1%)", fixed = TRUE, info = nm)
+    expect_false(grepl("C.D. (5%)", h, fixed = TRUE), info = nm)
     expect_false(grepl("5%", h, fixed = TRUE), info = nm)
     expect_false(grepl("(5%", h, fixed = TRUE), info = nm)
   }
   # unbalanced and transformed data take other paths through the report
   rr <- run_all(crd_unbalanced(), "CRD", list(treat = "Treatment"), "Yield",
                 alpha = 0.01, trans = list(Yield = "log"))
-  h <- build_report(rr)
-  expect_match(h, "P&le;0.01", fixed = TRUE)
-  expect_false(grepl("P&le;0.05", h, fixed = TRUE))
+  h <- build_report(rr, comparison = comparison("LSD (Fisher's protected)"))
+  expect_match(h, "C.D. (1%)", fixed = TRUE)
+  expect_false(grepl("C.D. (5%)", h, fixed = TRUE))
   expect_false(grepl("5%", h, fixed = TRUE))
 })
 
 test_that("a report at 5% says 5%, and one at 10% says neither 5% nor 1%", {
   for (nm in c("CRD", "FRCBD", "SPLIT")) {
-    expect_match(demo_report(nm, 0.05), "P&le;0.05", fixed = TRUE, info = nm)
+    expect_match(demo_report(nm, 0.05), "C.D. (5%)", fixed = TRUE, info = nm)
     h <- demo_report(nm, 0.10)
-    expect_match(h, "P&le;0.1", fixed = TRUE, info = nm)
+    expect_match(h, "C.D. (10%)", fixed = TRUE, info = nm)
     expect_match(h, "10% level", fixed = TRUE, info = nm)
     expect_false(grepl("5%", h, fixed = TRUE), info = nm)
     expect_false(grepl("[^0-9.]1%", h), info = nm)

@@ -182,7 +182,7 @@ test_that("a level one response lacks stays in the other responses' columns", {
   d$Disease[d$Treatment == "T1"] <- NA
   rr <- run_all(d, "CRD", list(treat = "Treatment"), c("Disease", "Yield"))
   x <- strip_html(sketch_main_html(rr$fits, "Treatment"))
-  expect_match(x, "T1 - 29.05", fixed = TRUE)
+  expect_match(x, "T1 &ndash; 29.05", fixed = TRUE)
   card <- strip_html(means_summary_card(rr))
   expect_match(card, "16 observations", fixed = TRUE); expect_match(card, "20 observations", fixed = TRUE)
 })
@@ -315,8 +315,6 @@ test_that("the recommendation says which values it was judged on", {
 })
 
 test_that("tables and report follow each response, the slope test and the chosen decimals", {
-  d <- demo_data("RCBD"); d$Height <- round(d$Yield * 2 + rep(c(1, 3, 2, 5), 6), 1); d$Height[5] <- NA
-  expect_null(combined_anova_html(run_all(d, "RCBD", list(treat = "Variety", block = "Block"), c("Yield", "Height"))))
   set.seed(1); d <- data.frame(Treatment = rep(paste0("T", 1:5), each = 4))
   d$Yield <- round(stats::rnorm(20, rep(c(20, 25, 30, 35, 40), each = 4), 2), 2)
   a <- check_assumptions(analyze(d, "CRD", list(response = "Yield", treat = "Treatment")))
@@ -324,7 +322,7 @@ test_that("tables and report follow each response, the slope test and the chosen
   expect_match(assum_table_html(a), "insufficient evidence that the variance changes with the mean", fixed = TRUE)
   d <- demo_data("RCBD"); d$SeedWt <- round(d$Yield / 1000, 5)
   rr <- run_all(d, "RCBD", list(treat = "Variety", block = "Block"), "SeedWt")
-  expect_match(strip_html(build_report(rr, digits = 4)), "C.D. (P&le;0.05) &nbsp; Variety 0.0028", fixed = TRUE)
+  expect_match(strip_html(build_report(rr, comparison("LSD (Fisher's protected)"), digits = 4)), "C.D. (5%) 0.0028", fixed = TRUE)
 })
 
 test_that("promax factor scores are regression scores of correlated factors", {

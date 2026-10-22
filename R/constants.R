@@ -35,7 +35,7 @@
 
 ## Columns referred to inside ggplot2's aes(), which the code inspector cannot
 ## see because aes() evaluates them inside the data frame rather than here.
-utils::globalVariables(c("Mean", ".se", "Letter", "fit", "res", "std",
+utils::globalVariables(c("Mean", ".se", ".let", "Letter", "fit", "res", "std",
                          "lambda", "loglik", "m", "v"))
 
 ## ------------------------------------------------------------------ credits --
@@ -54,17 +54,28 @@ AUTHORS <- list(
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
        email = NA_character_,
        orcid = "0000-0002-2974-2871"),
-  ## listed with the developers, but not among the citation's authors
+  ## the last two are listed with the developers, but not among the
+  ## citation's authors
   list(name = "Dr. Imran Khan", role = "Chief Scientist",
        aff  = "Division of Agricultural Statistics, SKUAST-Kashmir",
        email = "imrankhan@skuastkashmir.ac.in",
+       orcid = NA_character_),
+  ## no email, ORCID or department was given for him, so none is shown
+  list(name = "Dr. Pradeep Mishra", role = "Assistant Professor",
+       aff  = "JNKVV, Madhya Pradesh",
+       email = NA_character_,
        orcid = NA_character_))
 APP_DOI     <- "10.5281/zenodo.21399570"   # concept DOI: always the latest release
 APP_URL     <- "https://doepro.pages.dev"
-CREDIT_SHORT <- "DOEpro \u00b7 Shah, Khan & Jeelani"
+## the platform's name, which every output carries; the R package keeps its
+## CRAN name
+APP_BRAND    <- "StatLabX"
+CREDIT_SHORT <- "StatLabX \u00b7 DOEpro \u00b7 Shah, Khan & Jeelani"
 CREDIT_LONG  <- paste0(
-  "Generated with ", APP_NAME, " v", APP_VERSION,
+  "Generated with ", APP_BRAND, " (", APP_NAME, " v", APP_VERSION, ")",
   " \u2014 Shah, I. A., Khan, U. J. & Jeelani, M. I.")
+## the citation's authors as running text
+CITE_AUTHORS <- "Shah, I. A., Khan, U. J. and Jeelani, M. I."
 
 ## The StatLabX wordmark (480 px wide, 256 colours), embedded as a base64 data
 ## URI so the app and the report stay fully self-contained (no external image
@@ -364,12 +375,15 @@ demo_noise <- function(n, mean = 0, sd = 1) {
 #' \strong{Load example} button in the application.
 #'
 #' @param which The example to build: \code{"CRD"}, \code{"RCBD"}, \code{"LSD"},
-#'   \code{"FRCBD"} (factorial), \code{"SPLIT"}, \code{"STRIP"},
+#'   \code{"FCRD"} (a factorial in a CRD, with two responses), \code{"FRCBD"}
+#'   (factorial in blocks), \code{"SPLIT"}, \code{"STRIP"},
 #'   \code{"POOLRCBD"} or \code{"POOLCRD"} (a single treatment factor over
 #'   environments), \code{"POOLFACT"} or \code{"POOLFACTC"} (factorial
 #'   treatments over environments, RCBD and CRD base respectively).
 #'
 #' @return A data frame in long format, ready to pass to \code{\link{analyze}}.
+#'   The values are synthetic: built from fixed effects and a stored set of
+#'   deviates for demonstration, not observed in any experiment.
 #'
 #' @examples
 #' head(demo_data("RCBD"))
@@ -396,6 +410,20 @@ demo_data <- function(which) {
       d$Yield <- round(demo_noise(16, c(20, 24, 27, 22)[
         match(d$Treatment, c("A","B","C","D"))], 1.4), 2)
       d[, c("Row", "Column", "Treatment", "Yield")]
+    },
+    "FCRD" = {                                   # 3 x 3 factorial in pots, completely randomised
+      d <- expand.grid(Rep = 1:4,
+                       Variety  = c("V1", "V2", "V3"),
+                       Nitrogen = c("N0", "N40", "N80"))
+      vi <- as.integer(d$Variety); ni <- as.integer(d$Nitrogen)
+      ## yield (g per pot): both factors matter, and V3 gains most from N80
+      mu_y <- 18 + c(0, 3, 5)[vi] + c(0, 4, 6)[ni] +
+              ifelse(vi == 3 & ni == 3, 3, 0) + ifelse(vi == 1 & ni == 3, -1.5, 0)
+      ## plant height (cm): nitrogen raises it in every variety alike
+      mu_h <- 62 + c(0, 5, -3)[vi] + c(0, 6, 10)[ni]
+      d$Yield <- round(demo_noise(nrow(d), mu_y, 1.2), 2)
+      d$Plant_height <- round(mu_h + demo_noise(nrow(d) + 13, 0, 2.4)[-(1:13)], 1)
+      d[, c("Variety", "Nitrogen", "Rep", "Yield", "Plant_height")]
     },
     "FRCBD" = {
       d <- expand.grid(Block = paste0("B", 1:3),

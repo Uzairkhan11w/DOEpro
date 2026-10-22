@@ -36,10 +36,17 @@ PH_LABELS <- c(
 
 ## `control` (a level as dunnett_levels() lists it) and `alternative`
 ## ("two.sided", "greater" or "less") are used by Dunnett's test only.
-posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alternative = "two.sided") {
+## `by` names a factor of an interaction within whose levels its means are
+## compared (simple effects): the levels of the other factors at each level
+## of `by`. In a design with one error term every pair shares that error, so
+## any factor may be chosen; a split, strip or pooled interaction is always
+## compared within its slicing factor, the only comparisons with one error.
+posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alternative = "two.sided",
+                    by = NULL) {
   e <- res$effects[[effect]]
   if (is.null(e)) stop("Unknown effect.")
   if (!method %in% PH_METHODS) stop("Unknown method")
+  e <- effect_by(e, by)
   m <- e$means
   lab <- apply(m[e$vars], 1, paste, collapse = " : ")
   fams <- if (is.null(e$slice)) list(seq_len(nrow(m)))
@@ -199,9 +206,10 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
                      "everywhere else in DOEpro, no letters are shown and no pair is ",
                      "declared different."), e$label, pct(alpha)),
     if (!is.null(e$slice))
-      sprintf(paste0("Means are compared within each level of %s: these are the only ",
-                     "comparisons that share one error term. Letters restart in each level, ",
-                     "so the same letter in two levels of %s means nothing."), e$slice, e$slice),
+      sprintf(paste0("Means are compared within each level of %s%s. Letters restart in each level, ",
+                     "so the same letter in two levels of %s means nothing."), e$slice,
+              if (isTRUE(e$by_chosen)) " (simple effects), as chosen"
+              else ": these are the only comparisons that share one error term", e$slice),
     if (!is.null(e$error_desc)) e$error_desc,
     if (method == "Tukey HSD" && !equal && !mixed)
       paste0("Replication is unequal, so this is the Tukey-Kramer procedure: Tukey's ",
@@ -220,16 +228,21 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
              "q list it before that division."),
     ## notes written for the tables of means describe that table's letters and
     ## level, so they are repeated here only when they apply to this output
-    if (is.null(e$slice) && isTRUE(all.equal(alpha, e$alpha))) e$notes,
+    if (is.null(e$slice) && is.null(e$mix) && isTRUE(all.equal(alpha, e$alpha))) e$notes,
     if (!isTRUE(all.equal(alpha, e$alpha)))
       sprintf(paste0("These comparisons are at the %s%% level, while the analysis and its ",
                      "tables of means are at the %s%% level."), pct(alpha), pct(e$alpha)))
   note <- c(note, rn)
   note <- note[nzchar(note)]
 
+  ## the letters in the order of the effect's table of means, for the
+  ## tables and plots that show them beside the means
+  lets_row <- character(nrow(m))
+  for (f in seq_along(fams)) lets_row[fams[[f]]] <- out[[f]]$lets
+
   list(groups = groups, stats = st, ranges = ranges, pairs = pairs,
        note = if (length(note)) note else NULL, f_sig = f_sig, alpha = alpha,
-       method = PH_LABELS[[method]], families = families)
+       method = PH_LABELS[[method]], families = families, letters = lets_row, by = e$slice)
 }
 
 ## What the user sees and exports: the procedure's letters and verdicts only
@@ -238,6 +251,7 @@ posthoc <- function(res, effect, method, alpha = res$alpha, control = NULL, alte
 gate_posthoc <- function(x) {
   if (isTRUE(x$f_sig)) return(x)
   if ("Group" %in% names(x$groups)) x$groups$Group <- ""
+  if (!is.null(x$letters)) x$letters[] <- ""
   if ("Versus the control" %in% names(x$groups))
     x$groups$`Versus the control`[x$groups$`Versus the control` != "Control"] <- ""
   x$pairs$Significant <- sprintf("Not declared (F-test not significant at %s%%)", pct(x$alpha))
@@ -273,6 +287,18 @@ step_down <- function(mu, sig) {
   res <- matrix(FALSE, k, k)
   res[o, o] <- fin
   res
+}
+
+## An interaction effect whose means are to be compared within the levels of
+## factor `by` (simple effects). Only a design with one error term allows a
+## free choice; an effect with its own slicing factor keeps it.
+effect_by <- function(e, by) {
+  if (length(by) == 1L && !is.na(by) && nzchar(by) && is.null(e$slice) && is.null(e$mix) &&
+      by %in% e$vars && length(e$vars) >= 2) {
+    e$slice <- by
+    e$by_chosen <- TRUE
+  }
+  e
 }
 
 ## qtukey() fails to converge for the long ranges Duncan's test needs once about

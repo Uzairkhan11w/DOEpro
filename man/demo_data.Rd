@@ -8,13 +8,16 @@ demo_data(which)
 }
 \arguments{
 \item{which}{The example to build: \code{"CRD"}, \code{"RCBD"}, \code{"LSD"},
-\code{"FRCBD"} (factorial), \code{"SPLIT"}, \code{"STRIP"},
+\code{"FCRD"} (a factorial in a CRD, with two responses), \code{"FRCBD"}
+(factorial in blocks), \code{"SPLIT"}, \code{"STRIP"},
 \code{"POOLRCBD"} or \code{"POOLCRD"} (a single treatment factor over
 environments), \code{"POOLFACT"} or \code{"POOLFACTC"} (factorial
 treatments over environments, RCBD and CRD base respectively).}
 }
 \value{
 A data frame in long format, ready to pass to \code{\link{analyze}}.
+  The values are synthetic: built from fixed effects and a stored set of
+  deviates for demonstration, not observed in any experiment.
 }
 \description{
 Generates a small, balanced example dataset for a design, so you can try

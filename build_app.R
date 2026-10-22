@@ -15,9 +15,9 @@
 ##  and then, to compile the browser build into docs/:
 ##      export_app()
 ##
-##  export_app() runs shinylive::export() and then adds the StatLabX loading
-##  screen from site/. The export rewrites docs/ from scratch, so the loading
-##  screen has to be added again after every export; build docs/ only this way.
+##  export_app() runs shinylive::export() and then adds the StatLabX website
+##  from site/. The export rewrites docs/ from scratch, so the website has to
+##  be added again after every export; build docs/ only this way.
 ###############################################################################
 
 ## Dependency order. constants.R must come first (it defines DESIGNS, the
@@ -25,12 +25,15 @@
 ORDER <- c(
   "constants.R",       # constants, credits, logo, DESIGNS, helpers, demo_data
   "data_quality.R",    # checks and corrections run on the data when it is loaded
+  "overview.R",        # the examples' roles, the quick summary, the column structure, the screening
   "analyze.R",         # the analysis engine
   "assumptions.R",     # assumption tests and transformations (defines TRANS)
   "tables_detail.R",   # integrated tables of means
   "posthoc.R",         # post-hoc procedures
   "dunnett.R",         # Dunnett's test against a control
-  "plots.R",           # plots
+  "comparisons.R",     # what the tables of means show for the comparison chosen
+  "plots.R",           # plots, the interaction plot and saved graphs
+  "diagnostics.R",     # Tukey's additivity test, Cook's distance, the summary of the checks
   "descriptives.R",    # descriptive statistics and distribution plots
   "correlation.R",     # correlation between pairs of variables
   "regression.R",      # simple and multiple linear regression
@@ -213,8 +216,8 @@ brand_site <- function(out = "docs", site = "site") {
       stop("index.html from shinylive no longer has exactly one ", pattern, call. = FALSE)
     sub(pattern, with, x, fixed = TRUE)
   }
-  desc <- paste("Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters,",
-                "assumption checks, post-hoc tests and plain-language readings, with R running in your browser.")
+  desc <- paste("Free analysis of designed agricultural experiments: assumption checks, ANOVA, means with the C.D.",
+                "or the letters of the test you choose, and plain-language readings, with R running in your browser.")
   head <- paste0(
     "<title>StatLabX - statistics for agricultural and allied research</title>\n",
     "    <meta name=\"description\" content=\"", desc, "\" />\n",
@@ -249,13 +252,19 @@ site_facts <- function(first_visit_bytes) {
   esc <- function(x) ns$esc(x)
   r <- ns$analyze(ns$demo_data("RCBD"), "RCBD", list(response = "Yield", treat = "Variety", block = "Block"))
   e <- r$effects$Variety; a <- ns$check_assumptions(r)
+  ## the example's means are compared as the app compares them when Tukey's
+  ## HSD is chosen: its letters, and no C.D. beside them
+  cmp <- ns$comparison("Tukey HSD")
+  L <- ns$cmp_letters(r, "Variety", cmp)
+  e$means$Letter <- L$letters
   m <- e$means[order(-e$means$Mean), ]
   an <- r$anova[r$anova$Source != "Total", ]
   cv <- as.numeric(ns$fmt(r$cv, 2))
   band <- if (cv < 10) "low" else if (cv < 20) "moderate" else if (cv < 30) "high" else "very high"
   facts <- list(
     demo = "RCBD", design = "RCBD", response = "Yield", factor = "Variety",
-    level = paste0(ns$pct(r$alpha), "%"), cd = ns$fmt(e$cd, 2), cv = ns$fmt(r$cv, 2), cv_band = band,
+    level = paste0(ns$pct(r$alpha), "%"), method = ns$CMP_NAME[[cmp$method]], sed = ns$fmt(e$sed, 2),
+    cv = ns$fmt(r$cv, 2), cv_band = band,
     sw = ns$p_text(a$p_norm, r$alpha), hov = ns$p_text(a$p_hov, r$alpha),
     means = lapply(seq_len(nrow(e$means)), function(i) list(
       lab = as.character(e$means$Variety[i]), mean = round(e$means$Mean[i], 4), se = round(e$means$SE[i], 4),
@@ -297,8 +306,9 @@ site_facts <- function(first_visit_bytes) {
     TICKER_A = chips(names(ns$DESIGNS)), TICKER_B = chips(c(ns$PH_METHODS, more)),
     MEANS_ROWS = paste0("<tr><td>", esc(as.character(m$Variety)), "</td><td>", ns$fmt(m$Mean, 2), "</td><td>",
                         esc(m$Letter), "</td></tr>", collapse = ""),
-    CD = ns$fmt(e$cd, 2), CV = ns$fmt(r$cv, 2),
-    READING = esc(ns$means_text(e, 2, "none", r)),
+    METHOD = esc(ns$CMP_NAME[[cmp$method]]), LEVEL = paste0(ns$pct(r$alpha), "%"), SED = ns$fmt(e$sed, 2),
+    CV = ns$fmt(r$cv, 2),
+    READING = esc(ns$cmp_means_text(list(final = r, trans = "none"), "Variety", cmp, 2, L)),
     TEAM = paste(team, collapse = ""),
     CITATION = esc(cite_txt), DOI = ns$APP_DOI, YEAR = gsub("[()]", "", year),
     TOTAL_MB = sprintf("%.0f", first_visit_bytes / 1048576),

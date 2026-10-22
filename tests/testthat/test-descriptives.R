@@ -476,7 +476,7 @@ test_that("the Explore tab leaves design factors and label columns unselected", 
                     Height = c(80, 84, 90, 95, 79, 86, 91, 96, 81, 85, 89, 97))
     rv$data <- d
     session$setInputs(design = "RCBD")
-    session$setInputs(resp = "Yield", block = "Block", treat = "Nitrogen")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", treat = "Nitrogen")
     html <- output$descUI$html
     expect_match(html, '<option value="Yield" selected>', fixed = TRUE)
     expect_match(html, '<option value="Height" selected>', fixed = TRUE)
@@ -505,14 +505,14 @@ test_that("the Assumptions tab shows all four residual plots", {
   skip_on_cran()
   shiny::testServer(doepro_server, {
     rv$data <- demo_data("RCBD")
-    session$setInputs(design = "RCBD")
-    session$setInputs(resp = "Yield", block = "Block", treat = "Variety", alpha = "0.05", run = 1)
+    session$setInputs(design = "RCBD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", treat = "Variety")
     p <- diag_plots()
     expect_length(p, 4)
     titles <- vapply(p, function(g) g$labels$title, character(1))
-    expect_identical(titles, c("Residuals against fitted values", "Normal Q-Q plot",
-                               "Histogram of residuals", "Scale-location"))
-    for (o in c("diagFit", "diagQQ", "diagHist", "diagScale"))
+    expect_identical(titles, c("Residuals against fitted values", "Normal Q-Q plot of the residuals",
+                               "Histogram of the residuals", "Scale-location"))
+    for (o in c("diagFit", "diagQQ", "diagHist", "diagScale", "diagCook"))
       expect_match(output[[o]]$src, "^data:image/png")
   })
 })
@@ -843,7 +843,8 @@ test_that("the Explore choices survive a change of design or mapping", {
     session$setInputs(design = "CRD")
     html <- output$descUI$html
     expect_match(html, '<option value="Variety" selected>', fixed = TRUE)
-    session$setInputs(design = "RCBD", resp = "Yield", block = "Block", treat = "Variety")
+    session$setInputs(design = "RCBD")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", treat = "Variety")
     expect_match(output$descUI$html, '<option value="Variety" selected>', fixed = TRUE)
   })
 })

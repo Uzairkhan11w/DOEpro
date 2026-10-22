@@ -144,21 +144,25 @@ test_that("the readings follow Dunnett's verdicts", {
   expect_match(PH_WHAT[["Dunnett"]], "compares each treatment with the control and with nothing else", fixed = TRUE)
 })
 
-test_that("the post-hoc tab offers a control for Dunnett's test", {
+test_that("the Means & Comparisons tab offers a control for Dunnett's test", {
   skip_on_cran()
   shiny::testServer(doepro_server, {
     rv$data <- demo_data("CRD")
-    session$setInputs(design = "CRD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", treat = "Treatment", tr_1 = "none", run = 1)
-    session$setInputs(aResp2 = "Yield", phEff = "Treatment", phMethod = "Dunnett", phAlt = "two.sided")
+    session$setInputs(design = "CRD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", treat = "Treatment")
+    session$setInputs(cmpResp = "Yield", phEff = "Treatment", phMethod = "Dunnett", phAlt = "two.sided")
     expect_match(output$phControlUI$html, '<option value="T1" selected>T1</option>', fixed = TRUE)
     session$setInputs(phControl = "T3")
-    x <- ph()
-    expect_identical(x$groups$Treatment[1], "T3")
-    expect_match(output$phText$html, "Compared with the control, T3", fixed = TRUE)
-    expect_match(output$phPairsText$html, "comparisons with the control", fixed = TRUE)
+    expect_identical(cmp_now()$control, "T3")
+    html <- output$phOut$html
+    expect_match(html, "Compared with the control, T3", fixed = TRUE)
+    expect_match(html, "comparisons with the control", fixed = TRUE)
+    # Dunnett's test gives no letters and no C.D. in the tables of means
+    mo <- output$meansOut$html
+    expect_no_match(mo, "<sup>[a-z]")
+    expect_no_match(mo, "C.D. (5%)", fixed = TRUE)
     ## a control from another effect stands aside for the first level
     session$setInputs(phControl = "not a level")
-    expect_identical(ph()$groups$Treatment[1], "T1")
+    expect_identical(cmp_now()$control, "T1")
   })
 })

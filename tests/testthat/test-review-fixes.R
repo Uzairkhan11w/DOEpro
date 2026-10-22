@@ -232,9 +232,8 @@ test_that("a stale X-axis choice from another effect is not used", {
     d$Yield <- 20 + 3 * (d$Nitrogen == "N60") - 2 * (d$Days == "D60") +
       (d$Variety == "V2") + sin(seq_len(nrow(d)))
     rv$data <- d
-    session$setInputs(design = "FCRD", nfac = 3, alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", f1 = "Variety", f2 = "Nitrogen", f3 = "Days")
-    session$setInputs(tr_1 = "none", run = 1)
+    session$setInputs(design = "FCRD", nfac = 3, alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", f1 = "Variety", f2 = "Nitrogen", f3 = "Days")
     session$setInputs(plEff = "Variety:Nitrogen", plType = "line", plLetters = TRUE)
     session$setInputs(plX = "Variety")
     expect_identical(rlang::as_label(mp()$mapping$x), "Variety")

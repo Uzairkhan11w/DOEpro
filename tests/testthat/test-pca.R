@@ -255,7 +255,8 @@ test_that("the grouping selector draws before any design is mapped, and follows 
   })
   shiny::testServer(doepro_server, {
     rv$data <- d
-    session$setInputs(design = "CRD", resp = "Yield", treat = "Variety")
+    session$setInputs(design = "CRD")
+    set_map(session, rv$ver, resp = "Yield", treat = "Variety")
     expect_match(output$pcaGroupUI$html, '<option value="Variety" selected>Variety</option>', fixed = TRUE)
   })
 })

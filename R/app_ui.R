@@ -41,6 +41,7 @@ h4{font-size:17px;margin-top:14px}
 .navbar .dropdown-menu{border-radius:14px;border:1px solid var(--slx-line);box-shadow:0 12px 32px rgba(20,40,75,.12);padding:6px}
 .navbar .dropdown-item{border-radius:10px;padding:7px 12px;font-size:14px}
 .navbar .dropdown-item.active,.navbar .dropdown-item:active{background:var(--slx-blue);color:#fff}
+.navbar .dropdown-header{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--slx-muted);padding:8px 12px 4px}
 .navbar .navbar-toggle,.navbar .navbar-toggler{border:1px solid var(--slx-line);border-radius:999px;margin-left:auto}
 @media (max-width:767.98px){.navbar.navbar-default{border-radius:22px;position:static}}
 
@@ -62,12 +63,44 @@ h4{font-size:17px;margin-top:14px}
 table.dataTable{font-size:13.5px;font-variant-numeric:tabular-nums}
 hr{border-color:var(--slx-line);opacity:1}
 
+/* ---- cards that group a step of the work ---- */
+.slx-card{background:#fff;border:1px solid var(--slx-line);border-radius:16px;padding:16px 18px;margin:16px 0;
+  box-shadow:0 1px 2px rgba(20,40,75,.04)}
+.slx-card>h4:first-child,.slx-card-h{margin:0 0 4px;font-size:17px;color:var(--slx-navy);font-weight:650}
+.slx-card .slx-lead{font-size:13px;color:var(--slx-muted);margin:0 0 12px}
+.slx-step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;
+  background:var(--slx-blue);color:#fff;font-size:12px;font-weight:700;margin-right:8px;vertical-align:2px}
+.slx-map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 14px}
+.slx-map-grid .form-group{margin-bottom:8px}
+.slx-ctx{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.slx-ctx span{background:#fff;border:1px solid var(--slx-line);border-radius:999px;padding:3px 11px;font-size:12.5px;color:var(--slx-ink)}
+.slx-ctx span b{color:var(--slx-blue-dark);font-weight:600}
+.slx-demo{background:#F3F0FF;border:1px solid #DCD3FF;border-left:4px solid var(--slx-violet);border-radius:12px;
+  padding:10px 14px;margin:10px 0;font-size:13.5px}
+.slx-resp{margin-top:22px;padding-top:10px;border-top:1px solid var(--slx-line)}
+.slx-resp:first-child{border-top:0;padding-top:0;margin-top:6px}
+table.slx-settings{width:100%;border-collapse:separate;border-spacing:0 6px}
+table.slx-settings th{font-size:12.5px;color:var(--slx-muted);font-weight:600;padding:0 8px}
+table.slx-settings td{vertical-align:top;padding:0 8px}
+table.slx-settings .form-group{margin-bottom:0}
+details.slx-fold{margin:8px 0 14px}
+details.slx-fold>summary{cursor:pointer;color:var(--slx-blue-dark);font-weight:600;padding:4px 0}
+
+/* ---- graphs: a small download menu in the corner of each ---- */
+.slx-plot{position:relative;margin-bottom:6px}
+.slx-plot-dl{position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:.55;transition:opacity .15s;z-index:5}
+.slx-plot:hover .slx-plot-dl,.slx-plot-dl:focus-within{opacity:1}
+.slx-dl{border:1px solid var(--slx-line);background:rgba(255,255,255,.95);color:var(--slx-blue-dark);border-radius:999px;
+  font-size:11.5px;font-weight:600;padding:3px 9px;line-height:1.4;cursor:pointer}
+.slx-dl:hover,.slx-dl:focus{background:var(--slx-blue);border-color:var(--slx-blue);color:#fff;outline:none}
+
 /* ---- messages: colour carries meaning, not decoration ---- */
 .box{background:#fff;border:1px solid var(--slx-line);border-left:4px solid var(--slx-blue);border-radius:12px;padding:12px 16px;margin:12px 0}
 .sugbox{background:#EEF8F1;border:1px solid #CBE9D4;border-left:4px solid #2F9E5B;border-radius:12px;padding:10px 14px;margin:10px 0}
 .warn{background:#FFF7EA;border:1px solid #F3DEB8;border-left:4px solid #E09A2C;border-radius:12px;padding:10px 14px;margin:10px 0}
 .err{background:#FDEEEC;border:1px solid #F3CBC6;border-left:4px solid #C0392B;border-radius:12px;padding:10px 14px;margin:10px 0}
 .note{font-size:12.5px;color:var(--slx-muted);margin:4px 0 14px 0;line-height:1.5}
+ul.slx-why{font-size:13px;margin:6px 0 10px;padding-left:20px}
 .authors{font-size:12.5px;color:var(--slx-muted)}
 .appfoot{position:fixed;right:12px;bottom:8px;font-size:10.5px;color:var(--slx-muted);
   background:rgba(255,255,255,.92);padding:3px 10px;border-radius:999px;z-index:1000;border:1px solid var(--slx-line)}
@@ -79,10 +112,18 @@ table.doe th{background:#EEF3FA;color:var(--slx-navy);font-weight:600;text-align
 table.doe td:first-child,table.doe th:first-child{text-align:left}
 table.doe caption{caption-side:top;text-align:left;font-weight:600;padding:6px 0;color:var(--slx-navy)}
 table.doe tfoot td{background:#FAFCFF;font-size:12.5px}
+table.doe-summary td,table.doe-structure td,table.doe-screen td{text-align:left;vertical-align:top}
+table.doe-summary td{font-size:13px}
+.slx-scroll{overflow-x:auto;max-width:100%}
 td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12.5px}
 span.sig{color:#C0392B;font-weight:600}
 span.ns{color:#7A889E}
 sup{color:var(--slx-blue-dark);font-weight:600}
+.slx-kind{display:inline-block;margin-top:3px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;
+  background:#EEF3FA;color:var(--slx-blue-dark)}
+.slx-kind-designrequirement{background:#FFF4E0;color:#8A5A00}
+.slx-kind-visualcheck{background:#EEF8F1;color:#1E7A44}
+.slx-kind-declared{background:#F3F0FF;color:#5B3CC4}
 
 /* ---- About: the one landing page ---- */
 .slx-hero{text-align:center;padding:44px 16px 36px;margin:0 0 28px;border-radius:24px;
@@ -110,6 +151,62 @@ sup{color:var(--slx-blue-dark);font-weight:600}
 .slx-guide table.doe th,.slx-guide table.doe td{text-align:left}
 "
 
+## The scripts of the app's own page: saving a file the server sends (as text
+## or as base64 bytes), the download menu of every graph, printing the report
+## from a hidden frame (no file is saved first), and, in the browser build,
+## handing the About tab and the logo back to the website.
+APP_JS <- "
+(function () {
+  function save(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+  }
+  Shiny.addCustomMessageHandler('doepro_save', function (m) {
+    try { save(new Blob([m.content], {type: m.mime || 'text/html'}), m.filename); }
+    catch (e) { alert('Download failed: ' + e.message); }
+  });
+  Shiny.addCustomMessageHandler('doepro_save_b64', function (m) {
+    try {
+      var bin = atob(m.b64), n = bin.length, bytes = new Uint8Array(n);
+      for (var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
+      save(new Blob([bytes], {type: m.mime}), m.filename);
+    } catch (e) { alert('Download failed: ' + e.message); }
+  });
+  Shiny.addCustomMessageHandler('doepro_print', function (m) {
+    var old = document.getElementById('slx-print-frame');
+    if (old) old.parentNode.removeChild(old);
+    var f = document.createElement('iframe');
+    f.id = 'slx-print-frame'; f.setAttribute('aria-hidden', 'true'); f.setAttribute('tabindex', '-1');
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    f.onload = function () {
+      setTimeout(function () {
+        try { f.contentWindow.focus(); f.contentWindow.print(); }
+        catch (e) { alert('The print dialog could not be opened here. Download the HTML report and print it from your browser.'); }
+      }, 300);
+    };
+    document.body.appendChild(f);
+    f.srcdoc = m.html;
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.slx-dl') : null;
+    if (!b) return;
+    var id = b.getAttribute('data-plot'), el = document.getElementById(id);
+    Shiny.setInputValue('plot_dl', {id: id, fmt: b.getAttribute('data-fmt'),
+      w: el ? el.clientWidth : 900, h: el ? el.clientHeight : 560, n: Date.now()}, {priority: 'event'});
+  });
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('.navbar a[data-value=about], .navbar .navbar-brand') : null;
+    if (!a) return;
+    var shell = null;
+    try { shell = window.parent !== window ? window.parent.StatLabX : null; } catch (err) { shell = null; }
+    if (shell && shell.home) { e.preventDefault(); e.stopPropagation(); shell.home(); }
+  }, true);
+})();
+"
+
 ## The choices for the transformation menus. This is a function, not a stored
 ## object: R sources the files of a package in alphabetical order, so TRANS (in
 ## assumptions.R) does not yet exist while this file is being loaded.
@@ -121,6 +218,28 @@ trans_choices <- function()
 nav_brand <- function()
   tagList(tags$img(src = LOGO_URI, alt = "StatLabX", class = "slx-logo"),
           tags$span(class = "slx-sub", sprintf("powered by %s %s", APP_NAME, APP_VERSION)))
+
+## A graph with its download menu in the upper-right corner: PNG at 300 dpi,
+## or SVG, of the graph as drawn, with the platform named at its foot
+plot_card <- function(id, height = "320px") {
+  div(class = "slx-plot",
+      plotOutput(id, height = height),
+      div(class = "slx-plot-dl", role = "group", `aria-label` = "Download this graph",
+          tags$button(type = "button", class = "slx-dl", `data-plot` = id, `data-fmt` = "png",
+                      title = "Download this graph as a PNG image (300 dpi)", icon("download"), "PNG"),
+          tags$button(type = "button", class = "slx-dl", `data-plot` = id, `data-fmt` = "svg",
+                      title = "Download this graph as an SVG (vector) image", "SVG")))
+}
+
+## the line of chips at the top of an analysis tab: what is being analysed
+ctx_strip <- function(id) uiOutput(id)
+
+## a step of the work on the Data tab, as a card
+step_card <- function(n, title, lead, ...)
+  div(class = "slx-card",
+      div(class = "slx-card-h", span(class = "slx-step", n), title),
+      if (!is.null(lead)) p(class = "slx-lead", lead),
+      ...)
 
 #' The DOEpro user interface
 #'
@@ -137,27 +256,7 @@ doepro_ui <- function() navbarPage(
   theme = bslib::bs_theme(version = 5),
   id = "nav", collapsible = TRUE,
   header = tagList(tags$head(tags$style(HTML(paste0(APP_CSS, MEANS_CSS))),
-                   tags$script(HTML(
-                     "Shiny.addCustomMessageHandler('doepro_save', function(m){",
-                     " try {",
-                     "  var blob = new Blob([m.content], {type: m.mime || 'text/html'});",
-                     "  var url = URL.createObjectURL(blob);",
-                     "  var a = document.createElement('a');",
-                     "  a.href = url; a.download = m.filename;",
-                     "  document.body.appendChild(a); a.click();",
-                     "  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);",
-                     " } catch(e){ alert('Download failed: ' + e.message); }",
-                     "});")),
-                   ## in the browser build the website (site/) is the About page,
-                   ## so the About tab and the logo hand back to it
-                   tags$script(HTML(paste(
-                     "document.addEventListener('click', function (e) {",
-                     "  var a = e.target.closest ? e.target.closest('.navbar a[data-value=about], .navbar .navbar-brand') : null;",
-                     "  if (!a) return;",
-                     "  var shell = null;",
-                     "  try { shell = window.parent !== window ? window.parent.StatLabX : null; } catch (err) { shell = null; }",
-                     "  if (shell && shell.home) { e.preventDefault(); e.stopPropagation(); shell.home(); }",
-                     "}, true);")))),
+                             tags$script(HTML(APP_JS))),
                    tags$div(class = "appfoot", CREDIT_SHORT)),
 
   ## ----------------------------------------------------------------- about --
@@ -181,54 +280,71 @@ doepro_ui <- function() navbarPage(
         fileInput("file", NULL, accept = c(".csv", ".txt")),
         tags$hr(),
         h4("or try an example"),
-        selectInput("demo", NULL,
-          c("CRD", "RCBD", "LSD", "Factorial RCBD" = "FRCBD",
-            "Split plot" = "SPLIT", "Strip plot" = "STRIP",
-            "Pooled over environments (RCBD)" = "POOLRCBD",
-            "Pooled over environments (CRD)" = "POOLCRD",
-            "Pooled factorial over environments (RCBD)" = "POOLFACT",
-            "Pooled factorial over environments (CRD)" = "POOLFACTC")),
-        actionButton("loaddemo", "Load example")),
+        selectInput("demo", NULL, DEMO_CHOICES),
+        actionButton("loaddemo", "Load example"),
+        div(class = "note", style = "margin-top:8px",
+            "The examples are demonstration data, built for illustration; they are not from real experiments.")),
       mainPanel(width = 8,
         uiOutput("dataNote"),
         tab_guide("How to start", GUIDE_START),
         uiOutput("dqOut"),
         h4("Data (click a cell to edit)"),
         DTOutput("tbl"),
-        tags$hr(),
-        h4("Automatic screening of the response variables"),
-        div(class = "note",
-            "Every numeric column that is not used as a factor or block is screened, using the design and column mapping currently set on the next tab."),
-        uiOutput("scanNote"),
-        DTOutput("scanTab"))
+        step_card("2", "Design and variables",
+          "Choose the design, the response variable(s) and the column that plays each role. Everything below and on the next tabs updates as you choose.",
+          fluidRow(
+            column(7, selectInput("design", "Experimental design", DESIGNS, selected = "RCBD", width = "100%")),
+            column(5, selectInput("alpha", "Significance level", c("0.05 (5%)" = "0.05", "0.01 (1%)" = "0.01"),
+                                  selected = "0.05", width = "100%"))),
+          conditionalPanel("input.design == 'FCRD' || input.design == 'FRCBD' || input.design == 'POOLFRCBD' || input.design == 'POOLFCRD'",
+            sliderInput("nfac", "Number of treatment factors", 2, 4, 2, step = 1)),
+          uiOutput("mapUI"),
+          uiOutput("mapNote"),
+          tab_guide("The designs and their error terms", GUIDE_DESIGNS),
+          conditionalPanel("['POOLRCBD', 'POOLCRD', 'POOLFRCBD', 'POOLFCRD'].indexOf(input.design) >= 0",
+            tab_guide("Pooled (combined) analysis over environments", GUIDE_POOLED))),
+        step_card("3", "Quick descriptive statistics",
+          "A first look at each response chosen above, before any analysis.",
+          uiOutput("quickOut"),
+          actionButton("dl_quick", "Summary (CSV)", icon = icon("download"), class = "btn-default btn-sm")),
+        step_card("4", "Automatic screening",
+          "A preliminary check of each response chosen above, from the model for the design and before any transformation. The full checks, with their plots, are on the Assumptions & Diagnostics tab.",
+          uiOutput("screenOut")))
     )),
 
-  ## ---------------------------------------------------------------- explore --
+  ## ------------------------------------------------- exploration and diagnostics --
   ## analyses that describe and explore the data without a design, straight
   ## after the data and before the analysis of variance
-  navbarMenu("2. Explore",
-    tabPanel("Descriptive statistics",
+  navbarMenu("2. Exploration & Diagnostics", menuName = "explore",
+    "Exploratory visualisations",
+    tabPanel("Distributions and descriptive graphs", value = "explore_dist",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
-            "A summary of each numeric column, and plots of how its values are spread.",
-            "Entries that are not plain numbers (such as 5,6 or 12a) count as missing here",
+            "Plots of how each numeric column's values are spread, with a fuller summary that can be split by a",
+            "grouping column. Entries that are not plain numbers (such as 5,6 or 12a) count as missing here",
             "until they are corrected on the Data tab.")),
           uiOutput("descUI"),
           actionButton("dl_desc", "Table (CSV)", icon = icon("download"))),
         mainPanel(width = 9,
-          uiOutput("descTab"),
-          uiOutput("descText"),
-          tags$hr(),
           h4(textOutput("descPlotTitle", inline = TRUE)),
           fluidRow(
-            column(6, plotOutput("descHist", height = "320px"), uiOutput("descHistText")),
-            column(6, plotOutput("descDens", height = "320px"), uiOutput("descDensText"))),
+            column(6, plot_card("descHist"), uiOutput("descHistText")),
+            column(6, plot_card("descDens"), uiOutput("descDensText"))),
           fluidRow(
-            column(6, plotOutput("descBox", height = "320px"), uiOutput("descBoxText")),
-            column(6, plotOutput("descQQ", height = "320px"), uiOutput("descQQText"))))
+            column(6, plot_card("descBox"), uiOutput("descBoxText")),
+            column(6, plot_card("descQQ"), uiOutput("descQQText"))),
+          tags$hr(),
+          uiOutput("descTab"),
+          uiOutput("descText"))
       )),
-    tabPanel("Correlation",
+    "----",
+    "Data structure & quality",
+    tabPanel("Data structure and quality", value = "explore_structure",
+      uiOutput("structOut")),
+    "----",
+    "Additional exploratory analysis",
+    tabPanel("Correlation", value = "explore_cor",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
@@ -248,10 +364,10 @@ doepro_ui <- function() navbarPage(
           uiOutput("corPairs"),
           tags$hr(),
           fluidRow(
-            column(7, plotOutput("corHeat", height = "420px"), uiOutput("corHeatText")),
-            column(5, plotOutput("corScatter", height = "420px"), uiOutput("corScatterText"))))
+            column(7, plot_card("corHeat", "420px"), uiOutput("corHeatText")),
+            column(5, plot_card("corScatter", "420px"), uiOutput("corScatterText"))))
       )),
-    tabPanel("Regression",
+    tabPanel("Regression", value = "explore_reg",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
@@ -270,17 +386,17 @@ doepro_ui <- function() navbarPage(
           uiOutput("regAnova"),
           tags$hr(),
           fluidRow(
-            column(7, plotOutput("regMain", height = "440px")),
+            column(7, plot_card("regMain", "440px")),
             column(5, uiOutput("regMainText"))),
           tags$hr(),
           h4("Checking the fit"),
           uiOutput("regChecks"),
           fluidRow(
-            column(4, plotOutput("regResid", height = "340px"), uiOutput("regResidText")),
-            column(4, plotOutput("regQQ", height = "340px"), uiOutput("regQQText")),
-            column(4, plotOutput("regObs", height = "340px"), uiOutput("regObsText"))))
+            column(4, plot_card("regResid", "340px"), uiOutput("regResidText")),
+            column(4, plot_card("regQQ", "340px"), uiOutput("regQQText")),
+            column(4, plot_card("regObs", "340px"), uiOutput("regObsText"))))
       )),
-    tabPanel("Principal components",
+    tabPanel("Principal components", value = "explore_pca",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
@@ -301,14 +417,14 @@ doepro_ui <- function() navbarPage(
           uiOutput("pcaLoadings"),
           tags$hr(),
           fluidRow(
-            column(6, plotOutput("pcaScree", height = "380px"), uiOutput("pcaScreeText")),
-            column(6, plotOutput("pcaScores", height = "380px"), uiOutput("pcaScoresText"))),
+            column(6, plot_card("pcaScree", "380px"), uiOutput("pcaScreeText")),
+            column(6, plot_card("pcaScores", "380px"), uiOutput("pcaScoresText"))),
           fluidRow(
-            column(6, plotOutput("pcaLoadPlot", height = "420px"), uiOutput("pcaLoadText")),
-            column(6, plotOutput("pcaBiplot", height = "420px"), uiOutput("pcaBiplotText"))),
+            column(6, plot_card("pcaLoadPlot", "420px"), uiOutput("pcaLoadText")),
+            column(6, plot_card("pcaBiplot", "420px"), uiOutput("pcaBiplotText"))),
           uiOutput("pcaScoreTable"))
       )),
-    tabPanel("Cluster analysis",
+    tabPanel("Cluster analysis", value = "explore_cl",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
@@ -332,14 +448,14 @@ doepro_ui <- function() navbarPage(
           uiOutput("clMeans"),
           tags$hr(),
           fluidRow(
-            column(7, plotOutput("clDendro", height = "440px")),
+            column(7, plot_card("clDendro", "440px")),
             column(5, uiOutput("clDendroText"))),
           fluidRow(
-            column(6, plotOutput("clPcs", height = "400px"), uiOutput("clPcsText")),
-            column(6, plotOutput("clSil", height = "400px"), uiOutput("clSilText"))),
+            column(6, plot_card("clPcs", "400px"), uiOutput("clPcsText")),
+            column(6, plot_card("clSil", "400px"), uiOutput("clSilText"))),
           uiOutput("clItems"))
       )),
-    tabPanel("Factor analysis",
+    tabPanel("Factor analysis", value = "explore_fa",
       sidebarLayout(
         sidebarPanel(width = 3,
           div(class = "note", paste(
@@ -362,114 +478,110 @@ doepro_ui <- function() navbarPage(
           uiOutput("faPhi"),
           tags$hr(),
           fluidRow(
-            column(6, plotOutput("faScree", height = "380px"), uiOutput("faScreeText")),
-            column(6, plotOutput("faHeat", height = "380px"), uiOutput("faHeatText"))),
+            column(6, plot_card("faScree", "380px"), uiOutput("faScreeText")),
+            column(6, plot_card("faHeat", "380px"), uiOutput("faHeatText"))),
           fluidRow(
-            column(6, plotOutput("faLoadPlot", height = "420px"), uiOutput("faLoadText")),
+            column(6, plot_card("faLoadPlot", "420px"), uiOutput("faLoadText")),
             column(6, uiOutput("faScores"))))
       ))),
 
-  ## ------------------------------------------------------- design and anova --
-  tabPanel("3. Design & ANOVA", value = "design",
-    sidebarLayout(
-      sidebarPanel(width = 4,
-        selectInput("design", "Experimental design", DESIGNS, selected = "RCBD"),
-        conditionalPanel("input.design == 'FCRD' || input.design == 'FRCBD' || input.design == 'POOLFRCBD' || input.design == 'POOLFCRD'",
-          sliderInput("nfac", "Number of treatment factors", 2, 4, 2, step = 1)),
-        uiOutput("mapUI"),
-        selectInput("alpha", "Significance level", c(0.05, 0.01), selected = 0.05),
-        selectInput("dtype", "Nature of the responses (helps the adviser)",
-          c("Detect automatically" = "auto", "Counts (insects, grains, spores)" = "count",
-            "Percentage / proportion" = "percent", "Continuous measurement" = "continuous")),
-        tags$hr(),
-        h4("Transformation"),
-        uiOutput("transUI"),
-        actionButton("applysug", "Apply all suggested", class = "btn-default btn-sm"),
-        tags$hr(),
-        actionButton("run", "Run analysis", class = "btn-primary btn-lg"),
-        tags$br(), tags$br(),
-        actionButton("dl_anova", "ANOVA (CSV)", icon = icon("download"))),
-      mainPanel(width = 8,
-        uiOutput("runNote"),
-        uiOutput("anovaOut"),
-        tab_guide("The designs and their error terms", GUIDE_DESIGNS),
-        conditionalPanel("['POOLRCBD', 'POOLCRD', 'POOLFRCBD', 'POOLFCRD'].indexOf(input.design) >= 0",
-          tab_guide("Pooled (combined) analysis over environments", GUIDE_POOLED)))
-    )),
-
-  ## ----------------------------------------------------------------- means --
-  tabPanel("4. Means & C.D.", value = "means",
-    fluidRow(
-      column(3, checkboxInput("letters", "Show grouping letters", TRUE)),
-      column(3, checkboxInput("detailed", "Show detailed tables", FALSE)),
-      column(3, numericInput("digits", "Decimal places", 2, 0, 5, 1)),
-      column(3, actionButton("dl_means", "Means (CSV)", icon = icon("download")))),
-    tags$hr(),
-    uiOutput("meansOut"),
-    tab_guide("How SE(m), SE(d) and the C.D. are worked out", GUIDE_ERRORS)),
-
   ## ----------------------------------------------------------- assumptions --
-  tabPanel("5. Assumptions", value = "assumptions",
+  ## before the analysis of variance: the checks decide the scale it is on
+  tabPanel("3. Assumptions & Diagnostics", value = "assumptions",
+    ctx_strip("ctxAssum"),
+    div(class = "slx-card",
+      div(class = "slx-card-h", "The scale of each response"),
+      p(class = "slx-lead", paste(
+        "Say what kind of measurement each response is, and choose the scale it is analysed on. The ANOVA, the means",
+        "and the plots all use the scale chosen here; the values as entered are used until you choose otherwise.")),
+      uiOutput("transUI"),
+      actionButton("applysug", "Apply every suggested transformation", class = "btn-default btn-sm")),
     fluidRow(column(4, uiOutput("aRespUI"))),
-    uiOutput("assumtxt"),
+    uiOutput("asmSummary"),
     uiOutput("asmText"),
     uiOutput("sugbox"),
+    tags$details(class = "slx-fold", tags$summary("The tests in detail"), uiOutput("assumtxt")),
     tab_guide("Choosing a transformation", GUIDE_TRANSFORM),
-    fluidRow(column(6, plotOutput("bcPlot", height = "300px"), uiOutput("bcText")),
-             column(6, plotOutput("mvPlot", height = "300px"), uiOutput("mvText"))),
-    tags$hr(), h4("Residual diagnostics"),
-    fluidRow(column(6, plotOutput("diagFit", height = "300px"), uiOutput("diagFitText")),
-             column(6, plotOutput("diagQQ", height = "300px"), uiOutput("diagQQText"))),
-    fluidRow(column(6, plotOutput("diagHist", height = "300px"), uiOutput("diagHistText")),
-             column(6, plotOutput("diagScale", height = "300px"), uiOutput("diagScaleText")))),
+    h4("Residual diagnostics"),
+    div(class = "note", "Residuals are the observed values minus those the analysis fits; the plots show whether they behave as the F-tests assume."),
+    fluidRow(column(6, plot_card("diagFit", "300px"), uiOutput("diagFitText")),
+             column(6, plot_card("diagQQ", "300px"), uiOutput("diagQQText"))),
+    fluidRow(column(6, plot_card("diagHist", "300px"), uiOutput("diagHistText")),
+             column(6, plot_card("diagScale", "300px"), uiOutput("diagScaleText"))),
+    fluidRow(column(6, plot_card("diagCook", "300px"), uiOutput("diagCookText"))),
+    h4("Choosing a transformation"),
+    fluidRow(column(6, plot_card("bcPlot", "300px"), uiOutput("bcText")),
+             column(6, plot_card("mvPlot", "300px"), uiOutput("mvText")))),
 
-  ## --------------------------------------------------------------- posthoc --
-  tabPanel("6. Post-hoc", value = "posthoc",
+  ## ------------------------------------------------------------------ anova --
+  tabPanel("4. ANOVA", value = "anova",
+    ctx_strip("ctxAnova"),
+    fluidRow(column(12, actionButton("dl_anova", "ANOVA tables (CSV)", icon = icon("download"), class = "btn-default btn-sm"))),
+    uiOutput("runNote"),
+    uiOutput("anovaOut")),
+
+  ## ---------------------------------------------------- means and comparisons --
+  tabPanel("5. Means & Comparisons", value = "means",
+    ctx_strip("ctxMeans"),
     sidebarLayout(
       sidebarPanel(width = 3,
-        uiOutput("aRespUI2"), uiOutput("phEffectUI"),
-        selectInput("phMethod", "Test", stats::setNames(PH_METHODS, PH_LABELS[PH_METHODS])),
+        uiOutput("cmpRespUI"),
+        selectInput("phMethod", "Compare the means by", CMP_CHOICES, selected = "none"),
         ## a control means something only to Dunnett's test
         conditionalPanel("input.phMethod == 'Dunnett'",
           uiOutput("phControlUI"),
           radioButtons("phAlt", "Compare each treatment with the control",
             c("Does it differ? (two-sided)" = "two.sided", "Is it higher? (one-sided)" = "greater",
               "Is it lower? (one-sided)" = "less"))),
-        actionButton("dl_ph", "Groups (CSV)", icon = icon("download")),
+        uiOutput("phEffectUI"),
+        uiOutput("phByUI"),
+        numericInput("digits", "Decimal places", 2, 0, 5, 1),
+        checkboxInput("detailed", "Show detailed tables (every effect)", FALSE),
+        actionButton("dl_means", "Means (CSV)", icon = icon("download"), class = "btn-default btn-sm"),
         tags$br(), tags$br(),
-        actionButton("dl_ph_pairs", "Pairwise (CSV)", icon = icon("download"))),
+        actionButton("dl_ph", "Comparisons (CSV)", icon = icon("download"), class = "btn-default btn-sm"),
+        tags$br(), tags$br(),
+        actionButton("dl_ph_pairs", "Every pair (CSV)", icon = icon("download"), class = "btn-default btn-sm")),
       mainPanel(width = 9,
-        uiOutput("phNote"),
-        h4("Treatment groups"), DTOutput("phTab"), uiOutput("phText"),
-        h4("Test parameters"), DTOutput("phStats"),
-        uiOutput("phRangesUI"),
-        h4("Pairwise comparisons"),
-        div(class = "note", paste(
-          "Every pair of means: their difference, the standard error of that difference,",
-          "the critical value and critical difference it is judged against, and the verdict.")),
-        DTOutput("phPairs"), uiOutput("phPairsText"),
-        tab_guide("Which test to choose", GUIDE_POSTHOC))
+        uiOutput("meansOut"),
+        uiOutput("phOut"),
+        tab_guide("How SE(m), SE(d) and the C.D. are worked out", GUIDE_ERRORS),
+        tab_guide("Which comparison to choose", GUIDE_POSTHOC))
     )),
 
   ## ----------------------------------------------------------------- plots --
-  tabPanel("7. Plots", value = "plots",
-    sidebarLayout(
-      sidebarPanel(width = 3,
-        uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
-        radioButtons("plType", "Plot type",
-          c("Bar chart" = "bar", "Interaction lines" = "line",
-            "Heat map" = "heat", "Box plot" = "box")),
-        checkboxInput("plLetters", "Show grouping letters", TRUE),
-        downloadButton("dl_plot", "Plot (PNG)")),
-      mainPanel(width = 9, plotOutput("mainPlot", height = "560px"), uiOutput("mainPlotText")))
-    ),
+  tabPanel("6. Plots", value = "plots",
+    ctx_strip("ctxPlots"),
+    tabsetPanel(id = "plotTabs", type = "pills",
+      tabPanel("Means", value = "plot_means",
+        sidebarLayout(
+          sidebarPanel(width = 3,
+            uiOutput("aRespUI3"), uiOutput("plEffectUI"), uiOutput("plXUI"),
+            radioButtons("plType", "Plot type",
+              c("Bar chart" = "bar", "Points with error bars" = "line",
+                "Heat map" = "heat", "Box plot" = "box")),
+            uiOutput("plLettersUI")),
+          mainPanel(width = 9, plot_card("mainPlot", "540px"), uiOutput("mainPlotText")))),
+      tabPanel("Interaction plots", value = "plot_inter",
+        sidebarLayout(
+          sidebarPanel(width = 3,
+            uiOutput("ipRespUI"), uiOutput("ipEffectUI"), uiOutput("ipXUI"),
+            checkboxInput("ipCI", "Show confidence intervals of the means (where they can be given)", TRUE)),
+          mainPanel(width = 9, plot_card("interPlot", "540px"), uiOutput("interPlotText")))))),
 
   ## -------------------------------------------------------------- interpret --
-  tabPanel("8. Interpretation & Report", value = "report",
-    fluidRow(
-      column(4, actionButton("dl_html", "Download report (HTML)",
-                             icon = icon("download"), class = "btn-primary")),
-      column(6, uiOutput("pdfBtn"))),
-    tags$hr(),
+  tabPanel("7. Interpretation & Report", value = "report",
+    ctx_strip("ctxReport"),
+    div(class = "slx-card",
+      div(class = "slx-card-h", "The report"),
+      p(class = "slx-lead", paste(
+        "The full analysis as one document: the ANOVA, the means with the comparison chosen on the Means &",
+        "Comparisons tab, the checks and the interpretation, with the StatLabX credit and the date.")),
+      actionButton("print_report", "Print / Save as PDF", icon = icon("print"), class = "btn-primary"),
+      actionButton("dl_html", "Download HTML", icon = icon("download"), class = "btn-default"),
+      uiOutput("pdfBtn", inline = TRUE),
+      div(class = "note", style = "margin-top:10px", paste(
+        "Print / Save as PDF opens your browser's print dialog: choose 'Save as PDF' as the printer to keep a PDF.",
+        "Tables are kept whole and wide tables print on a landscape page where your browser allows."))),
     uiOutput("interpOut"))
 )

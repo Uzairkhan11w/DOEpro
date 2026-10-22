@@ -14,10 +14,15 @@ ANOVA for the common designs, mean comparisons, data transformations and clear r
 together in one accessible interface, and serves as a free, self-contained option for the
 kind of analysis researchers carry out in tools such as OPSTAT.
 
-Paste your data straight out of Excel, choose the design, press **Run analysis**. You get
-the ANOVA, publication-format tables of means with SE(m)±, SE(d), C.D. at your chosen
-significance level and C.V. at the foot, automatic advice on data transformation, post-hoc comparisons, plots, a
-plain-English interpretation, and a report you can download as HTML or PDF.
+Paste your data straight out of Excel (or load an example), choose the design and the role of
+each column on the Data tab, and every result follows at once. The workflow runs Data →
+Exploration & Diagnostics → Assumptions & Diagnostics → ANOVA → Means & Comparisons → Plots →
+Interpretation & Report. You get a quick summary and a screening of each response as soon as
+the data are in, residual diagnostics with a summary of what each check means and what to do,
+the ANOVA of each response, publication-format tables of means with SE(m) and SE(d) and either
+the C.D. or the letters of the comparison you choose (never both), interaction plots, graphs
+that download as PNG or SVG, a plain-English interpretation, and a report you can print, save
+as PDF or download as HTML.
 
 **Developed by**
 
@@ -25,6 +30,7 @@ plain-English interpretation, and a report you can download as HTML or PDF.
 2. **Mr. Uzair Javid Khan** *(maintainer)* — UG Research Student, Statistics, AAAMDC Bemina, Cluster University Srinagar. [ORCID 0009-0001-6368-0977](https://orcid.org/0009-0001-6368-0977) · uzairkhan11w@gmail.com
 3. **Dr. M. Iqbal Jeelani** — Scientist (Statistics), Division of Agricultural Statistics, SKUAST-Kashmir. [ORCID 0000-0002-2974-2871](https://orcid.org/0000-0002-2974-2871)
 4. **Dr. Imran Khan** — Chief Scientist, Division of Agricultural Statistics, SKUAST-Kashmir · imrankhan@skuastkashmir.ac.in
+5. **Dr. Pradeep Mishra** — Assistant Professor, JNKVV, Madhya Pradesh
 
 Suggestions and feedback are welcome — write to the maintainer (uzairkhan11w@gmail.com) or open an issue in the repository.
 
@@ -94,41 +100,52 @@ Or open `app.R` in RStudio and press **Run App**.
 
 ## Layout of the tables of means
 
-**One factor, several parameters** — one row per treatment, one column per measured
-character, each cell `mean ± SE` with the grouping letter as a superscript:
+The tables show **one comparison at a time**, chosen on the Means & Comparisons tab:
+
+- **Means only** (the default): the treatment means, with SE(m) ± and SE(d) ± and the C.V. at the foot.
+- **Critical difference (Fisher's protected LSD)**: the same table with **C.D. (5%)** (or 1%) at the
+  foot, and no letters.
+- **A letter procedure** (Tukey's HSD, Duncan's DMRT, SNK, Scheffé's, Bonferroni-adjusted LSD):
+  superscript letters from that procedure beside the means, and no C.D.; a note names the procedure
+  and the level.
+- **Dunnett's test**: the means, and every treatment compared with the control you choose.
+
+**One factor, several parameters** — one row per treatment, one column per measured character
+(here with Tukey's HSD):
 
 | TREATMENT | Yield | Plant height | Fruits per plant |
 |---|---|---|---|
-| T1 | 42.30 ± 1.26 ᶜ | 78.4 ± 2.1 ᵇ | 31.2 ± 1.4 ᵇ |
-| T2 | 47.10 ± 1.26 ᵃ | 84.9 ± 2.1 ᵃ | 38.7 ± 1.4 ᵃ |
+| T1 | 42.30 ᶜ | 78.4 ᵇ | 31.2 ᵇ |
+| T2 | 47.10 ᵃ | 84.9 ᵃ | 38.7 ᵃ |
 | **SE(m) ±** | 1.26 | 2.1 | 1.4 |
 | **SE(d) ±** | 1.78 | 2.97 | 1.98 |
-| **C.D. (P≤0.05) Treatment** | 3.81 | 6.34 | NS |
 | **C.V. (%)** | 7.60 | 5.31 | 9.02 |
 
-**Two factors** — the familiar grid with marginal means, and the three critical differences
-spelled out underneath:
+**Two factors** — the familiar grid with marginal means, and the standard errors of the three
+comparisons underneath (here with the C.D.):
 
 |  Factor 1 \ Factor 2 | I1 | I2 | I3 | Mean |
 |---|---|---|---|---|
-| T1 | 30.70 ᵈ | 36.12 ᶜ | 41.06 ᵇ | 35.96 |
-| T2 | 36.56 ᶜ | 38.92 ᵇᶜ | 46.62 ᵃ | 40.70 |
+| T1 | 30.70 | 36.12 | 41.06 | 35.96 |
+| T2 | 36.56 | 38.92 | 46.62 | 40.70 |
 | **Mean** | 33.63 | 37.52 | 43.84 | 38.33 |
 
 > SE(m) ± 0.86 / 0.70 / 1.22 SE(d) ± 1.22 / 0.99 / 1.72
-> **C.D. (P≤0.05)** Factor 1: **2.71**  Factor 2: **2.21**  Factor 1 × Factor 2: **NS**
+> **C.D. (5%)** Factor 1: **2.71**  Factor 2: **2.21**  Factor 1 × Factor 2: **NS**
 > C.V. (%) 5.49
 
-C.D. is printed only when the F-test for that source is significant; otherwise the cell
-reads `NS`. Every C.D., grouping letter and verdict is at the significance level you choose
-(5% or 1%), and the labels say which. When a response has been transformed, each cell shows the **back-transformed
-mean with the transformed value in parentheses**, and SE, C.D. and C.V. refer to the
-transformed scale — because that is the scale on which the tests were done.
+A C.D. is printed only when the F-test for that source is significant; otherwise the cell
+reads `NS`. Letters likewise appear only under a significant F-test. Every C.D., letter and
+verdict is at the significance level you choose (5% or 1%), and the labels say which. When a
+response has been transformed, each cell shows the **back-transformed mean with the transformed
+value in parentheses**, and SE, C.D. and C.V. refer to the transformed scale — because that is
+the scale on which the tests were done.
 
 With **unequal replication** each mean carries its own SE, each pair of means its own SE(d)
 and C.D., and the footer gives their range rather than one figure that fits only some of
 the means. In a blocked design with a missing plot, or a factorial with unequal cells, the
 means are adjusted (least-squares) means and each term is tested adjusted for the others.
+An interaction can be compared within each level of one of its factors (simple effects).
 
 ---
 
@@ -184,9 +201,9 @@ at *None*. It tells you what convention expects; it does not transform behind yo
 
 ---
 
-## Post-hoc tests
+## Comparisons of means
 
-Fisher's protected LSD, Bonferroni-adjusted LSD, Tukey's HSD, Duncan's DMRT,
+Fisher's protected LSD (shown as the C.D.), Bonferroni-adjusted LSD, Tukey's HSD, Duncan's DMRT,
 Student–Newman–Keuls, and Scheffé. Each is computed from the error mean square and degrees
 of freedom of the effect you select, so in a split or strip plot they automatically use the
 right error stratum. Duncan and SNK report the full table of critical ranges *R*ₚ.
@@ -200,14 +217,15 @@ reproduces Dunnett's (1955) tables.
 
 ## Report
 
-**Download report (HTML)** always works. **Download report (PDF)** appears when the machine
-has a rendering engine — `pagedown` (needs Chrome or Chromium), `weasyprint`, or
-`wkhtmltopdf`. On a hosted server without one, download the HTML and print to PDF from the
-browser; the page footer carries the credit line either way.
+**Print / Save as PDF** opens the browser's print dialog with the report laid out for A4 —
+tables kept whole, wide tables on landscape pages where the browser allows — so choosing
+*Save as PDF* gives a PDF, in the browser version too. **Download HTML** saves the report as
+one self-contained page. **Download PDF** appears only where the machine has a rendering
+engine — `pagedown` (needs Chrome or Chromium), `weasyprint`, or `wkhtmltopdf`. The report
+carries the StatLabX credit line, the DOEpro version and the date.
 
-Every page of the PDF carries, in the bottom-right corner:
-
-> DOEpro · Shah, Khan & Jeelani · SKUAST-Kashmir — page *n*
+Every graph in the app has a small download menu in its corner: PNG at 300 dpi or SVG, named
+`StatLabX_<graph>_<response>`, with "Generated with StatLabX" at its foot.
 
 ---
 

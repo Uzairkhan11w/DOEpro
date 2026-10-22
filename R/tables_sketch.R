@@ -1,21 +1,11 @@
 ###############################################################################
-##  UI
-
-###############################################################################
 ##  MEAN TABLES  (layout follows the standard agronomy presentation)
 ###############################################################################
+## What the tables show follows the comparison chosen (R/comparisons.R): the
+## means alone, the means with the C.D. at the foot, or the means with the
+## letters of a procedure, never the letters and the C.D. together.
 
 sup <- function(x) ifelse(nzchar(x), sprintf("<sup>%s</sup>", x), "")
-
-## "mean +/- SE" cell, optionally carrying the grouping letter as a superscript.
-## When the response was transformed the back-transformed mean is shown first and
-## the transformed value - the scale on which SE, C.D. and C.V. are computed - in
-## parentheses, following the usual journal convention.
-ms_cell <- function(mu, se, letter = "", digits = 2, letters_on = TRUE, mu_bt = NULL) {
-  lt <- if (letters_on) sup(letter) else ""
-  if (is.null(mu_bt)) paste0(fmt(mu, digits), " &plusmn; ", fmt(se, digits), lt)
-  else paste0(fmt(mu_bt, digits), " (", fmt(mu, digits), ")", lt)
-}
 
 TRANS_NOTE <- paste0("<div class='note'>Figures in parentheses are transformed values. ",
   "SE(m), SE(d), C.D. and C.V. refer to the transformed scale; the leading figure ",
@@ -38,16 +28,14 @@ effect_cv <- function(fin, e) {
 
 cd_or_ns <- function(e, digits = 2) if (effect_sig(e)) err_text(e, "cd", digits) else "NS"
 
-## the heading of a C.D. row, at the level the user chose
-cd_head <- function(alpha) sprintf("C.D. (P&le;%s)", p_lab(alpha))
-
 ## does any effect in the analysis have unequal replication?
 any_unequal <- function(rr)
   any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e)
     !isTRUE(e$equal_rep) && is.null(e$mix), logical(1))), logical(1)))
 
 ## A raw HTML table: `head` is a character vector of <th> labels, `body` a list
-## of character vectors (one per row), `foot` a list of character vectors.
+## of character vectors (one per row), `foot` a list of character vectors. A
+## table with many columns is marked to print on a landscape page.
 raw_table <- function(head, body, foot = NULL, caption = NULL, cls = "doe") {
   th <- paste0("<th>", head, "</th>", collapse = "")
   mkrow <- function(r) if (length(r) == 1L && grepl("^<tr", r)) r else
@@ -55,6 +43,7 @@ raw_table <- function(head, body, foot = NULL, caption = NULL, cls = "doe") {
   tr <- vapply(body, mkrow, character(1))
   tf <- if (length(foot))
     paste0("<tfoot>", paste(vapply(foot, mkrow, character(1)), collapse = ""), "</tfoot>") else ""
+  if (length(head) > 8) cls <- paste(cls, "wide")
   paste0("<table class='", cls, "'>",
          if (!is.null(caption)) paste0("<caption>", caption, "</caption>") else "",
          "<thead><tr>", th, "</tr></thead><tbody>",
@@ -62,21 +51,20 @@ raw_table <- function(head, body, foot = NULL, caption = NULL, cls = "doe") {
 }
 
 ## ---------------------------------------------------------------------------
-## One-factor layout, consolidated over every response variable:
+## One-factor layout, every response side by side:
 ##
-##      TREATMENT | PARAMETER 1        | PARAMETER 2        | ...
-##      T1        | mean +/- SE        | mean +/- SE
+##      TREATMENT | RESPONSE 1   | RESPONSE 2   | ...
+##      T1        | mean[letter] | mean[letter]
 ##      ...
-##      SE(m)+/-  |  ...
-##      SE(d)+/-  |  ...
-##      C.D. (P<=alpha)  <effect name>: ...
-##      CV (%)    |  ...
+##      SE(m) +/- |  ...
+##      SE(d) +/- |  ...
+##      C.D. (5%) |  ...           (only when the comparison is the C.D.)
+##      C.V. (%)  |  ...
 ## ---------------------------------------------------------------------------
-sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
+sketch_main_html <- function(fits, fac, digits = 2, cmp = comparison(), readings = FALSE) {
   ok <- vapply(fits, function(f) fac %in% names(f$final$effects), logical(1))
   fits <- fits[ok]
   if (!length(fits)) return("")
-  resps <- names(fits)
 
   ## every level any response has, in the design's order: a level with no
   ## data for the first response must not vanish from the others' columns
@@ -86,34 +74,35 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
     lv <- append(lv, x[i], after = if (i == 1) 0 else match(x[i - 1], lv))
   alpha <- fits[[1]]$final$alpha
   any_tr <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
-  cells <- lapply(fits, function(f) {
-    e <- f$final$effects[[fac]]
-    m <- gate_letters(e)
-    idx <- match(lv, as.character(m[[fac]]))
-    lets <- if ("Letter" %in% names(m)) m$Letter[idx] else rep("", length(lv))
-    bt <- if (!identical(f$trans, "none") && "Mean_bt" %in% names(m)) m$Mean_bt[idx] else NULL
-    out <- ms_cell(m$Mean[idx], m$SE[idx], ifelse(is.na(lets), "", lets), digits, letters_on, mu_bt = bt)
-    ifelse(is.na(idx), "-", out)
-  })
-
-  body <- lapply(seq_along(lv), function(i)
-    c(lv[i], vapply(cells, function(z) z[i], character(1))))
-
   ef <- lapply(fits, function(f) f$final$effects[[fac]])
-  foot <- list(
-    c("SE(m) &plusmn;",   vapply(ef, function(e) err_text(e, "sem", digits), character(1))),
-    c("SE(d) &plusmn;",   vapply(ef, function(e) err_text(e, "sed", digits), character(1))),
-    c(sprintf("%s &nbsp; <b>%s</b>", cd_head(alpha), fac),
-                          vapply(ef, function(e) cd_or_ns(e, digits), character(1))),
-    c("C.V. (%)",         vapply(fits, function(f) effect_cv(f$final, f$final$effects[[fac]]),
-                                 character(1))))
+  L <- lapply(fits, function(f) cmp_letters(f$final, fac, cmp))
+  cells <- lapply(seq_along(fits), function(i) {
+    f <- fits[[i]]; m <- ef[[i]]$means
+    idx <- match(lv, as.character(m[[fac]]))
+    bt <- if (!identical(f$trans, "none") && "Mean_bt" %in% names(m)) m$Mean_bt[idx] else NULL
+    ifelse(is.na(idx), "&ndash;", cmp_cell(m$Mean[idx], L[[i]]$letters[idx], digits, bt))
+  })
+  body <- lapply(seq_along(lv), function(j) c(esc(lv[j]), vapply(cells, function(z) z[j], character(1))))
 
-  hdr <- c(toupper(fac), vapply(fits, function(f) f$header, character(1)))
-  paste0(raw_table(hdr, body, foot,
-           caption = sprintf("Effect of <b>%s</b> (%s)", fac,
-             if (any_tr) "mean &plusmn; SE; transformed responses show the back-transformed mean with the transformed value in parentheses"
-             else "mean &plusmn; SE")),
-         if (any_tr) TRANS_NOTE else "")
+  foot <- c(
+    list(c("SE(m) &plusmn;", vapply(ef, function(e) err_text(e, "sem", digits), character(1))),
+         c("SE(d) &plusmn;", vapply(ef, function(e) err_text(e, "sed", digits), character(1)))),
+    if (identical(cmp$kind, "cd"))
+      list(c(cd_name(alpha), vapply(ef, function(e) cd_or_ns(e, digits), character(1)))),
+    list(c("C.V. (%)", vapply(seq_along(fits), function(i) effect_cv(fits[[i]]$final, ef[[i]]), character(1)))))
+
+  hdr <- c(esc(fac), vapply(fits, function(f) esc(f$header), character(1)))
+  notes <- unlist(lapply(seq_along(fits), function(i)
+    cmp_letters_note(cmp, ef[[i]], L[[i]], if (length(fits) > 1) fits[[i]]$header)))
+  rd <- if (readings) rd_html(vapply(seq_along(fits), function(i)
+    paste0(if (length(fits) > 1) paste0(fits[[i]]$header, ": ") else "",
+           cmp_means_text(fits[[i]], fac, cmp, digits, L[[i]])), character(1))) else ""
+  ## the title sits above the table rather than in a caption, which a
+  ## narrow table would squeeze onto several lines
+  paste0(sprintf("<div class='ms-tcap'>Effect of <b>%s</b>%s</div>", esc(fac), cmp_caption(cmp, alpha, any_tr)),
+         raw_table(hdr, body, foot),
+         if (length(notes)) paste0("<div class='note'>", paste(esc(notes), collapse = " "), "</div>") else "",
+         if (any_tr) TRANS_NOTE else "", rd)
 }
 
 ## ---------------------------------------------------------------------------
@@ -123,48 +112,35 @@ sketch_main_html <- function(fits, fac, digits = 2, letters_on = TRUE) {
 ##      Factor 1  T1            ..    ..    ..   |  ..
 ##                T2
 ##                Mean          ..    ..    ..   |  ..
-##      C.D. (P<=alpha)  Factor 1: .. ; Factor 2: .. ; Factor 1 x Factor 2: ..
+##      SE(m), SE(d) (and, with the C.D., the C.D.) of factor 1 / factor 2 / interaction
 ## ---------------------------------------------------------------------------
-sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
+sketch_twoway_html <- function(fit, f1, f2, digits = 2, cmp = comparison(), readings = FALSE) {
   r  <- fit$final
   key <- paste0(f1, ":", f2)
   eI <- r$effects[[key]]; e1 <- r$effects[[f1]]; e2 <- r$effects[[f2]]
   if (is.null(eI) || is.null(e1) || is.null(e2)) return("")
 
   tr_on <- !identical(fit$trans, "none")
-  bt <- function(e) if (tr_on && "Mean_bt" %in% names(e$means)) e$means$Mean_bt else e$means$Mean
+  L <- cmp_letters(r, key, cmp)
   m  <- eI$means
-  mu <- bt(eI)
   l1 <- as.character(e1$means[[f1]]); l2 <- as.character(e2$means[[f2]])
-  grid <- matrix(NA_real_, length(l1), length(l2), dimnames = list(l1, l2))
-  grid[cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))] <- mu
+  at <- cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))
+  grid <- matrix(NA_real_, length(l1), length(l2)); graw <- grid
+  lets <- matrix("", length(l1), length(l2))
+  grid[at] <- if (tr_on && "Mean_bt" %in% names(m)) m$Mean_bt else m$Mean
+  graw[at] <- m$Mean
+  lets[at] <- L$letters
 
-  lets <- if (letters_on) {
-    mlet <- gate_letters(eI)
-    lc <- intersect(c("Letter", "Letter_within_MP", "Letter_within_A",
-                      "Letter_within_env"), names(mlet))
-    if (length(lc)) {
-      g <- matrix("", length(l1), length(l2), dimnames = list(l1, l2))
-      g[cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))] <- mlet[[lc[1]]]
-      g
-    } else NULL
-  } else NULL
-
-  graw <- matrix(NA_real_, length(l1), length(l2), dimnames = list(l1, l2))
-  graw[cbind(match(as.character(m[[f1]]), l1), match(as.character(m[[f2]]), l2))] <- m$Mean
   ## margins and corner are shown like the cells: back-transformed, with the
   ## transformed value in parentheses. The corner is the average of the cell
   ## means, which is what the (adjusted) margins average to.
   btf <- function(z) TRANS[[fit$trans]]$b(z, fit$lambda)
-  marg <- function(z) if (tr_on) paste0(fmt(btf(z), digits), " (", fmt(z, digits), ")")
-                      else fmt(z, digits)
+  marg <- function(z) if (tr_on) paste0(fmt(btf(z), digits), " (", fmt(z, digits), ")") else fmt(z, digits)
   body <- lapply(seq_along(l1), function(i)
-    c(l1[i],
+    c(esc(l1[i]),
       vapply(seq_along(l2), function(j)
-        paste0(fmt(grid[i, j], digits),
-               if (tr_on) paste0(" (", fmt(graw[i, j], digits), ")") else "",
-               if (!is.null(lets)) sup(lets[i, j]) else ""),
-        character(1)),
+        paste0(fmt(grid[i, j], digits), if (tr_on) paste0(" (", fmt(graw[i, j], digits), ")") else "",
+               sup(lets[i, j])), character(1)),
       marg(e1$means$Mean[i])))
   body[[length(body) + 1L]] <- c("<b>Mean</b>", vapply(e2$means$Mean, marg, character(1)),
                                  marg(mean(graw, na.rm = TRUE)))
@@ -176,27 +152,34 @@ sketch_twoway_html <- function(fit, f1, f2, digits = 2, letters_on = TRUE) {
   ## in a split, strip or pooled design the interaction's single SE(d) and C.D.
   ## hold only within one level of its slicing factor; the others are listed
   within <- if (is.null(eI$slice)) "" else
-    sprintf(" (%s within the same %s)", paste(setdiff(eI$vars, eI$slice), collapse = " &times; "),
-            eI$slice)
-  xt <- extra_text(eI, digits)
+    sprintf(" (%s within the same %s)", esc(paste(setdiff(eI$vars, eI$slice), collapse = " x ")), esc(eI$slice))
+  xt <- cmp_extra(eI, cmp, digits)
   foot <- list(
     span(sprintf("SE(m) &plusmn; &nbsp; %s", trio("sem"))),
     span(sprintf("SE(d) &plusmn; &nbsp; %s", trio("sed"))),
-    span(sprintf("<b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s%s: <b>%s</b>",
-                 cd_head(r$alpha), f1, cd_or_ns(e1, digits), f2, cd_or_ns(e2, digits),
-                 f1, f2, within, cd_or_ns(eI, digits))),
-    if (length(xt)) span(paste(sprintf("%s: <b>%s</b>", names(xt), xt), collapse = " &nbsp;&middot;&nbsp; ")),
+    if (identical(cmp$kind, "cd"))
+      span(sprintf("<b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s: <b>%s</b> &nbsp;&nbsp; %s &times; %s%s: <b>%s</b>",
+                   cd_name(r$alpha), esc(f1), cd_or_ns(e1, digits), esc(f2), cd_or_ns(e2, digits),
+                   esc(f1), esc(f2), within, cd_or_ns(eI, digits))),
+    if (length(xt)) span(paste(sprintf("%s: <b>%s</b>", esc(names(xt)), xt), collapse = " &nbsp;&middot;&nbsp; ")),
     span(sprintf("C.V. (%%) &nbsp; %s", paste(fmt(r$cv, 2), collapse = " / "))))
   foot <- Filter(Negate(is.null), foot)
 
-  hdr <- c(sprintf("%s \\ %s", f1, f2), l2, "Mean")
-  tbl <- raw_table(hdr, body, foot,
-    caption = sprintf("<b>%s</b> &mdash; %s &times; %s", fit$header, f1, f2))
-  paste0(tbl, "<div class='note'>SE(m), SE(d) are given as ", f1, " / ", f2, " / ",
-         f1, " &times; ", f2, if (nzchar(within)) paste0(within, ", the conventional SE(m) for those comparisons being SE(d) / &radic;2") else "",
-         ".</div>",
-         if (!is.null(lets) && effect_sig(eI)) slice_note(eI) else "",
-         if (tr_on) TRANS_NOTE else "")
+  hdr <- c(paste(esc(f1), "&#92;", esc(f2)), vapply(l2, esc, ""), "Mean")
+  tbl <- paste0(sprintf("<div class='ms-tcap'><b>%s</b> &mdash; %s &times; %s%s</div>", esc(fit$header), esc(f1), esc(f2),
+                        cmp_caption(cmp, r$alpha)),
+                raw_table(hdr, body, foot))
+  scope <- if (!identical(cmp$kind, "letters") || !any(nzchar(L$letters))) ""
+    else if (is.null(eI$slice)) sprintf(" Letters compare every %s &times; %s cell with every other.", esc(f1), esc(f2))
+    else sprintf(" Letters compare %s means within the same level of %s only; the same letter at two levels of %s means nothing.",
+                 esc(paste(setdiff(eI$vars, eI$slice), collapse = " x ")), esc(eI$slice), esc(eI$slice))
+  lnote <- cmp_letters_note(cmp, eI, L)
+  rd <- if (readings) rd_html(cmp_twoway_text(fit, f1, f2, cmp, digits, L)) else ""
+  paste0(tbl, "<div class='note'>SE(m) and SE(d)", if (identical(cmp$kind, "cd")) " and the C.D." else "",
+         " are given as ", esc(f1), " / ", esc(f2), " / ", esc(f1), " &times; ", esc(f2),
+         if (nzchar(within)) paste0(within, ", the conventional SE(m) for those comparisons being SE(d) / &radic;2") else "",
+         ".", scope, if (length(lnote)) paste0(" ", esc(lnote)) else "", "</div>",
+         if (tr_on) TRANS_NOTE else "", rd)
 }
 
 ## A compact summary card: design, observations, and grand mean + C.V. per response.
@@ -209,7 +192,7 @@ means_summary_card <- function(rr, digits = 2) {
     sprintf(paste0("<div class='ms-chip'><div class='ms-chip-name'>%s</div>",
                    "<div class='ms-chip-row'><span>Grand mean</span><b>%s</b></div>",
                    "<div class='ms-chip-row'><span>%s</span><b>%s</b></div></div>"),
-            f$header, fmt(fin$grand, digits),
+            esc(f$header), fmt(fin$grand, digits),
             if (length(fin$cv) > 1) "C.V." else "C.V. (%)", cv)
   }, character(1))
   layout <- function(fin) paste0(nrow(fin$data), " observations",
@@ -231,48 +214,46 @@ means_summary_card <- function(rr, digits = 2) {
 }
 
 ## A key to the notation, shown once at the foot of the section.
-means_legend <- function(any_letters, any_trans, alpha, unequal = FALSE, mixed = FALSE) {
+means_legend <- function(cmp, any_trans, alpha, unequal = FALSE, mixed = FALSE) {
+  cd <- identical(cmp$kind, "cd")
   items <- c(
-    "<b>mean &plusmn; SE</b> &mdash; treatment mean with its standard error",
-    if (any_letters) sprintf("<b><sup>a b c</sup></b> &mdash; means sharing a letter are not significantly different at the %s%% level", pct(alpha)) else NULL,
-    "<b>SE(m)</b> standard error of a mean &nbsp; <b>SE(d)</b> standard error of a difference",
-    sprintf("<b>%s</b> critical difference at the %s%% level; <b>NS</b> when the F-test is not significant at that level",
-            cd_head(alpha), pct(alpha)),
+    if (any_trans) "<b>12.34 (3.51)</b> &mdash; the back-transformed mean, with the transformed value in parentheses"
+    else "the figures are the treatment means",
+    if (identical(cmp$kind, "letters"))
+      sprintf("<b><sup>a b c</sup></b> &mdash; means sharing a letter do not differ significantly by %s at the %s%% level; no letters are given where the F-test is not significant",
+              CMP_NAME[[cmp$method]], pct(alpha)),
+    paste("<b>SE(m)</b> standard error of a mean &nbsp; <b>SE(d)</b> standard error of the difference between two means",
+          "(standard errors, not the standard deviation of the observations)"),
+    if (cd)
+      sprintf("<b>%s</b> critical difference (Fisher's protected LSD) at the %s%% level: two means differ significantly when their difference is larger; <b>NS</b> when the F-test is not significant at that level",
+              cd_name(alpha), pct(alpha)),
     if (unequal) paste0("<b>0.96&ndash;1.13</b> (a range of two numbers) &mdash; the data are unbalanced, ",
-                        "so SE(d) and C.D. depend on which two means are compared; the range is shown, ",
-                        "and each mean carries its own SE") else NULL,
-    if (mixed) paste0("in an interaction of a pooled factorial, SE(d) and C.D. depend on the factors in which two means ",
-                      "differ, since the environment is random; the range is shown, and each kind is listed under the ",
-                      "detailed table") else NULL,
+                        "so SE(d)", if (cd) " and the C.D." else "",
+                        " depend on which two means are compared; the range is shown, and the CSV gives each mean its own SE"),
+    if (mixed) paste0("in an interaction of a pooled factorial, SE(d)", if (cd) " and the C.D." else "",
+                      " depend on the factors in which two means differ, since the environment is random; the range is ",
+                      "shown, and each kind is listed under the detailed table"),
     "<b>C.V.</b> coefficient of variation (%)",
-    if (any_trans) "figures <b>in parentheses</b> are transformed values; the leading figure is the back-transformed mean" else NULL)
+    if (cmp$kind %in% c("none", "dunnett")) cmp_rule(cmp, alpha))
   paste0("<div class='ms-legend'><b>How to read these tables</b><ul><li>",
          paste(items, collapse = "</li><li>"), "</li></ul></div>")
 }
 
-## everything the Means tab (and the report) shows; with `readings`, each
-## table is followed by a reading of what it shows
-means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FALSE, readings = FALSE) {
+## Everything the Means & Comparisons tab (and the report) shows; with
+## `readings`, each table is followed by a reading of what it shows.
+means_section_html <- function(rr, digits = 2, cmp = comparison(), detailed = FALSE, readings = FALSE) {
   fits <- rr$fits
   f1 <- rr$facs
   any_trans <- any(vapply(fits, function(f) !identical(f$trans, "none"), logical(1)))
 
   out <- c("<div class='means-wrap'>", means_summary_card(rr, digits))
 
-  ## Section A: main-effect (treatment) means, every response side by side,
-  ## read one response at a time
-  mains <- vapply(f1, function(fac) {
-    tab <- sketch_main_html(fits, fac, digits, letters_on)
-    if (!readings || !nzchar(tab)) return(tab)
-    paste0(tab, rd_html(vapply(fits, function(f) {
-      e <- f$final$effects[[fac]]
-      if (is.null(e)) "" else paste0(f$header, ": ", means_text(e, digits, f$trans, f$final))
-    }, character(1))))
-  }, character(1))
+  ## Section A: main-effect (treatment) means, every response side by side
+  mains <- vapply(f1, function(fac) sketch_main_html(fits, fac, digits, cmp, readings), character(1))
   mains <- mains[nzchar(mains)]
   if (length(mains)) {
     lead <- if (length(f1) >= 2)
-      "<p class='ms-lead'>Each factor averaged over the levels of the other factor(s). Compare within a column using that column's C.D.</p>"
+      "<p class='ms-lead'>Each factor averaged over the levels of the other factor(s); read each column on its own.</p>"
     else ""
     out <- c(out,
       "<div class='ms-section'><div class='ms-h'><span class='ms-badge'>A</span>Treatment means (main effects)</div>",
@@ -281,16 +262,12 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
 
   ## Section B: two-way tables, one per response
   if (length(f1) >= 2) {
-    twoways <- vapply(names(fits), function(nm) {
-      tab <- sketch_twoway_html(fits[[nm]], f1[1], f1[2], digits, letters_on)
-      if (!readings || !nzchar(tab)) return(tab)
-      r <- fits[[nm]]$final
-      paste0(tab, rd_html(twoway_text(r, r$effects[[paste0(f1[1], ":", f1[2])]], f1[1], f1[2], digits, fits[[nm]]$trans)))
-    }, character(1))
+    twoways <- vapply(names(fits), function(nm)
+      sketch_twoway_html(fits[[nm]], f1[1], f1[2], digits, cmp, readings), character(1))
     twoways <- twoways[nzchar(twoways)]
     if (length(twoways)) {
       lead <- sprintf("<p class='ms-lead'>Cell (interaction) means of %s &times; %s, with marginal means in the last row and column. One table per response variable.</p>",
-                      f1[1], f1[2])
+                      esc(f1[1]), esc(f1[2]))
       note <- if (length(f1) > 2)
         "<div class='warn'>Only the first two factors are shown as a two-way table. Every higher-order interaction is given in the detailed tables below (tick &ldquo;Show detailed tables&rdquo;).</div>"
         else ""
@@ -303,69 +280,47 @@ means_section_html <- function(rr, digits = 2, letters_on = TRUE, detailed = FAL
   ## Section C: full per-effect detail (optional)
   if (detailed) {
     det <- vapply(names(fits), function(nm) paste0(
-      "<div class='ms-detail-block'><div class='ms-detail-name'>", fits[[nm]]$header, "</div>",
-      as.character(integrated_means_html(fits[[nm]]$final, digits, readings)), "</div>"), character(1))
+      "<div class='ms-detail-block'><div class='ms-detail-name'>", esc(fits[[nm]]$header), "</div>",
+      as.character(integrated_means_html(fits[[nm]]$final, digits, readings, cmp)), "</div>"), character(1))
     out <- c(out,
       "<div class='ms-section'><div class='ms-h'><span class='ms-badge'>C</span>Detailed tables (every effect)</div>",
       det, "</div>")
   }
 
   mixed <- any(vapply(rr$fits, function(f) any(vapply(f$final$effects, function(e) !is.null(e$mix), logical(1))), logical(1)))
-  out <- c(out, means_legend(letters_on, any_trans, rr$alpha, any_unequal(rr), mixed), "</div>")
+  out <- c(out, means_legend(cmp, any_trans, rr$alpha, any_unequal(rr), mixed), "</div>")
   paste(out, collapse = "\n")
 }
 
-## combined ANOVA: mean squares of every response side by side
-combined_anova_html <- function(rr) {
-  fits <- rr$fits
-  a1 <- fits[[1]]$final$anova
-  src <- a1$Source
-  ## one d.f. column only when it is true of every response: one with a
-  ## plot missing has fewer error and total d.f., so it gets tables of its own
-  ok <- all(vapply(fits, function(f) identical(f$final$anova$Source, src) &&
-                     isTRUE(all.equal(f$final$anova$Df, a1$Df)), logical(1)))
-  if (!ok) return(NULL)
-  body <- lapply(seq_along(src), function(i)
-    c(src[i], if (is.na(a1$Df[i])) "-" else as.character(a1$Df[i]),
-      vapply(fits, function(f) {
-        an <- f$final$anova
-        if (is.na(an$MS[i])) "-" else
-          ## red marks significance only; NS stays grey
-          sprintf("%s <span class='%s'>%s</span>", fmt(an$MS[i], 3),
-                  if (identical(star(an$p[i], rr$alpha), "NS")) "ns" else "sig", star(an$p[i], rr$alpha))
-      }, character(1))))
-  paste0(raw_table(c("Source of variation", "d.f.", vapply(fits, function(f) f$header, character(1))),
-                   body, caption = "Analysis of variance &mdash; mean squares",
-                   cls = "doe"),
-         "<div class='note'>", star_key(rr$alpha), "</div>")
-}
 
-
-## Shared styling for the Means & C.D. section, injected into BOTH the live app
-## (APP_CSS) and the downloadable report (REPORT_CSS) so the two look identical.
+## Shared styling for the Means & Comparisons section, injected into BOTH the
+## live app (APP_CSS) and the downloadable report (REPORT_CSS) so the two
+## look identical.
 MEANS_CSS <- "
 .means-wrap{margin-top:4px}
 .ms-summary{background:linear-gradient(180deg,#F3F8FF,#EAF1FB);border:1px solid #CFE0F5;
-  border-radius:8px;padding:12px 16px;margin:6px 0 18px 0}
+  border-radius:12px;padding:12px 16px;margin:6px 0 18px 0}
 .ms-summary-head{font-weight:600;color:#1B4F9C;font-size:14px;margin-bottom:10px}
 .ms-chip-wrap{display:flex;flex-wrap:wrap;gap:10px}
-.ms-chip{background:#fff;border:1px solid #D5E2F3;border-radius:6px;padding:8px 12px;min-width:150px}
+.ms-chip{background:#fff;border:1px solid #D5E2F3;border-radius:10px;padding:8px 12px;min-width:150px}
 .ms-chip-name{font-weight:600;color:#173F7D;font-size:12px;margin-bottom:4px;
   border-bottom:1px solid #EAF1FB;padding-bottom:3px}
 .ms-chip-row{display:flex;justify-content:space-between;gap:14px;font-size:12px;color:#444;padding:1px 0}
 .ms-chip-row b{color:#1B4F9C}
 .ms-section{margin:0 0 22px 0}
 .ms-h{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;color:#1B4F9C;
-  border-bottom:2px solid #3B7DD8;padding-bottom:6px;margin:18px 0 8px 0}
+  border-bottom:2px solid #3B7DD8;padding-bottom:6px;margin:18px 0 8px 0;page-break-after:avoid;break-after:avoid}
 .ms-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
   border-radius:50%;background:#3B7DD8;color:#fff;font-size:13px;font-weight:700;flex:0 0 auto}
 .ms-lead{font-size:12.5px;color:#555;margin:2px 0 12px 0}
+.ms-tcap{font-size:13.5px;color:#14284B;margin:14px 0 2px 0;break-after:avoid;page-break-after:avoid}
+.ms-tcap+table.doe{margin-top:4px}
 .ms-detail-block{margin:10px 0 6px 0}
 .ms-detail-name{font-weight:600;color:#173F7D;background:#EAF1FB;border-left:4px solid #3B7DD8;
   padding:5px 10px;border-radius:3px;margin:14px 0 6px 0}
 .ms-env-wrap{display:flex;flex-wrap:wrap;gap:14px;margin:6px 0 10px 0}
 .ms-env-wrap table.doe{margin:0}
-.ms-legend{background:#FAFCFF;border:1px solid #E1EAF6;border-radius:8px;padding:10px 16px;
+.ms-legend{background:#FAFCFF;border:1px solid #E1EAF6;border-radius:10px;padding:10px 16px;
   margin-top:18px;font-size:12px;color:#555}
 .ms-legend b{color:#1B4F9C}
 .ms-legend ul{margin:6px 0 0 0;padding-left:18px}

@@ -376,7 +376,7 @@ test_that("the letters stay with their own bars after the axes are swapped", {
     other <- setdiff(c("Variety", "Days"), xv)
     lx <- if (xv == "Days") AX_DAYS else AX_VAR
     lg <- if (xv == "Days") AX_VAR else AX_DAYS
-    b <- ax_build(plot_main(r, "Variety:Days", "bar", show_letters = TRUE, x_var = xv))
+    b <- ax_build(plot_main(r, "Variety:Days", "bar", letters = m$Letter, x_var = xv))
     txt <- b$data[[3]]                      # the geom_text layer
     expect_equal(nrow(txt), 12)
     at_x <- lx[round(txt$x)]; at_g <- lg[txt$group]
@@ -477,7 +477,7 @@ test_that("the caption keeps describing the letters whichever factor is on X", {
                list(response = "Yield", rep = "Rep", main = "Irrigation", sub = "Variety"))
   e <- r$effects[["Irrigation:Variety"]]
   for (xv in c("Irrigation", "Variety")) {
-    cap <- ax_labs(plot_main(r, "Irrigation:Variety", "bar", x_var = xv))$caption
+    cap <- gsub("\\s+", " ", ax_labs(plot_main(r, "Irrigation:Variety", "bar", x_var = xv))$caption)
     expect_match(cap, "same level of Irrigation", fixed = TRUE)
   }
 })
@@ -493,9 +493,8 @@ test_that("the app suggests the X-axis factor and passes the choice to the plot"
   skip_on_cran()
   shiny::testServer(doepro_server, {
     session$setInputs(demo = "FRCBD", loaddemo = 1)
-    session$setInputs(design = "FRCBD", nfac = 2, alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", block = "Block", f1 = "Variety", f2 = "Nitrogen")
-    session$setInputs(tr_1 = "none", run = 1)
+    session$setInputs(design = "FRCBD", nfac = 2, alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", f1 = "Variety", f2 = "Nitrogen")
     session$setInputs(plEff = "Variety:Nitrogen", plType = "line", plLetters = TRUE)
     # the selector lists both factors and suggests Nitrogen (a quantity)
     ui <- output$plXUI$html

@@ -77,16 +77,6 @@ test_that("the CV is judged by the guide on the figure as printed", {
   expect_match(two, "With CV(a) this high, only large differences can be detected in the comparisons it applies to.", fixed = TRUE)
 })
 
-test_that("the table of mean squares is read response by response", {
-  d <- demo_data("RCBD"); d$Noise <- 50 + demo_noise(nrow(d))
-  rr <- run_all(d, "RCBD", list(treat = "Variety", block = "Block"), c("Yield", "Noise"))
-  t <- anova_combined_text(rr)
-  pv <- vapply(rr$fits, function(f) f$final$anova$p[2], numeric(1))
-  expect_true(pv[["Yield"]] < 0.05 && pv[["Noise"]] >= 0.05)
-  expect_match(t[2], "Variety is significant at the 5% level for Yield, but not for Noise.", fixed = TRUE)
-  expect_length(anova_combined_text(rd_run("RCBD")), 0)
-})
-
 ## -------------------------------------------------------------- means ----
 
 test_that("the means said not to differ from a mean are exactly those sharing its letter", {
@@ -416,18 +406,19 @@ test_that("the analysis tabs show their readings", {
   skip_on_cran()
   shiny::testServer(doepro_server, {
     rv$data <- demo_data("FRCBD")
-    session$setInputs(design = "FRCBD", nfac = 2, alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", block = "Block", f1 = "Nitrogen", f2 = "Variety", tr_1 = "none", run = 1)
+    session$setInputs(design = "FRCBD", nfac = 2, alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", f1 = "Nitrogen", f2 = "Variety")
     expect_match(output$anovaOut$html, "Nitrogen:Variety: significant at the 5% level", fixed = TRUE)
-    session$setInputs(digits = 2, letters = TRUE, detailed = FALSE)
+    expect_match(output$anovaOut$html, "Analysis of Variance (Yield)", fixed = TRUE)
+    session$setInputs(digits = 2, detailed = FALSE, phMethod = "LSD (Fisher's protected)")
     expect_match(output$meansOut$html, "Every other Nitrogen mean is significantly lower than that of N120.", fixed = TRUE)
     session$setInputs(aResp = "Yield")
     expect_match(output$asmText$html, "What the checks show.", fixed = TRUE)
     for (o in c("bcText", "mvText", "diagFitText", "diagQQText", "diagHistText", "diagScaleText"))
       expect_match(output[[o]]$html, "What it shows.", fixed = TRUE)
-    session$setInputs(aResp2 = "Yield", phEff = "Nitrogen", phMethod = "Tukey HSD")
-    expect_match(output$phText$html, "Tukey&#39;s test judges every pair|Tukey's test judges every pair")
-    expect_match(output$phPairsText$html, "All 3 pairs differ significantly by this test at the 5% level.", fixed = TRUE)
+    session$setInputs(cmpResp = "Yield", phEff = "Nitrogen", phMethod = "Tukey HSD")
+    expect_match(output$phOut$html, "Tukey&#39;s test judges every pair|Tukey's test judges every pair")
+    expect_match(output$phOut$html, "All 3 pairs differ significantly by this test at the 5% level.", fixed = TRUE)
     session$setInputs(aResp3 = "Yield", plEff = "Nitrogen:Variety", plType = "line", plLetters = TRUE)
     expect_match(output$mainPlotText$html, "Each line joins the means of one level of", fixed = TRUE)
   })

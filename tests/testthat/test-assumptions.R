@@ -161,20 +161,21 @@ test_that("a test without a p-value is never called a significant departure", {
 })
 
 test_that("the screening table names the test behind its equal-variance p", {
-  s <- auto_scan(two_reps(), "CRD", list(treat = "Trt"), "Yield")
-  expect_true("Equal variances p" %in% names(s))
-  expect_match(s$`Equal variances p`, "(Bartlett)", fixed = TRUE)
-  s <- auto_scan(demo_data("CRD"), "CRD", list(treat = "Treatment"), "Yield")
-  expect_no_match(s$`Equal variances p`, "Bartlett", fixed = TRUE)
+  scr <- function(d, map) screen_rows(list(Yield = fit_base(d, "CRD", map, "Yield")))
+  s <- scr(two_reps(), list(treat = "Trt"))
+  expect_match(s$Variances, "Bartlett's", fixed = TRUE)
+  s <- scr(demo_data("CRD"), list(treat = "Treatment"))
+  expect_no_match(s$Variances, "Bartlett", fixed = TRUE)
+  expect_match(s$Variances, "Levene's", fixed = TRUE)
 })
 
 test_that("the Assumptions tab draws no residual plots for an exact fit", {
   skip_on_cran()
   shiny::testServer(doepro_server, {
     rv$data <- data.frame(Trt = rep(c("A", "B", "C"), each = 3), Yield = rep(c(5, 6, 7), each = 3))
-    session$setInputs(design = "CRD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", treat = "Trt", tr_1 = "none", run = 1)
-    for (o in c("diagFit", "diagQQ", "diagHist", "diagScale"))
+    session$setInputs(design = "CRD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", treat = "Trt")
+    for (o in c("diagFit", "diagQQ", "diagHist", "diagScale", "diagCook"))
       expect_error(output[[o]], "fits every value exactly")
     expect_error(output$bcPlot, "fits every value exactly")
     expect_no_match(output$assumtxt$html, "significant departure", fixed = TRUE)
@@ -211,7 +212,7 @@ test_that("Levene's test is not given the verdict on treatments it left out", {
   pb <- replicate(2000, bartlett_cells(rnorm(length(g)), g)$p.value)
   expect_lt(mean(pb < 0.05), 0.07)
   # the screening table says which test it used
-  expect_match(auto_scan(d, "CRD", list(treat = "Trt"), "Yield")[["Equal variances p"]], "(Bartlett)", fixed = TRUE)
+  expect_match(screen_rows(list(Yield = fit_base(d, "CRD", list(treat = "Trt"), "Yield")))$Variances, "Bartlett's", fixed = TRUE)
 })
 
 test_that("an untested assumption is not treated as passed", {
@@ -296,8 +297,8 @@ test_that("the mean-variance plot is not drawn for an exact fit", {
     d <- expand.grid(Block = paste0("B", 1:3), Trt = paste0("T", 1:4))
     d$Yield <- 10 + as.integer(d$Block) + 2 * as.integer(d$Trt)
     rv$data <- d
-    session$setInputs(design = "RCBD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", block = "Block", treat = "Trt", tr_1 = "none", run = 1)
+    session$setInputs(design = "RCBD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", treat = "Trt")
     expect_error(output$mvPlot, "fits every value exactly")
   })
 })

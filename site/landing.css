@@ -365,8 +365,8 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
 }
 
 /* ----------------------------------------------------------------- team */
-.s-team { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.s-person { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 26px 24px; transition: transform .35s ease, box-shadow .35s ease; }
+.s-team { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.s-person { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 24px 20px; transition: transform .35s ease, box-shadow .35s ease; }
 .s-person:hover { transform: translateY(-4px); box-shadow: 0 24px 48px rgba(11, 21, 48, .08); }
 .s-avatar {
   width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 20px;
@@ -377,7 +377,7 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
 .s-role { margin-top: 4px; font-size: 13.5px; font-weight: 600; color: var(--blue); }
 .s-aff { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
 .s-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #EAF1FF; color: var(--blue); font-size: 11px; font-weight: 600; vertical-align: 2px; }
-.s-person-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; font-size: 12.5px; }
+.s-person-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; font-size: 11.5px; letter-spacing: -.01em; }
 .s-person-links a { color: var(--ink2); text-decoration: none; border-bottom: 1px solid var(--line2); word-break: break-all; }
 .s-person-links a:hover { color: var(--blue); border-color: var(--blue); }
 .s-team-note { margin-top: 22px; font-size: 14.5px; color: var(--muted); }
@@ -464,7 +464,7 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
   .s-tile-ph, .s-tile-checks, .s-tile-private { grid-column: span 3; }
   .s-tile-private { grid-column: span 6; }
   .s-engine-inner, .s-proof, .s-foot-inner { grid-template-columns: 1fr; }
-  .s-team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .s-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
   .s-nav { top: 8px; padding: 8px 10px 0; }

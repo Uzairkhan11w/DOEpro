@@ -217,8 +217,9 @@ posthoc_notes <- function(d, e, method, alpha) {
       sprintf(paste0("The F-test for %s is not significant at the %s%% level, so, as everywhere else in DOEpro, ",
                      "no treatment is declared different from the control."), e$label, pct(alpha)),
     if (!is.null(e$slice))
-      sprintf(paste0("Means are compared with the control within each level of %s: these are the only ",
-                     "comparisons that share one error term."), e$slice),
+      sprintf("Means are compared with the control within each level of %s%s.", e$slice,
+              if (isTRUE(e$by_chosen)) " (simple effects), as chosen"
+              else ": these are the only comparisons that share one error term"),
     if (!is.null(e$error_desc)) e$error_desc,
     d$how,
     switch(d$alternative,

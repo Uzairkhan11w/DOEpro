@@ -1449,7 +1449,7 @@ test_that("correcting a text entry in the table lets the column become numbers",
   })
 })
 
-test_that("the screening offers responses the check reads as numbers", {
+test_that("the screening covers the chosen responses, read as the check reads them", {
   skip_on_cran()
   d <- demo_data("RCBD")
   d$Yield <- as.character(d$Yield)
@@ -1459,10 +1459,17 @@ test_that("the screening offers responses the check reads as numbers", {
   d$Height[4] <- "-"
   shiny::testServer(doepro_server, {
     rv$data <- d
-    session$setInputs(design = "RCBD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", block = "Block", treat = "Variety")
-    s <- scan_tab()
-    expect_setequal(s$Variable, c("Yield", "Height"))
+    session$setInputs(design = "RCBD", alpha = "0.05")
+    # entries such as "n/a" and "-" do not stop a column being read as numbers
+    set_map(session, rv$ver, resp = c("Yield", "Height"), block = "Block", treat = "Variety")
+    s <- screen_rows(base_fits())
+    expect_setequal(s$Response, c("Yield", "Height"))
+    expect_true(all(s$ok))
+    expect_match(output$screenOut$html, "Quick screening of the selected responses", fixed = TRUE)
+    # only the responses chosen are screened
+    set_map(session, rv$ver, resp = "Yield")
+    expect_identical(screen_rows(base_fits())$Response, "Yield")
+    expect_no_match(output$screenOut$html, ">Height<", fixed = TRUE)
   })
 })
 
@@ -1475,9 +1482,8 @@ test_that("the run summary lists the rows left out of the analysis", {
   d$Yield[c(5, 10)] <- c("5,6", "<LOD")
   shiny::testServer(doepro_server, {
     rv$data <- d
-    session$setInputs(design = "RCBD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", block = "Block", treat = "Variety")
-    session$setInputs(tr_1 = "none", run = 1)
+    session$setInputs(design = "RCBD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", block = "Block", treat = "Variety")
     html <- output$runNote$html
     expect_match(html, "22 observations", fixed = TRUE)
     expect_match(html, "2 rows were left out of this analysis", fixed = TRUE)
@@ -1493,11 +1499,13 @@ test_that("an analysis refused for too few rows points to the data check", {
   shiny::testServer(doepro_server, {
     rv$data <- data.frame(Trt = c("A", "B", "C", "A", "B"), Yield = c("5", "5,6", "x", NA, "6"),
                           stringsAsFactors = FALSE)
-    session$setInputs(design = "CRD", alpha = "0.05", dtype = "auto")
-    session$setInputs(resp = "Yield", treat = "Trt", tr_1 = "none", run = 1)
+    session$setInputs(design = "CRD", alpha = "0.05")
+    set_map(session, rv$ver, resp = "Yield", treat = "Trt")
     html <- output$runNote$html
     expect_match(html, "Only 2 rows can be analysed", fixed = TRUE)
     expect_match(html, "3 rows were left out of this analysis", fixed = TRUE)
-    expect_match(html, "The data check on the Data tab lists these entries", fixed = TRUE)
+    expect_match(html, "The data check on the Data tab lists the entries left out", fixed = TRUE)
+    # the screening on the Data tab gives the same reason
+    expect_match(output$screenOut$html, "Only 2 rows can be analysed", fixed = TRUE)
   })
 })

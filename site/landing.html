@@ -44,8 +44,8 @@
             <span class="s-h1-line">for the <em>field</em></span>
           </h1>
           <p class="s-lead">Free analysis of designed experiments for agricultural and allied research.
-            Paste your data from Excel and get the ANOVA, means with C.D. and letters, assumption checks,
-            post-hoc tests and a plain-language reading of every result, with R running in your browser.</p>
+            Paste your data from Excel and get the assumption checks, the ANOVA, means with the C.D. or the letters
+            of the test you choose, and a plain-language reading of every result, with R running in your browser.</p>
           <div class="s-actions">
             <button class="s-btn s-btn-dark" type="button" data-open="data">
               <span>Start analysing</span>
@@ -99,9 +99,10 @@
         <li class="s-step" data-reveal>
           <span class="s-step-n">02</span>
           <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 38 18 24l8 7 14-19"/><circle cx="18" cy="24" r="2.5"/><circle cx="26" cy="31" r="2.5"/><circle cx="40" cy="12" r="2.5"/></svg>
-          <h3>Explore</h3>
-          <p>Look before you test: descriptive statistics, correlation, regression, principal components,
-            cluster and factor analysis, each with a reading of what the numbers and plots show.</p>
+          <h3>Explore and check</h3>
+          <p>Look before you test: a quick summary and a screening of each response as soon as the data are in,
+            then graphs, correlation, regression, principal components, cluster and factor analysis, and the
+            checks of the assumptions, each with a reading of what the numbers and plots show.</p>
         </li>
         <li class="s-step" data-reveal>
           <span class="s-step-n">03</span>
@@ -114,8 +115,8 @@
           <span class="s-step-n">04</span>
           <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 6h17l9 9v27H12z"/><path d="M29 6v9h9M18 25h14M18 31h14M18 37h9"/></svg>
           <h3>Report</h3>
-          <p>The ANOVA, means with SE(m), SE(d), C.D. and letters, assumption checks, post-hoc tests and plots,
-            then an interpretation and a report to download.</p>
+          <p>The ANOVA, means with SE(m), SE(d) and the comparison you choose, interaction plots and graphs to
+            download, then an interpretation and a report to print or save as PDF.</p>
         </li>
       </ol>
     </section>
@@ -135,13 +136,13 @@
         <article class="s-tile s-tile-means" data-reveal>
           <p class="s-tile-k">Tables of means</p>
           <h3>Means you can publish</h3>
-          <p>SE(m), SE(d) and the C.D. at the level you choose. Letters appear only when the F-test allows them, and
-            a missing plot gets adjusted means rather than wrong ones.</p>
+          <p>SE(m) and SE(d) at the level you choose, with the C.D. or the letters of one test, never both.
+            Letters appear only when the F-test allows them, and a missing plot gets adjusted means rather than wrong ones.</p>
           <table class="s-mini" aria-label="Means of the worked example">{{MEANS_ROWS}}</table>
-          <p class="s-mini-foot">Worked example (RCBD): C.D. (5%) {{CD}} &middot; CV {{CV}}%</p>
+          <p class="s-mini-foot">Worked example (RCBD): letters by {{METHOD}} at {{LEVEL}} &middot; SE(d) {{SED}} &middot; CV {{CV}}%</p>
         </article>
         <article class="s-tile s-tile-ph" data-reveal>
-          <p class="s-tile-k">Post-hoc</p>
+          <p class="s-tile-k">Comparisons</p>
           <h3>{{N_POSTHOC}} ways to compare</h3>
           <ul class="s-tags">{{POSTHOC_LIST}}</ul>
         </article>
@@ -165,8 +166,8 @@
         <article class="s-tile s-tile-report" data-reveal>
           <p class="s-tile-k">Report</p>
           <h3>A report to keep</h3>
-          <p>Download the analysis as one HTML page: the ANOVA, the tables of means, the assumption checks and the
-            interpretation, ready to print or attach.</p>
+          <p>The ANOVA, the tables of means, the assumption checks and the interpretation in one document, to
+            print, save as PDF or download as HTML, with every graph downloadable as PNG or SVG.</p>
         </article>
       </div>
     </section>

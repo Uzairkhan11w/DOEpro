@@ -9,7 +9,8 @@ Authors@R: c(
     person("M. Iqbal", "Jeelani", role = "aut",
            comment = c(ORCID = "0000-0002-2974-2871")),
     person("Imran", "Khan", email = "imrankhan@skuastkashmir.ac.in",
-           role = "ctb"))
+           role = "ctb"),
+    person("Pradeep", "Mishra", role = "ctb"))
 Description: A 'shiny' application and supporting functions for the analysis of
     designed agricultural experiments, following the procedures set out by Gomez
     and Gomez (1984, ISBN:9780471870920). Handles completely randomised,

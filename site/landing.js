@@ -75,8 +75,8 @@
     stage.innerHTML =
       '<div class="s-card s-card-means" style="--d:0"><div class="s-card-head"><div><p class="s-card-k">Table of means</p>' +
       '<p class="s-card-t">' + esc(FACTS.response) + " by " + esc(FACTS.factor) + "</p></div>" +
-      '<span class="s-chip-cd">C.D. (' + esc(FACTS.level) + ") " + esc(FACTS.cd) + "</span></div>" + svg +
-      '<p class="s-card-note">Means sharing a letter do not differ significantly at the ' + esc(FACTS.level) + " level.</p></div>" +
+      '<span class="s-chip-cd">SE(d) ' + esc(FACTS.sed) + "</span></div>" + svg +
+      '<p class="s-card-note">Means sharing a letter do not differ significantly by ' + esc(FACTS.method) + " at the " + esc(FACTS.level) + " level.</p></div>" +
       '<div class="s-card s-card-anova" style="--d:1"><p class="s-card-k">Analysis of variance &middot; ' + esc(FACTS.design) + "</p>" +
       '<table class="s-aov"><thead><tr><th>Source</th><th>df</th><th>MS</th><th>F</th></tr></thead><tbody>' + aov + "</tbody></table></div>" +
       '<div class="s-card s-card-checks" style="--d:2"><p class="s-card-k">Assumptions</p>' +
@@ -270,7 +270,8 @@
   }
   // where the app opens: the Data tab the first time (it starts on About),
   // the tab the visitor left otherwise; the worked example loads the RCBD
-  // example, runs it and shows the analysis of variance
+  // example, whose design and columns come with it, and shows the analysis
+  // of variance, which follows by itself
   function route(target) {
     var d = appDoc(); if (!d) return;
     var active = d.querySelector(".navbar .nav-link.active");
@@ -286,16 +287,7 @@
     setTimeout(function () {
       var load = d.getElementById("loaddemo"); if (load) load.click();
       waitFor(function () { return rows() > 0; }, 9000, function (ok) {
-        if (!ok) return;
-        // the column mapping is drawn only once its tab is showing
-        tab(d, "design");
-        waitFor(function () {
-          var r = d.getElementById("resp"), de = d.getElementById("design");
-          return r && de && r.value === FACTS.response && de.value === demo;
-        }, 9000, function (ok2) {
-          if (!ok2) return;
-          setTimeout(function () { var run = d.getElementById("run"); if (run) run.click(); }, 300);
-        });
+        if (ok) tab(d, "anova");
       });
     }, 250);
   }

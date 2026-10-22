@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StatLabX - statistics for agricultural and allied research</title>
-    <meta name="description" content="Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters, assumption checks, post-hoc tests and plain-language readings, with R running in your browser." />
+    <meta name="description" content="Free analysis of designed agricultural experiments: assumption checks, ANOVA, means with the C.D. or the letters of the test you choose, and plain-language readings, with R running in your browser." />
     <meta name="theme-color" content="#0B1530" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="StatLabX - statistics for agricultural and allied research" />
-    <meta property="og:description" content="Free analysis of designed agricultural experiments: ANOVA, means and C.D. with letters, assumption checks, post-hoc tests and plain-language readings, with R running in your browser." />
+    <meta property="og:description" content="Free analysis of designed agricultural experiments: assumption checks, ANOVA, means with the C.D. or the letters of the test you choose, and plain-language readings, with R running in your browser." />
     <meta property="og:image" content="https://doepro.pages.dev/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="favicon.ico" sizes="any" />
@@ -385,8 +385,8 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
 }
 
 /* ----------------------------------------------------------------- team */
-.s-team { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-.s-person { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 26px 24px; transition: transform .35s ease, box-shadow .35s ease; }
+.s-team { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.s-person { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 24px 20px; transition: transform .35s ease, box-shadow .35s ease; }
 .s-person:hover { transform: translateY(-4px); box-shadow: 0 24px 48px rgba(11, 21, 48, .08); }
 .s-avatar {
   width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 20px;
@@ -397,7 +397,7 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
 .s-role { margin-top: 4px; font-size: 13.5px; font-weight: 600; color: var(--blue); }
 .s-aff { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
 .s-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: #EAF1FF; color: var(--blue); font-size: 11px; font-weight: 600; vertical-align: 2px; }
-.s-person-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; font-size: 12.5px; }
+.s-person-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; font-size: 11.5px; letter-spacing: -.01em; }
 .s-person-links a { color: var(--ink2); text-decoration: none; border-bottom: 1px solid var(--line2); word-break: break-all; }
 .s-person-links a:hover { color: var(--blue); border-color: var(--blue); }
 .s-team-note { margin-top: 22px; font-size: 14.5px; color: var(--muted); }
@@ -484,7 +484,7 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
   .s-tile-ph, .s-tile-checks, .s-tile-private { grid-column: span 3; }
   .s-tile-private { grid-column: span 6; }
   .s-engine-inner, .s-proof, .s-foot-inner { grid-template-columns: 1fr; }
-  .s-team { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .s-team { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 680px) {
   .s-nav { top: 8px; padding: 8px 10px 0; }
@@ -588,8 +588,8 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
             <span class="s-h1-line">for the <em>field</em></span>
           </h1>
           <p class="s-lead">Free analysis of designed experiments for agricultural and allied research.
-            Paste your data from Excel and get the ANOVA, means with C.D. and letters, assumption checks,
-            post-hoc tests and a plain-language reading of every result, with R running in your browser.</p>
+            Paste your data from Excel and get the assumption checks, the ANOVA, means with the C.D. or the letters
+            of the test you choose, and a plain-language reading of every result, with R running in your browser.</p>
           <div class="s-actions">
             <button class="s-btn s-btn-dark" type="button" data-open="data">
               <span>Start analysing</span>
@@ -643,9 +643,10 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
         <li class="s-step" data-reveal>
           <span class="s-step-n">02</span>
           <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 38 18 24l8 7 14-19"/><circle cx="18" cy="24" r="2.5"/><circle cx="26" cy="31" r="2.5"/><circle cx="40" cy="12" r="2.5"/></svg>
-          <h3>Explore</h3>
-          <p>Look before you test: descriptive statistics, correlation, regression, principal components,
-            cluster and factor analysis, each with a reading of what the numbers and plots show.</p>
+          <h3>Explore and check</h3>
+          <p>Look before you test: a quick summary and a screening of each response as soon as the data are in,
+            then graphs, correlation, regression, principal components, cluster and factor analysis, and the
+            checks of the assumptions, each with a reading of what the numbers and plots show.</p>
         </li>
         <li class="s-step" data-reveal>
           <span class="s-step-n">03</span>
@@ -658,8 +659,8 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
           <span class="s-step-n">04</span>
           <svg class="s-step-ico" viewBox="0 0 48 48" aria-hidden="true"><path d="M12 6h17l9 9v27H12z"/><path d="M29 6v9h9M18 25h14M18 31h14M18 37h9"/></svg>
           <h3>Report</h3>
-          <p>The ANOVA, means with SE(m), SE(d), C.D. and letters, assumption checks, post-hoc tests and plots,
-            then an interpretation and a report to download.</p>
+          <p>The ANOVA, means with SE(m), SE(d) and the comparison you choose, interaction plots and graphs to
+            download, then an interpretation and a report to print or save as PDF.</p>
         </li>
       </ol>
     </section>
@@ -679,13 +680,13 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
         <article class="s-tile s-tile-means" data-reveal>
           <p class="s-tile-k">Tables of means</p>
           <h3>Means you can publish</h3>
-          <p>SE(m), SE(d) and the C.D. at the level you choose. Letters appear only when the F-test allows them, and
-            a missing plot gets adjusted means rather than wrong ones.</p>
-          <table class="s-mini" aria-label="Means of the worked example"><tr><td>V4</td><td>54.31</td><td>a</td></tr><tr><td>V2</td><td>48.78</td><td>b</td></tr><tr><td>V5</td><td>48.45</td><td>b</td></tr><tr><td>V6</td><td>45.51</td><td>c</td></tr><tr><td>V1</td><td>42.95</td><td>c</td></tr><tr><td>V3</td><td>37.71</td><td>d</td></tr></table>
-          <p class="s-mini-foot">Worked example (RCBD): C.D. (5%) 2.80 &middot; CV 4.01%</p>
+          <p>SE(m) and SE(d) at the level you choose, with the C.D. or the letters of one test, never both.
+            Letters appear only when the F-test allows them, and a missing plot gets adjusted means rather than wrong ones.</p>
+          <table class="s-mini" aria-label="Means of the worked example"><tr><td>V4</td><td>54.31</td><td>a</td></tr><tr><td>V2</td><td>48.78</td><td>b</td></tr><tr><td>V5</td><td>48.45</td><td>b</td></tr><tr><td>V6</td><td>45.51</td><td>bc</td></tr><tr><td>V1</td><td>42.95</td><td>c</td></tr><tr><td>V3</td><td>37.71</td><td>d</td></tr></table>
+          <p class="s-mini-foot">Worked example (RCBD): letters by Tukey's HSD at 5% &middot; SE(d) 1.31 &middot; CV 4.01%</p>
         </article>
         <article class="s-tile s-tile-ph" data-reveal>
-          <p class="s-tile-k">Post-hoc</p>
+          <p class="s-tile-k">Comparisons</p>
           <h3>7 ways to compare</h3>
           <ul class="s-tags"><li>LSD (Fisher's protected)</li><li>LSD (Bonferroni-adjusted)</li><li>Tukey HSD</li><li>Duncan's DMRT</li><li>Student-Newman-Keuls</li><li>Scheffe</li><li>Dunnett</li></ul>
         </article>
@@ -703,14 +704,14 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
         <article class="s-tile s-tile-reading" data-reveal>
           <p class="s-tile-k">Readings</p>
           <h3>Every result, explained</h3>
-          <blockquote>V4 has the highest mean (54.31) and V3 the lowest (37.71). Two Variety means must differ by more than the C.D., 2.80, to be declared different at the 5% level. Every other Variety mean is significantly lower than that of V4. Every other Variety mean is significantly higher than that of V3.</blockquote>
+          <blockquote>V4 has the highest mean (54.31); by this test every other mean is significantly lower. V3 has the lowest mean (37.71); by this test every other mean is significantly higher.</blockquote>
           <p class="s-mini-foot">The reading under the worked example's table of means, as the app writes it.</p>
         </article>
         <article class="s-tile s-tile-report" data-reveal>
           <p class="s-tile-k">Report</p>
           <h3>A report to keep</h3>
-          <p>Download the analysis as one HTML page: the ANOVA, the tables of means, the assumption checks and the
-            interpretation, ready to print or attach.</p>
+          <p>The ANOVA, the tables of means, the assumption checks and the interpretation in one document, to
+            print, save as PDF or download as HTML, with every graph downloadable as PNG or SVG.</p>
         </article>
       </div>
     </section>
@@ -765,7 +766,7 @@ body.slx-app-open .slx-site { opacity: 0; visibility: hidden; transition: opacit
         <p class="s-kicker"><span>05</span>The team</p>
         <h2 class="s-h2">The people<br><em>behind it</em></h2>
       </header>
-      <div class="s-team"><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IS</div><h3>Dr. Immad A. Shah</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0003-2761-5112" target="_blank" rel="noopener">ORCID</a><a href="mailto:immad11w@skuastkashmir.ac.in">immad11w@skuastkashmir.ac.in</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">UK</div><h3>Mr. Uzair Javid Khan<span class="s-badge">Maintainer</span></h3><p class="s-role">UG Research Student, Statistics</p><p class="s-aff">AAAMDC Bemina, Cluster University Srinagar</p><p class="s-person-links"><a href="https://orcid.org/0009-0001-6368-0977" target="_blank" rel="noopener">ORCID</a><a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IJ</div><h3>Dr. M. Iqbal Jeelani</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0002-2974-2871" target="_blank" rel="noopener">ORCID</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IK</div><h3>Dr. Imran Khan</h3><p class="s-role">Chief Scientist</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="mailto:imrankhan@skuastkashmir.ac.in">imrankhan@skuastkashmir.ac.in</a></p></article></div>
+      <div class="s-team"><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IS</div><h3>Dr. Immad A. Shah</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0003-2761-5112" target="_blank" rel="noopener">ORCID</a><a href="mailto:immad11w@skuastkashmir.ac.in">immad11w@skuastkashmir.ac.in</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">UK</div><h3>Mr. Uzair Javid Khan<span class="s-badge">Maintainer</span></h3><p class="s-role">UG Research Student, Statistics</p><p class="s-aff">AAAMDC Bemina, Cluster University Srinagar</p><p class="s-person-links"><a href="https://orcid.org/0009-0001-6368-0977" target="_blank" rel="noopener">ORCID</a><a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IJ</div><h3>Dr. M. Iqbal Jeelani</h3><p class="s-role">Scientist (Statistics)</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="https://orcid.org/0000-0002-2974-2871" target="_blank" rel="noopener">ORCID</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">IK</div><h3>Dr. Imran Khan</h3><p class="s-role">Chief Scientist</p><p class="s-aff">Division of Agricultural Statistics, SKUAST-Kashmir</p><p class="s-person-links"><a href="mailto:imrankhan@skuastkashmir.ac.in">imrankhan@skuastkashmir.ac.in</a></p></article><article class="s-person" data-reveal><div class="s-avatar" aria-hidden="true">PM</div><h3>Dr. Pradeep Mishra</h3><p class="s-role">Assistant Professor</p><p class="s-aff">JNKVV, Madhya Pradesh</p><p class="s-person-links"></p></article></div>
       <p class="s-team-note" data-reveal>Suggestions and bug reports are welcome: write to
         <a href="mailto:uzairkhan11w@gmail.com">uzairkhan11w@gmail.com</a> or open an issue on
         <a href="https://github.com/Uzairkhan11w/DOEpro/issues" target="_blank" rel="noopener">GitHub</a>.</p>
@@ -851,7 +852,7 @@ DOEpro::run_DOEpro()</code></pre>
     </div>
   </div>
 </div>
-<script type="application/json" id="slx-facts">{"demo":"RCBD","design":"RCBD","response":"Yield","factor":"Variety","level":"5%","cd":"2.80","cv":"4.01","cv_band":"low","sw":"0.788","hov":"0.822","means":[{"lab":"V1","mean":42.9525,"se":0.929,"letter":"c","best":false},{"lab":"V2","mean":48.7825,"se":0.929,"letter":"b","best":false},{"lab":"V3","mean":37.7075,"se":0.929,"letter":"d","best":false},{"lab":"V4","mean":54.3075,"se":0.929,"letter":"a","best":true},{"lab":"V5","mean":48.445,"se":0.929,"letter":"b","best":false},{"lab":"V6","mean":45.5075,"se":0.929,"letter":"c","best":false}],"anova":[{"src":"Block","df":3,"ms":"2.31","f":"0.67","mark":"NS"},{"src":"Variety","df":5,"ms":"128.44","f":"37.21","mark":"**"},{"src":"Error","df":15,"ms":"3.45","f":"","mark":""}]}</script>
+<script type="application/json" id="slx-facts">{"demo":"RCBD","design":"RCBD","response":"Yield","factor":"Variety","level":"5%","method":"Tukey's HSD","sed":"1.31","cv":"4.01","cv_band":"low","sw":"0.788","hov":"0.822","means":[{"lab":"V1","mean":42.9525,"se":0.929,"letter":"c","best":false},{"lab":"V2","mean":48.7825,"se":0.929,"letter":"b","best":false},{"lab":"V3","mean":37.7075,"se":0.929,"letter":"d","best":false},{"lab":"V4","mean":54.3075,"se":0.929,"letter":"a","best":true},{"lab":"V5","mean":48.445,"se":0.929,"letter":"b","best":false},{"lab":"V6","mean":45.5075,"se":0.929,"letter":"bc","best":false}],"anova":[{"src":"Block","df":3,"ms":"2.31","f":"0.67","mark":"NS"},{"src":"Variety","df":5,"ms":"128.44","f":"37.21","mark":"**"},{"src":"Error","df":15,"ms":"3.45","f":"","mark":""}]}</script>
 <script>
 /* StatLabX website: the page people land on, shown at once while R starts
    underneath in the app's frame (#root). build_app.R puts this into
@@ -930,8 +931,8 @@ DOEpro::run_DOEpro()</code></pre>
     stage.innerHTML =
       '<div class="s-card s-card-means" style="--d:0"><div class="s-card-head"><div><p class="s-card-k">Table of means</p>' +
       '<p class="s-card-t">' + esc(FACTS.response) + " by " + esc(FACTS.factor) + "</p></div>" +
-      '<span class="s-chip-cd">C.D. (' + esc(FACTS.level) + ") " + esc(FACTS.cd) + "</span></div>" + svg +
-      '<p class="s-card-note">Means sharing a letter do not differ significantly at the ' + esc(FACTS.level) + " level.</p></div>" +
+      '<span class="s-chip-cd">SE(d) ' + esc(FACTS.sed) + "</span></div>" + svg +
+      '<p class="s-card-note">Means sharing a letter do not differ significantly by ' + esc(FACTS.method) + " at the " + esc(FACTS.level) + " level.</p></div>" +
       '<div class="s-card s-card-anova" style="--d:1"><p class="s-card-k">Analysis of variance &middot; ' + esc(FACTS.design) + "</p>" +
       '<table class="s-aov"><thead><tr><th>Source</th><th>df</th><th>MS</th><th>F</th></tr></thead><tbody>' + aov + "</tbody></table></div>" +
       '<div class="s-card s-card-checks" style="--d:2"><p class="s-card-k">Assumptions</p>' +
@@ -1125,7 +1126,8 @@ DOEpro::run_DOEpro()</code></pre>
   }
   // where the app opens: the Data tab the first time (it starts on About),
   // the tab the visitor left otherwise; the worked example loads the RCBD
-  // example, runs it and shows the analysis of variance
+  // example, whose design and columns come with it, and shows the analysis
+  // of variance, which follows by itself
   function route(target) {
     var d = appDoc(); if (!d) return;
     var active = d.querySelector(".navbar .nav-link.active");
@@ -1141,16 +1143,7 @@ DOEpro::run_DOEpro()</code></pre>
     setTimeout(function () {
       var load = d.getElementById("loaddemo"); if (load) load.click();
       waitFor(function () { return rows() > 0; }, 9000, function (ok) {
-        if (!ok) return;
-        // the column mapping is drawn only once its tab is showing
-        tab(d, "design");
-        waitFor(function () {
-          var r = d.getElementById("resp"), de = d.getElementById("design");
-          return r && de && r.value === FACTS.response && de.value === demo;
-        }, 9000, function (ok2) {
-          if (!ok2) return;
-          setTimeout(function () { var run = d.getElementById("run"); if (run) run.click(); }, 300);
-        });
+        if (ok) tab(d, "anova");
       });
     }, 250);
   }

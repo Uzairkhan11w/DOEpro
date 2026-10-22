@@ -120,7 +120,7 @@ anova_text <- function(res, tr = "none") {
     head <- sprintf("%s: %s", src, rd_sig(an$p[i], a))
     out <- c(out, switch(t$kind,
       treatment = if (length(v) == 1) {
-        if (yes) sprintf("%s: there is evidence that the %s means are not all equal; the tables of means show which differ.", head, v)
+        if (yes) sprintf("%s: there is evidence that the %s means are not all equal; a comparison of the means (the Means & Comparisons tab) shows which differ.", head, v)
         else sprintf("%s: insufficient evidence that the %s means differ.", head, v)
       } else if (yes) {
         if (length(v) == 2)
@@ -148,6 +148,26 @@ anova_text <- function(res, tr = "none") {
       }))
   }
   c(out, rd_errors(res), rd_cv(res, tr))
+}
+
+## The significant interactions of an analysis, for the note that leads the
+## reader from the main effects to the cell means and the simple effects
+inter_alert_text <- function(res) {
+  if (exact_fit(res)) return("")
+  an <- res$anova; terms <- aov_terms(res); a <- res$alpha
+  hits <- character(0)
+  for (i in which(!is.na(an$p) & an$p < a)) {
+    t <- terms[[an$Source[i]]]
+    if (is.null(t)) next
+    if ((t$kind == "treatment" && length(t$vars) > 1) || t$kind == "gxe")
+      hits <- c(hits, sprintf("%s (%s)", an$Source[i], rd_p(an$p[i], a)))
+  }
+  if (!length(hits)) return("")
+  sprintf(paste("<b>Significant %s at the %s level:</b> %s. The effect of one factor depends on the level of another,",
+                "so read the cell means (the two-way and detailed tables on the Means &amp; Comparisons tab), compare",
+                "the levels of one factor within each level of the other (simple effects) and look at the interaction",
+                "plot, rather than read the main-effect means alone."),
+          pl(length(hits), "interaction", "interactions"), rd_lvl(a), esc(join_and(hits)))
 }
 
 ## which error each row is tested against, where there is more than one
@@ -193,26 +213,6 @@ rd_cv <- function(res, tr = "none") {
               else sprintf(" With %s this high, only large differences can be detected in the comparisons %s",
                            join_and(nm[w]), pl(length(w), "it applies to", "they apply to")),
          if (max(rank) == 4) "; check the data for recording errors." else ".")
-}
-
-## The reading of the table of mean squares of every response: for each row,
-## the responses for which it is significant.
-anova_combined_text <- function(rr) {
-  fits <- rr$fits; a <- rr$alpha
-  if (length(fits) < 2) return(character(0))
-  src <- fits[[1]]$final$anova$Source
-  hd <- vapply(fits, function(f) f$header, character(1))
-  out <- character(0)
-  for (i in seq_along(src)) {
-    p <- vapply(fits, function(f) f$final$anova$p[i], numeric(1))
-    if (all(is.na(p))) next
-    yes <- hd[!is.na(p) & p < a]; no <- hd[!is.na(p) & p >= a]
-    out <- c(out,
-      if (!length(no)) sprintf("%s is significant at the %s level for every response.", src[i], rd_lvl(a))
-      else if (!length(yes)) sprintf("%s is not significant at the %s level for any response.", src[i], rd_lvl(a))
-      else sprintf("%s is significant at the %s level for %s, but not for %s.", src[i], rd_lvl(a), join_and(yes), join_and(no)))
-  }
-  out
 }
 
 ## ------------------------------------------------------------ means ----
@@ -293,7 +293,7 @@ means_body <- function(e, digits, tr) {
   top <- at_extreme(pr, max); bot <- at_extreme(pr, min)
   sig <- effect_sig(e)
   verdict <- if (is.na(e$p)) "" else if (sig) "" else
-    sprintf(paste("The F-test for %s is not significant at the %s level (%s), so no C.D. is quoted and no letters are given:",
+    sprintf(paste("The F-test for %s is not significant at the %s level (%s), so no C.D. is quoted:",
                   "there is insufficient evidence that the %s means differ."), v, lvl, rd_p(e$p, a), v)
   if (length(top) == k)
     return(paste0(sprintf("All %d %s means print as %s.", k, v, pr[1]), if (nzchar(verdict)) paste0(" ", verdict) else ""))
@@ -328,7 +328,7 @@ means_body <- function(e, digits, tr) {
     o <- function(ix) ix[order(shown[ix], decreasing = word == "lower")]
     apart <- length(ends_i) > 1 && !all(vapply(seq_along(ends_i), function(a) all(ends_i %in% pars[[a]]), logical(1)))
     split <- if (apart) sprintf(paste("%s print alike at %d decimal %s but differ significantly among themselves,",
-                                      "as their letters show; more decimal places would separate them. "),
+                                      "as the C.D. shows; more decimal places would separate them. "),
                                 ref, digits, if (digits == 1) "place" else "places") else ""
     if (!length(some))
       return(paste0(split,
@@ -355,7 +355,7 @@ means_body <- function(e, digits, tr) {
 ## the pattern changes from row to row, judged on the means as printed, and
 ## which C.D. compares two cells. `cd_digits` are the decimals of the C.D.
 ## in the table's foot.
-twoway_text <- function(res, e, f1, f2, digits = 2, tr = "none", cd_digits = digits) {
+twoway_text <- function(res, e, f1, f2, digits = 2, tr = "none", cd_digits = digits, rule = NULL) {
   if (is.null(e) || is.na(e$p)) return("")
   if (exact_fit(res)) return(RD_EXACT)
   a <- res$alpha; lvl <- rd_lvl(a)
@@ -397,6 +397,8 @@ twoway_text <- function(res, e, f1, f2, digits = 2, tr = "none", cd_digits = dig
                           join_and(sprintf("%s at %s", names(grp), vapply(grp, join_and, "")))))
   }
   other <- setdiff(e$vars, e$slice)
+  ## `rule` replaces the C.D. sentence when the comparison is not the C.D.
+  if (!is.null(rule)) return(paste(c(out, rule[nzchar(rule)]), collapse = " "))
   out <- c(out, if (is.null(e$slice)) rd_cd_rule(e, sprintf("%s x %s means", f1, f2), cd_digits, tr)
     else sprintf("Two %s means at the same level of %s must differ by more than %s to be declared different at the %s level; the other comparisons have their own C.D., given with the table.",
                  other, e$slice, err_text(e, "cd", cd_digits, html = FALSE), lvl))
@@ -505,7 +507,7 @@ dunnett_pairs_text <- function(x, lsd = NULL) {
     kl <- sum(vapply(seq_along(x$families), function(f) {
       fm <- x$families[[f]]; sum(lsd$families[[f]]$sig[fm$ctrl, fm$others])
     }, 0))
-    out <- c(out, sprintf("Fisher's protected LSD, which the letters in the tables of means use, finds %s of these comparisons significant.",
+    out <- c(out, sprintf("Fisher's protected LSD (the C.D.) finds %s of these comparisons significant.",
                           if (kl == k) "the same number" else as.character(kl)))
   }
   paste(out, collapse = " ")
@@ -540,7 +542,8 @@ ph_parts <- function(fm, pr, ix, g, word) {
 ## and lowest mean, and which means this test finds do not differ from them.
 ## The means are those of the analysis, on the transformed scale when there
 ## is one.
-posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
+## `digits` are the decimals the means are printed to where the reading sits.
+posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE, digits = 3) {
   if (exact) return(RD_EXACT)
   lvl <- rd_lvl(x$alpha)
   if (!is.null(x$dunnett) && isTRUE(x$f_sig)) return(dunnett_groups_text(x, e, tr))
@@ -551,7 +554,7 @@ posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
                           e$label, lvl, if (is.null(x$dunnett)) "no pair different and gives no letters" else "no treatment different from the control"), scale))
   ## the means are compared as the groups table prints them (three decimals)
   one <- function(fm, where = "") {
-    pr <- fmt(fm$mu, 3); k <- length(pr)
+    pr <- fmt(fm$mu, digits); k <- length(pr)
     top <- at_extreme(pr, max); bot <- at_extreme(pr, min)
     if (length(top) == k) return(sprintf("All the means%s print as %s.", where, pr[1]))
     if (k == 2)
@@ -578,7 +581,7 @@ posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
   ## means compared within each level of a factor: the highest at each level
   ## only, since every level read in full would run to a page
   top_only <- function(fm) {
-    pr <- fmt(fm$mu, 3); k <- length(pr); top <- at_extreme(pr, max)
+    pr <- fmt(fm$mu, digits); k <- length(pr); top <- at_extreme(pr, max)
     if (length(top) == k) return(sprintf("At %s all the means print as %s.", fm$within, pr[1]))
     g <- ph_split(fm, top, k)
     ref <- if (length(top) == 1) "it" else "them"
@@ -600,7 +603,7 @@ posthoc_groups_text <- function(x, e, tr = "none", exact = FALSE) {
 
 ## The reading of the pairwise table: how many pairs this test declares, the
 ## pairs the step-down rule holds back, and how the count compares with
-## Fisher's protected LSD, which the letters in the tables of means use.
+## Fisher's protected LSD, the C.D. of the tables of means.
 ## `lsd` is that procedure's result for the same effect.
 posthoc_pairs_text <- function(x, e, method, lsd = NULL, exact = FALSE) {
   if (exact) return(RD_EXACT)
@@ -633,7 +636,7 @@ posthoc_pairs_text <- function(x, e, method, lsd = NULL, exact = FALSE) {
   }
   if (!is.null(lsd) && method != "LSD (Fisher's protected)") {
     kl <- sum(lsd$pairs$Significant == "Yes")
-    out <- c(out, sprintf("Fisher's protected LSD, which the letters in the tables of means use, declares %s.",
+    out <- c(out, sprintf("Fisher's protected LSD (the C.D.) declares %s.",
                           if (kl == sum(yes)) "the same number" else sprintf("%d %s", kl, pl(kl, "pair", "pairs"))))
   }
   paste(out, collapse = " ")
@@ -911,10 +914,14 @@ main_plot_text <- function(res, effect, type = "bar", show_letters = TRUE, x_var
   }
   if (length(v) == 1) {
     lab <- as.character(m[[v]])
+    ## `show_letters` is TRUE, FALSE, or the name of the procedure the
+    ## letters come from
+    by <- if (is.character(show_letters)) paste0(" by ", show_letters) else ""
+    lets_on <- length(show_letters) > 0 && !isFALSE(show_letters)
     what <- paste0(sprintf("Each %s is the mean of one level of %s%s and the error bars reach one standard error either side of it.",
                            if (type == "bar") "bar" else "point", v, if (nzchar(scale)) scale else ","),
-                   if (show_letters && sig) sprintf(" %s sharing a letter do not differ significantly at the %s level.",
-                                                    if (type == "bar") "Bars" else "Points", lvl) else "")
+                   if (lets_on && sig) sprintf(" %s sharing a letter do not differ significantly%s at the %s level.",
+                                               if (type == "bar") "Bars" else "Points", by, lvl) else "")
     top <- at_extreme(pr, max); bot <- at_extreme(pr, min)
     reading <- paste(
       if (length(top) == length(pr)) sprintf("Every mean is %s.", pr[1])

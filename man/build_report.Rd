@@ -6,42 +6,54 @@
 \usage{
 build_report(
   rr,
-  letters_on = TRUE,
+  comparison = NULL,
   detailed = TRUE,
   screen = FALSE,
-  digits = 2
+  digits = 2,
+  letters_on = NULL,
+  nature = "auto"
 )
 }
 \arguments{
 \item{rr}{The object returned by \code{\link{run_all}}.}
 
-\item{letters_on}{Show the grouping letters. Letters are suppressed
-automatically for any effect whose F-test is not significant, whatever this
-is set to.}
+\item{comparison}{How the means are compared, from
+\code{\link{comparison}}: the means alone (the default), the critical
+difference, the letters of a multiple-comparison procedure, or Dunnett's
+test. Letters and a critical difference are never shown together, and
+letters are suppressed for any effect whose F-test is not significant.}
 
 \item{detailed}{If \code{TRUE}, include the full per-effect tables of means.
 If \code{FALSE}, give the compact summary tables only.}
 
-\item{screen}{If \code{TRUE}, return a fragment styled for display inside the
-application. If \code{FALSE}, return a complete standalone HTML document.}
+\item{screen}{If \code{TRUE}, add a small credit line fixed to the corner of
+the screen.}
 
 \item{digits}{Decimal places for the means in the tables of means. A
 standard error or critical difference that would print as zero is given
 more.}
+
+\item{letters_on}{No longer used: the comparison decides whether letters are
+shown. Kept so that older calls still run.}
+
+\item{nature}{The declared nature of each response, for the summary of the
+checks: \code{"auto"}, \code{"continuous"}, \code{"count"} or
+\code{"percent"}, one value or one per response (named).}
 }
 \value{
 A character string of HTML, of length one.
 }
 \description{
 Turns the result of \code{\link{run_all}} into a complete, self-contained HTML
-report: the analysis of variance, the tables of means with their standard
-errors and critical differences, the checks of the assumptions, and a
-plain-English interpretation. The report carries the DOEpro citation in its
-footer.
+report: the analysis of variance of each response, the tables of means with
+their standard errors and the comparison chosen, the checks of the
+assumptions, and a plain-English interpretation. The report carries the
+StatLabX credit and the DOEpro citation, and prints cleanly on A4 (the
+browser's \emph{Print} then \emph{Save as PDF} gives a PDF).
 }
 \examples{
 rr <- run_all(demo_data("CRD"), "CRD", list(treat = "Treatment"), "Yield")
-html <- build_report(rr)
+html <- build_report(rr, comparison = comparison("Tukey HSD"))
 substr(html, 1, 60)
 \donttest{
 # writeLines(html, "report.html")

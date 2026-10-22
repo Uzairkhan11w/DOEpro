@@ -3,8 +3,9 @@
 ###############################################################################
 ## Every statement is made at the significance level the user chose, and a
 ## non-significant result is reported as insufficient evidence of a difference,
-## never as evidence that there is none.
-interpret <- function(res, asm, sug, trans_lab = "None") {
+## never as evidence that there is none. Comparisons of means are described
+## by the procedure chosen (`cmp`, see comparison()), and only by it.
+interpret <- function(res, asm, sug, trans_lab = "None", cmp = comparison()) {
   d <- res$data; p <- character(0)
   dn <- names(DESIGNS)[match(res$design, DESIGNS)]
   a <- res$alpha; lvl <- sprintf("%s%%", pct(a))
@@ -58,7 +59,8 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
                         if (bt) " (back-transformed)" else "", fmt(shown[ti[1]], 3), top)
     if (effect_sig(e)) {
       if (length(e$vars) > 1) inter_sig <- TRUE
-      cd_txt <- if (!is.null(e$slice))
+      cd_txt <- if (cmp$kind != "cd") cmp_interp(res, nm, e, cmp, trans_lab)
+      else if (!is.null(e$slice))
         sprintf("Two means at the same level of %s must differ by at least <b>%s</b> (C.D. at %s) to be declared different; other comparisons have their own C.D., given with the table of means.",
                 e$slice, fmt(e$cd), lvl)
       else if (!is.na(e$cd))
@@ -137,45 +139,45 @@ interpret <- function(res, asm, sug, trans_lab = "None") {
     TRANS[[sug$method]]$lab, sug$why))
   p <- c(p, "<h4>4. Assumptions of the ANOVA</h4><ul>", at, "</ul>")
 
-  p <- c(p, sprintf("<h4>5. How to report this</h4><p>Present the ANOVA table, then the table of means with SEm&plusmn;, SEd, C.D. (%s) and CV(%%) at the foot%s. Means followed by a common letter are not significantly different at the %s level. For pairwise inference the least significant difference (LSD) is used only after a significant F-test (Fisher's protected LSD); Tukey's honestly significant difference (HSD) or Duncan's multiple range test (DMRT) may be preferred when many treatments are compared.</p>",
-    lvl,
-    if (res$balanced) "" else "; with unbalanced data give each mean its own SE and quote the range of the SEd and C.D. values",
-    lvl))
+  unbal <- if (res$balanced) "" else "; with unbalanced data give each mean its own SE and quote the range of the SEd values"
+  p <- c(p, paste0("<h4>5. How to report this</h4><p>", switch(cmp$kind,
+    none = sprintf(paste0("Present the ANOVA table, then the table of means with SEm&plusmn;, SEd and CV(%%) at the foot%s. ",
+                          "To say which means differ, choose one comparison procedure, state it and its level, and report its ",
+                          "result alone."), unbal),
+    cd = sprintf(paste0("Present the ANOVA table, then the table of means with SEm&plusmn;, SEd, %s and CV(%%) at the foot%s. ",
+                        "Two means differ significantly at the %s level when their difference is larger than the C.D. (Fisher's ",
+                        "protected LSD, used only after a significant F-test). Do not add letters from another procedure to the ",
+                        "same table: they would be a second verdict on the same means."), cd_name(a),
+                 if (res$balanced) "" else "; with unbalanced data give each mean its own SE and quote the range of the SEd and C.D. values", lvl),
+    letters = sprintf(paste0("Present the ANOVA table, then the table of means with the letters of %s and SEm&plusmn;, SEd and ",
+                             "CV(%%) at the foot%s, and say beneath it: &ldquo;means sharing a letter do not differ significantly by %s ",
+                             "at the %s level&rdquo;. Do not add a C.D. to the same table: it belongs to a different procedure."),
+                      CMP_NAME[[cmp$method]], unbal, CMP_NAME[[cmp$method]], lvl),
+    dunnett = sprintf(paste0("Present the ANOVA table and the table of means, then each treatment's difference from the control ",
+                             "with Dunnett's verdict at the %s level, saying whether the test was two-sided or one-sided and ",
+                             "which level was the control."), lvl)),
+    "</p>"))
   paste(p, collapse = "\n")
 }
 
-REPORT_CSS <- "
-@page{size:A4;margin:16mm 13mm 20mm 13mm;
-  @bottom-right{content:'DOEpro \\00b7 Shah, Khan & Jeelani \\2014 page ' counter(page);
-                font-size:8pt;color:#666}}
-body{font-family:Segoe UI,Helvetica,Arial,sans-serif;margin:28px;color:#222;line-height:1.5}
-h1{border-bottom:3px solid #3B7DD8;padding-bottom:6px;margin-bottom:4px}
-.rpt-head{display:flex;align-items:center;justify-content:space-between;gap:16px;
-  border-bottom:3px solid #3B7DD8;margin-bottom:4px}
-.rpt-head h1{border-bottom:none;margin:0;padding:0;flex:1}
-.rpt-logo{height:52px;width:auto;flex:0 0 auto}
-h2{color:#1B4F9C;border-bottom:1px solid #C8D8EE;margin-top:26px;page-break-after:avoid}
-h3{color:#1B4F9C;margin-bottom:6px;page-break-after:avoid}
-h4{margin-bottom:4px;color:#1B4F9C}
-p.meta{color:#555;font-size:12px;margin-top:0}
-table.doe{border-collapse:collapse;margin:8px 0 4px 0;font-size:13px;page-break-inside:avoid}
-table.doe th,table.doe td{border:1px solid #b9c6d6;padding:5px 10px;text-align:right}
-table.doe th{background:#EAF1FB;text-align:center}
-table.doe td:first-child,table.doe th:first-child{text-align:left}
-table.doe caption{caption-side:top;text-align:left;font-weight:600;padding:6px 0;color:#1B4F9C}
-table.doe tfoot td{background:#FAFCFF;font-size:12px}
-td.cdrow{text-align:left !important;background:#FAFCFF;font-size:12px}
-table.foot{font-size:12px;margin-top:0;background:#FAFCFF}
-span.sig{color:#C0392B;font-weight:600}
-span.ns{color:#7A889E}
-sup{color:#1B4F9C;font-weight:600}
-.block{margin-bottom:26px}
-.note{font-size:12px;color:#555;font-style:italic;margin:2px 0 14px 0}
-.warn{background:#FFF6E5;border-left:4px solid #E8A33D;padding:8px 12px;margin:10px 0}
-.authors{font-size:12px;color:#444;margin:10px 0 0 0}
-.creditblock{margin-top:30px;padding-top:8px;border-top:1px solid #C8D8EE;
-  font-size:11px;color:#666;text-align:right;page-break-inside:avoid}
-.screencredit{position:fixed;right:12px;bottom:8px;font-size:10px;color:#8a8a8a;
-  background:rgba(255,255,255,.85);padding:2px 6px;border-radius:3px}
-@media print{.screencredit{display:none}}
-"
+## The sentence on how the means of a significant effect compare, by the
+## procedure chosen when it is not the C.D.: none, the letters' verdicts for
+## a main effect (a pointer to the tables for an interaction), or Dunnett's
+## comparisons for the effect they were made on.
+cmp_interp <- function(res, nm, e, cmp, trans_lab) {
+  tr <- if (identical(trans_lab, "None")) "none" else res$trans %||% "none"
+  if (cmp$kind == "none")
+    return("Which of its means differ is not judged here: choose a comparison procedure on the Means &amp; Comparisons tab.")
+  if (cmp$kind == "dunnett") {
+    if (!identical(cmp$effect, nm)) return("")
+    x <- tryCatch(gate_posthoc(posthoc(res, nm, "Dunnett", e$alpha, control = cmp$control,
+                                       alternative = cmp$alternative %||% "two.sided")), error = function(err) NULL)
+    return(if (is.null(x)) "" else esc(dunnett_groups_text(x, e, tr)))
+  }
+  if (length(e$vars) > 1)
+    return(sprintf("Its cell means are compared by %s in the two-way and detailed tables of means.", CMP_NAME[[cmp$method]]))
+  L <- cmp_letters(res, nm, cmp)
+  if (!is.null(L$err)) return(esc(sprintf("%s cannot be applied: %s", cap1(CMP_NAME[[cmp$method]]), L$err)))
+  esc(posthoc_groups_text(L$x, e, tr, digits = 3))
+}
+
