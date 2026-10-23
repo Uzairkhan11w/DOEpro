@@ -330,6 +330,7 @@ plot_pca_scores <- function(p, ax = c(1, 2), group = NULL) {
     (if (is.null(group)) geom_point(colour = "#3B7DD8", size = 2.4, alpha = 0.85)
      else geom_point(aes(colour = .data$group), size = 2.4, alpha = 0.85)) +
     (if (nrow(far)) geom_text(data = far, aes(label = paste("row", .data$row)), vjust = -0.8, size = 3.3, colour = "#C0392B")) +
+    (if (!is.null(group)) scale_colour_manual(values = slx_pal(length(unique(group))))) +
     labs(title = "Score plot", colour = NULL,
          x = sprintf("PC%d (%s%%)", ax[1], fmt(100 * p$eigen$Proportion[ax[1]], 1)),
          y = sprintf("PC%d (%s%%)", ax[2], fmt(100 * p$eigen$Proportion[ax[2]], 1))) +
@@ -369,6 +370,7 @@ plot_pca_biplot <- function(p, ax = c(1, 2), group = NULL) {
     geom_segment(data = ld, aes(x = 0, y = 0, xend = .data$x, yend = .data$y), colour = "#C0392B",
                  arrow = arrow(length = unit(0.18, "cm"))) +
     geom_text(data = ld, aes(x = .data$x * 1.1, y = .data$y * 1.1, label = .data$v), size = 3.4, colour = "#7B241C") +
+    (if (!is.null(group)) scale_colour_manual(values = slx_pal(length(unique(group))))) +
     labs(title = "Biplot", colour = NULL,
          x = sprintf("PC%d (%s%%)", ax[1], fmt(100 * p$eigen$Proportion[ax[1]], 1)),
          y = sprintf("PC%d (%s%%)", ax[2], fmt(100 * p$eigen$Proportion[ax[2]], 1)),

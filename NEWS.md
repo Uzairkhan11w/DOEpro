@@ -56,6 +56,22 @@
   interval where one can be given (designs with one error term) and says
   why not elsewhere; its reading follows the interaction's F-test, not the
   lines alone. One plot style throughout, with a colour-blind-safe palette.
+* Every graph in the app is drawn in the browser as a crisp vector chart in
+  the platform's own style, in place of R's images: bars with a soft
+  gradient and rounded tops, rounded heat-map tiles whose figures turn white
+  on dark tiles, the grouping letters as pills, legends as pills whose keys
+  show the marks they stand for, soft confidence bands, true minus signs,
+  labels kept inside the panel and off each other, a tooltip on every mark,
+  and a short drawing-in animation (none when the system asks for reduced
+  motion). The charts redraw to fit any screen, phones included. R still
+  decides what is drawn: the browser draws the bars, intervals, points,
+  lines, labels and axes that ggplot2 computes (`chart_spec()`, internal),
+  so every reading beside a graph stays true, and the plot functions still
+  return ggplot objects for use in R. The downloads are made in the browser
+  from the chart as shown (PNG at 300 dpi, or SVG), so they no longer wait
+  for R to draw the graph again. The heat maps of correlations and of
+  factor loadings share one red-to-blue scale through clear tints, so a
+  middling value no longer reads as grey.
 * The report prints: "Print / Save as PDF" opens the browser's print dialog
   without saving a file first, on A4 with tables kept whole and wide tables
   on landscape pages where the browser allows; "Download HTML" stays; a PDF

@@ -58,7 +58,6 @@ h4{font-size:17px;margin-top:14px}
 .btn-default{background:#fff;border:1px solid var(--slx-line);color:var(--slx-ink)}
 .btn-default:hover{background:#EEF3FB;border-color:#CDDAEE;color:var(--slx-blue-dark)}
 .btn-lg{padding:10px 24px;font-size:16px}
-.shiny-plot-output{background:#fff;border:1px solid var(--slx-line);border-radius:14px;overflow:hidden}
 .dataTables_wrapper{background:#fff;border:1px solid var(--slx-line);border-radius:14px;padding:10px 12px;margin:6px 0 12px}
 table.dataTable{font-size:13.5px;font-variant-numeric:tabular-nums}
 hr{border-color:var(--slx-line);opacity:1}
@@ -87,12 +86,32 @@ details.slx-fold{margin:8px 0 14px}
 details.slx-fold>summary{cursor:pointer;color:var(--slx-blue-dark);font-weight:600;padding:4px 0}
 
 /* ---- graphs: a small download menu in the corner of each ---- */
-.slx-plot{position:relative;margin-bottom:6px}
-.slx-plot-dl{position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:.55;transition:opacity .15s;z-index:5}
+.slx-plot{position:relative;margin-bottom:8px}
+.slx-plot-dl{position:absolute;top:12px;right:12px;display:flex;gap:5px;opacity:.6;transition:opacity .15s;z-index:6}
 .slx-plot:hover .slx-plot-dl,.slx-plot-dl:focus-within{opacity:1}
 .slx-dl{border:1px solid var(--slx-line);background:rgba(255,255,255,.95);color:var(--slx-blue-dark);border-radius:999px;
   font-size:11.5px;font-weight:600;padding:3px 9px;line-height:1.4;cursor:pointer}
 .slx-dl:hover,.slx-dl:focus{background:var(--slx-blue);border-color:var(--slx-blue);color:#fff;outline:none}
+
+/* ---- charts drawn in the browser (APP_CHART_JS): a card, crisp SVG inside ---- */
+.slx-chart{position:relative;background:#fff;border:1px solid var(--slx-line);border-radius:18px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,40,75,.04),0 18px 40px -28px rgba(20,40,75,.35)}
+.slx-chart svg{display:block}
+.slx-chart.shiny-output-error{display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;
+  color:var(--slx-muted);font-size:13.5px;line-height:1.5}
+.slx-chart.recalculating{opacity:.45;transition:opacity .25s}
+.slx-tip{position:absolute;left:0;top:0;pointer-events:none;background:rgba(11,21,48,.94);color:#fff;font-size:12px;line-height:1.4;
+  padding:7px 11px;border-radius:10px;box-shadow:0 10px 28px rgba(11,21,48,.28);white-space:nowrap;
+  transform:translate(-50%,calc(-100% - 12px));opacity:0;transition:opacity .12s;z-index:5}
+.slx-tip.on{opacity:1}
+.slx-tip b{font-weight:650}
+.slx-chart .slx-mark{transition:filter .15s ease}
+.slx-chart .slx-mark:hover{filter:brightness(1.07) drop-shadow(0 4px 8px rgba(20,40,75,.22))}
+@keyframes slx-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes slx-pop{from{opacity:0;transform:scale(.3)}to{opacity:1;transform:scale(1)}}
+@keyframes slx-fade{from{opacity:0}to{opacity:1}}
+@keyframes slx-draw{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.slx-chart *{animation:none !important}}
 
 /* ---- messages: colour carries meaning, not decoration ---- */
 .box{background:#fff;border:1px solid var(--slx-line);border-left:4px solid var(--slx-blue);border-radius:12px;padding:12px 16px;margin:12px 0}
@@ -151,10 +170,11 @@ sup{color:var(--slx-blue-dark);font-weight:600}
 .slx-guide table.doe th,.slx-guide table.doe td{text-align:left}
 "
 
-## The scripts of the app's own page: saving a file the server sends (as text
-## or as base64 bytes), the download menu of every graph, printing the report
-## from a hidden frame (no file is saved first), and, in the browser build,
-## handing the About tab and the logo back to the website.
+## The scripts of the app's own page: saving a file the server sends, the
+## download menu of every graph (drawn and saved in the browser by
+## APP_CHART_JS), printing the report from a hidden frame (no file is saved
+## first), and, in the browser build, handing the About tab and the logo back
+## to the website.
 APP_JS <- "
 (function () {
   function save(blob, name) {
@@ -164,16 +184,10 @@ APP_JS <- "
     document.body.appendChild(a); a.click();
     setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
   }
+  window.slxSave = save;
   Shiny.addCustomMessageHandler('doepro_save', function (m) {
     try { save(new Blob([m.content], {type: m.mime || 'text/html'}), m.filename); }
     catch (e) { alert('Download failed: ' + e.message); }
-  });
-  Shiny.addCustomMessageHandler('doepro_save_b64', function (m) {
-    try {
-      var bin = atob(m.b64), n = bin.length, bytes = new Uint8Array(n);
-      for (var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
-      save(new Blob([bytes], {type: m.mime}), m.filename);
-    } catch (e) { alert('Download failed: ' + e.message); }
   });
   Shiny.addCustomMessageHandler('doepro_print', function (m) {
     var old = document.getElementById('slx-print-frame');
@@ -193,9 +207,7 @@ APP_JS <- "
   document.addEventListener('click', function (e) {
     var b = e.target.closest ? e.target.closest('.slx-dl') : null;
     if (!b) return;
-    var id = b.getAttribute('data-plot'), el = document.getElementById(id);
-    Shiny.setInputValue('plot_dl', {id: id, fmt: b.getAttribute('data-fmt'),
-      w: el ? el.clientWidth : 900, h: el ? el.clientHeight : 560, n: Date.now()}, {priority: 'event'});
+    if (window.SLXChart) window.SLXChart.download(b.getAttribute('data-plot'), b.getAttribute('data-fmt'));
   });
   document.addEventListener('click', function (e) {
     var a = e.target.closest ? e.target.closest('.navbar a[data-value=about], .navbar .navbar-brand') : null;
@@ -218,18 +230,6 @@ trans_choices <- function()
 nav_brand <- function()
   tagList(tags$img(src = LOGO_URI, alt = "StatLabX", class = "slx-logo"),
           tags$span(class = "slx-sub", sprintf("powered by %s %s", APP_NAME, APP_VERSION)))
-
-## A graph with its download menu in the upper-right corner: PNG at 300 dpi,
-## or SVG, of the graph as drawn, with the platform named at its foot
-plot_card <- function(id, height = "320px") {
-  div(class = "slx-plot",
-      plotOutput(id, height = height),
-      div(class = "slx-plot-dl", role = "group", `aria-label` = "Download this graph",
-          tags$button(type = "button", class = "slx-dl", `data-plot` = id, `data-fmt` = "png",
-                      title = "Download this graph as a PNG image (300 dpi)", icon("download"), "PNG"),
-          tags$button(type = "button", class = "slx-dl", `data-plot` = id, `data-fmt` = "svg",
-                      title = "Download this graph as an SVG (vector) image", "SVG")))
-}
 
 ## the line of chips at the top of an analysis tab: what is being analysed
 ctx_strip <- function(id) uiOutput(id)
@@ -256,7 +256,7 @@ doepro_ui <- function() navbarPage(
   theme = bslib::bs_theme(version = 5),
   id = "nav", collapsible = TRUE,
   header = tagList(tags$head(tags$style(HTML(paste0(APP_CSS, MEANS_CSS))),
-                             tags$script(HTML(APP_JS))),
+                             tags$script(HTML(APP_JS)), tags$script(HTML(APP_CHART_JS))),
                    tags$div(class = "appfoot", CREDIT_SHORT)),
 
   ## ----------------------------------------------------------------- about --
@@ -329,11 +329,11 @@ doepro_ui <- function() navbarPage(
         mainPanel(width = 9,
           h4(textOutput("descPlotTitle", inline = TRUE)),
           fluidRow(
-            column(6, plot_card("descHist"), uiOutput("descHistText")),
-            column(6, plot_card("descDens"), uiOutput("descDensText"))),
+            column(6, chart_output("descHist"), uiOutput("descHistText")),
+            column(6, chart_output("descDens"), uiOutput("descDensText"))),
           fluidRow(
-            column(6, plot_card("descBox"), uiOutput("descBoxText")),
-            column(6, plot_card("descQQ"), uiOutput("descQQText"))),
+            column(6, chart_output("descBox"), uiOutput("descBoxText")),
+            column(6, chart_output("descQQ"), uiOutput("descQQText"))),
           tags$hr(),
           uiOutput("descTab"),
           uiOutput("descText"))
@@ -364,8 +364,8 @@ doepro_ui <- function() navbarPage(
           uiOutput("corPairs"),
           tags$hr(),
           fluidRow(
-            column(7, plot_card("corHeat", "420px"), uiOutput("corHeatText")),
-            column(5, plot_card("corScatter", "420px"), uiOutput("corScatterText"))))
+            column(7, chart_output("corHeat", "420px"), uiOutput("corHeatText")),
+            column(5, chart_output("corScatter", "420px"), uiOutput("corScatterText"))))
       )),
     tabPanel("Regression", value = "explore_reg",
       sidebarLayout(
@@ -386,15 +386,15 @@ doepro_ui <- function() navbarPage(
           uiOutput("regAnova"),
           tags$hr(),
           fluidRow(
-            column(7, plot_card("regMain", "440px")),
+            column(7, chart_output("regMain", "440px")),
             column(5, uiOutput("regMainText"))),
           tags$hr(),
           h4("Checking the fit"),
           uiOutput("regChecks"),
           fluidRow(
-            column(4, plot_card("regResid", "340px"), uiOutput("regResidText")),
-            column(4, plot_card("regQQ", "340px"), uiOutput("regQQText")),
-            column(4, plot_card("regObs", "340px"), uiOutput("regObsText"))))
+            column(4, chart_output("regResid", "340px"), uiOutput("regResidText")),
+            column(4, chart_output("regQQ", "340px"), uiOutput("regQQText")),
+            column(4, chart_output("regObs", "340px"), uiOutput("regObsText"))))
       )),
     tabPanel("Principal components", value = "explore_pca",
       sidebarLayout(
@@ -417,11 +417,11 @@ doepro_ui <- function() navbarPage(
           uiOutput("pcaLoadings"),
           tags$hr(),
           fluidRow(
-            column(6, plot_card("pcaScree", "380px"), uiOutput("pcaScreeText")),
-            column(6, plot_card("pcaScores", "380px"), uiOutput("pcaScoresText"))),
+            column(6, chart_output("pcaScree", "380px"), uiOutput("pcaScreeText")),
+            column(6, chart_output("pcaScores", "380px"), uiOutput("pcaScoresText"))),
           fluidRow(
-            column(6, plot_card("pcaLoadPlot", "420px"), uiOutput("pcaLoadText")),
-            column(6, plot_card("pcaBiplot", "420px"), uiOutput("pcaBiplotText"))),
+            column(6, chart_output("pcaLoadPlot", "420px"), uiOutput("pcaLoadText")),
+            column(6, chart_output("pcaBiplot", "420px"), uiOutput("pcaBiplotText"))),
           uiOutput("pcaScoreTable"))
       )),
     tabPanel("Cluster analysis", value = "explore_cl",
@@ -448,11 +448,11 @@ doepro_ui <- function() navbarPage(
           uiOutput("clMeans"),
           tags$hr(),
           fluidRow(
-            column(7, plot_card("clDendro", "440px")),
+            column(7, chart_output("clDendro", "440px")),
             column(5, uiOutput("clDendroText"))),
           fluidRow(
-            column(6, plot_card("clPcs", "400px"), uiOutput("clPcsText")),
-            column(6, plot_card("clSil", "400px"), uiOutput("clSilText"))),
+            column(6, chart_output("clPcs", "400px"), uiOutput("clPcsText")),
+            column(6, chart_output("clSil", "400px"), uiOutput("clSilText"))),
           uiOutput("clItems"))
       )),
     tabPanel("Factor analysis", value = "explore_fa",
@@ -478,10 +478,10 @@ doepro_ui <- function() navbarPage(
           uiOutput("faPhi"),
           tags$hr(),
           fluidRow(
-            column(6, plot_card("faScree", "380px"), uiOutput("faScreeText")),
-            column(6, plot_card("faHeat", "380px"), uiOutput("faHeatText"))),
+            column(6, chart_output("faScree", "380px"), uiOutput("faScreeText")),
+            column(6, chart_output("faHeat", "380px"), uiOutput("faHeatText"))),
           fluidRow(
-            column(6, plot_card("faLoadPlot", "420px"), uiOutput("faLoadText")),
+            column(6, chart_output("faLoadPlot", "420px"), uiOutput("faLoadText")),
             column(6, uiOutput("faScores"))))
       ))),
 
@@ -504,14 +504,14 @@ doepro_ui <- function() navbarPage(
     tab_guide("Choosing a transformation", GUIDE_TRANSFORM),
     h4("Residual diagnostics"),
     div(class = "note", "Residuals are the observed values minus those the analysis fits; the plots show whether they behave as the F-tests assume."),
-    fluidRow(column(6, plot_card("diagFit", "300px"), uiOutput("diagFitText")),
-             column(6, plot_card("diagQQ", "300px"), uiOutput("diagQQText"))),
-    fluidRow(column(6, plot_card("diagHist", "300px"), uiOutput("diagHistText")),
-             column(6, plot_card("diagScale", "300px"), uiOutput("diagScaleText"))),
-    fluidRow(column(6, plot_card("diagCook", "300px"), uiOutput("diagCookText"))),
+    fluidRow(column(6, chart_output("diagFit", "300px"), uiOutput("diagFitText")),
+             column(6, chart_output("diagQQ", "300px"), uiOutput("diagQQText"))),
+    fluidRow(column(6, chart_output("diagHist", "300px"), uiOutput("diagHistText")),
+             column(6, chart_output("diagScale", "300px"), uiOutput("diagScaleText"))),
+    fluidRow(column(6, chart_output("diagCook", "300px"), uiOutput("diagCookText"))),
     h4("Choosing a transformation"),
-    fluidRow(column(6, plot_card("bcPlot", "300px"), uiOutput("bcText")),
-             column(6, plot_card("mvPlot", "300px"), uiOutput("mvText")))),
+    fluidRow(column(6, chart_output("bcPlot", "300px"), uiOutput("bcText")),
+             column(6, chart_output("mvPlot", "300px"), uiOutput("mvText")))),
 
   ## ------------------------------------------------------------------ anova --
   tabPanel("4. ANOVA", value = "anova",
@@ -561,13 +561,13 @@ doepro_ui <- function() navbarPage(
               c("Bar chart" = "bar", "Points with error bars" = "line",
                 "Heat map" = "heat", "Box plot" = "box")),
             uiOutput("plLettersUI")),
-          mainPanel(width = 9, plot_card("mainPlot", "540px"), uiOutput("mainPlotText")))),
+          mainPanel(width = 9, chart_output("mainPlot", "540px"), uiOutput("mainPlotText")))),
       tabPanel("Interaction plots", value = "plot_inter",
         sidebarLayout(
           sidebarPanel(width = 3,
             uiOutput("ipRespUI"), uiOutput("ipEffectUI"), uiOutput("ipXUI"),
             checkboxInput("ipCI", "Show confidence intervals of the means (where they can be given)", TRUE)),
-          mainPanel(width = 9, plot_card("interPlot", "540px"), uiOutput("interPlotText")))))),
+          mainPanel(width = 9, chart_output("interPlot", "540px"), uiOutput("interPlotText")))))),
 
   ## -------------------------------------------------------------- interpret --
   tabPanel("7. Interpretation & Report", value = "report",

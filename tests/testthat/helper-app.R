@@ -22,3 +22,12 @@ set_trans <- function(session, ver, d, v, tr) {
 set_nature <- function(session, ver, d, v, nature) {
   do.call(session$setInputs, stats::setNames(list(nature), paste0("nat_", ver, "_", match(v, names(d)))))
 }
+
+## a graph as it reaches the browser: a chart (chart_spec()) with its panels,
+## its marks and, when given, its title
+expect_chart <- function(s, title = NULL) {
+  expect_type(s, "list")
+  expect_gt(length(s$panels), 0)
+  expect_gt(length(s$layers), 0)
+  if (!is.null(title)) expect_identical(s$title, title)
+}

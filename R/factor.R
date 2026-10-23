@@ -365,8 +365,7 @@ plot_fa_heat <- function(fa) {
   ggplot(df, aes(x = .data$f, y = .data$var, fill = .data$v)) +
     geom_tile(colour = "white") +
     geom_text(aes(label = .data$lab, fontface = ifelse(.data$strong, "bold", "plain")), size = 3.6) +
-    scale_fill_gradient2(low = "#C0392B", mid = "white", high = "#2E6FD0", midpoint = 0,
-                         limits = c(-1, 1) * max(1, max(abs(df$v))), name = "Loading") +
+    scale_fill_diverge(c(-1, 1) * max(1, max(abs(df$v))), "Loading") +
     labs(title = "Loadings", x = NULL, y = NULL,
          caption = sprintf("Bold: %s or more either way.", dfmt(FA_SALIENT, 2))) +
     theme_doe() + theme(panel.grid = element_blank())

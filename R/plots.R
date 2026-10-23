@@ -15,6 +15,14 @@ SLX_PAL <- c("#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00", "
 ## the colours for k groups: the palette while it lasts, evenly spaced hues after
 slx_pal <- function(k) if (k <= length(SLX_PAL)) SLX_PAL[seq_len(k)] else grDevices::hcl.colors(k, "Dark 3")
 
+## The heat maps of coefficients and loadings: red below 0, the brand's blues
+## above, through clear tints, so a middling value reads as a light red or
+## blue rather than a grey. Deeper colour is always further from 0.
+SLX_DIVERGE <- c("#B93A2E", "#EE9A8E", "#F7F7F7", "#9CC3FF", "#3B7DD8", "#1F5FC4")
+scale_fill_diverge <- function(limits, name, ...)
+  scale_fill_gradientn(colours = SLX_DIVERGE, values = c(0, 0.3, 0.5, 0.68, 0.86, 1),
+                       limits = limits, name = name, ...)
+
 theme_doe <- function(base_size = 13) {
   theme_minimal(base_size = base_size) +
     theme(panel.grid.minor = element_blank(),
@@ -303,14 +311,6 @@ plot_meanvar <- function(asm) {
 }
 
 ## ------------------------------------------------------------- downloads ----
-
-## A plot as it is saved: the same plot, with the platform named at its
-## foot, under the plot's own caption
-plot_brand <- function(p) {
-  cap <- p$labels$caption
-  p + labs(caption = paste(c(if (length(cap) && !is.na(cap) && nzchar(cap)) cap,
-                             paste("Generated with", APP_BRAND)), collapse = "\n"))
-}
 
 ## a file name for a saved plot: StatLabX_<what>_<response>.png
 plot_file <- function(what, resp = NULL, ext = "png") {

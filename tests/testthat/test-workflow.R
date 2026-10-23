@@ -127,17 +127,20 @@ test_that("one response that cannot be analysed does not stop the others", {
   })
 })
 
-test_that("graphs download, the report prints, and both say StatLabX", {
+test_that("graphs reach the browser as charts, the report prints, and both say StatLabX", {
   skip_on_cran()
   shiny::testServer(doepro_server, {
     session$setInputs(demo = "FCRD", loaddemo = 1, alpha = "0.05")
     set_map(session, rv$ver, resp = "Yield", f1 = "Variety", f2 = "Nitrogen")
     session$setInputs(aResp = "Yield", ipResp = "Yield", ipEff = "Variety:Nitrogen", ipCI = TRUE,
                       aResp3 = "Yield", plEff = "Variety", plType = "bar", phMethod = "Tukey HSD", plLetters = TRUE)
-    # a download request for a graph, a missing graph and an unknown id
-    expect_no_error(session$setInputs(plot_dl = list(id = "interPlot", fmt = "png", w = 900, h = 560, n = 1)))
-    expect_no_error(session$setInputs(plot_dl = list(id = "mainPlot", fmt = "svg", w = 900, h = 560, n = 2)))
-    expect_no_error(session$setInputs(plot_dl = list(id = "nothing", fmt = "png", w = 900, h = 560, n = 3)))
+    # the graphs reach the browser as charts, named for the files they save to
+    ip <- output$interPlot
+    expect_identical(ip$file, "StatLabX_interaction-plot_Yield")
+    expect_identical(vapply(ip$layers, `[[`, "", "kind"), c("errorbar", "line", "point"))
+    mp <- output$mainPlot
+    expect_identical(mp$file, "StatLabX_means-bar_Yield")
+    expect_identical(mp$layers[[3]]$kind, "text")   # Tukey's letters
     h <- report()
     expect_match(h, "Generated with StatLabX", fixed = TRUE)
     expect_match(h, "Analysis of Variance (Yield)", fixed = TRUE)

@@ -20,9 +20,9 @@ Exploration & Diagnostics → Assumptions & Diagnostics → ANOVA → Means & Co
 Interpretation & Report. You get a quick summary and a screening of each response as soon as
 the data are in, residual diagnostics with a summary of what each check means and what to do,
 the ANOVA of each response, publication-format tables of means with SE(m) and SE(d) and either
-the C.D. or the letters of the comparison you choose (never both), interaction plots, graphs
-that download as PNG or SVG, a plain-English interpretation, and a report you can print, save
-as PDF or download as HTML.
+the C.D. or the letters of the comparison you choose (never both), interaction plots, modern
+graphs drawn in your browser that download as PNG or SVG, a plain-English interpretation, and a
+report you can print, save as PDF or download as HTML.
 
 **Developed by**
 
@@ -224,8 +224,12 @@ one self-contained page. **Download PDF** appears only where the machine has a r
 engine — `pagedown` (needs Chrome or Chromium), `weasyprint`, or `wkhtmltopdf`. The report
 carries the StatLabX credit line, the DOEpro version and the date.
 
-Every graph in the app has a small download menu in its corner: PNG at 300 dpi or SVG, named
-`StatLabX_<graph>_<response>`, with "Generated with StatLabX" at its foot.
+Every graph is drawn in the browser as a crisp vector chart: gradient bars with rounded tops,
+the grouping letters as pills, legends as pills, soft confidence bands and a tooltip on every
+mark, redrawn to fit any screen. What it shows is exactly what `ggplot2` computes for the
+package's plot, so the plot functions keep returning ggplot objects for use in R. Its download
+menu saves the chart as shown: PNG at 300 dpi or SVG, named `StatLabX_<graph>_<response>`, with
+"Generated with StatLabX" at its foot.
 
 ---
 

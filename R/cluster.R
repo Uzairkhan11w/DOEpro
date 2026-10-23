@@ -324,8 +324,8 @@ plot_cl_dendro <- function(cl) {
     geom_segment(data = dd$seg, aes(x = .data$x, y = .data$y, xend = .data$xend, yend = .data$yend, colour = .data$cluster),
                  linewidth = 0.7, na.rm = TRUE) +
     geom_hline(yintercept = dd$cut, linetype = 2, colour = "grey45") +
-    scale_colour_discrete(breaks = as.character(seq_len(cl$k)), labels = paste("Cluster", seq_len(cl$k)),
-                          na.value = "grey55", drop = FALSE) +
+    scale_colour_manual(values = stats::setNames(slx_pal(cl$k), seq_len(cl$k)), breaks = as.character(seq_len(cl$k)),
+                        labels = paste("Cluster", seq_len(cl$k)), na.value = "grey55", drop = FALSE) +
     labs(title = "Dendrogram", subtitle = sprintf("%s, %s distances", cap1(CL_LINK_NAMES[[cl$linkage]]), CL_DIST_NAMES[[cl$distance]]),
          x = NULL, y = "Height", colour = NULL,
          caption = sprintf("Dashed line: the cut into %d clusters.", cl$k)) +
@@ -349,7 +349,7 @@ plot_cl_pcs <- function(cl) {
   g <- ggplot(df, aes(x = .data$x, y = .data$y, colour = .data$cluster)) +
     geom_hline(yintercept = 0, colour = "grey85") + geom_vline(xintercept = 0, colour = "grey85") +
     geom_point(size = 2.6) +
-    scale_colour_discrete(labels = paste("Cluster", seq_len(cl$k))) +
+    scale_colour_manual(values = slx_pal(cl$k), labels = paste("Cluster", seq_len(cl$k))) +
     labs(title = "Clusters on the first two principal components", colour = NULL,
          x = sprintf("PC1 (%s%%)", fmt(100 * pc$share[1], 1)), y = sprintf("PC2 (%s%%)", fmt(100 * pc$share[2], 1))) +
     theme_doe()

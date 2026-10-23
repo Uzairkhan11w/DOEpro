@@ -32,7 +32,8 @@ ORDER <- c(
   "posthoc.R",         # post-hoc procedures
   "dunnett.R",         # Dunnett's test against a control
   "comparisons.R",     # what the tables of means show for the comparison chosen
-  "plots.R",           # plots, the interaction plot and saved graphs
+  "plots.R",           # plots and the interaction plot
+  "charts.R",          # the plots as charts drawn in the browser, and their saving
   "diagnostics.R",     # Tukey's additivity test, Cook's distance, the summary of the checks
   "descriptives.R",    # descriptive statistics and distribution plots
   "correlation.R",     # correlation between pairs of variables

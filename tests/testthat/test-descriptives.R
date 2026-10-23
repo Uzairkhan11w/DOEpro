@@ -453,7 +453,7 @@ test_that("the Explore tab summarises, reads and plots the data", {
     expect_match(txt, "The 20 values of &#39;Yield&#39;|The 20 values of 'Yield'")
     expect_identical(output$descPlotTitle, "Distribution of Yield")
     for (o in c("descHist", "descDens", "descBox", "descQQ"))
-      expect_match(output[[o]]$src, "^data:image/png")
+      expect_chart(output[[o]])
     for (o in c("descHistText", "descDensText", "descBoxText", "descQQText")) {
       expect_match(output[[o]]$html, "What it shows.", fixed = TRUE)
       expect_match(output[[o]]$html, "Here.", fixed = TRUE)
@@ -513,7 +513,7 @@ test_that("the Assumptions tab shows all four residual plots", {
     expect_identical(titles, c("Residuals against fitted values", "Normal Q-Q plot of the residuals",
                                "Histogram of the residuals", "Scale-location"))
     for (o in c("diagFit", "diagQQ", "diagHist", "diagScale", "diagCook"))
-      expect_match(output[[o]]$src, "^data:image/png")
+      expect_chart(output[[o]])
   })
 })
 

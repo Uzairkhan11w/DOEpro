@@ -246,8 +246,8 @@ test_that("the correlation tab computes, reads and draws", {
     expect_match(output$corMatrix$html, "Strength of rho: under 0.10 negligible", fixed = TRUE)
     expect_match(output$corText$html, "at the 1% level", fixed = TRUE)
     expect_match(output$corPairs$html, "Every pair", fixed = TRUE)
-    expect_match(output$corHeat$src, "^data:image/png")
-    expect_match(output$corScatter$src, "^data:image/png")
+    expect_chart(output$corHeat)
+    expect_chart(output$corScatter)
     expect_match(output$corScatterText$html, "Spearman's rho is", fixed = TRUE)
     expect_identical(nrow(cor_tab()), 3L)
     # one variable is not enough

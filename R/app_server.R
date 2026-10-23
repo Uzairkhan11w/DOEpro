@@ -28,34 +28,6 @@ csv_string <- function(df) {
         collapse = "\n")
 }
 
-## Bytes as base64 text, for handing a file to the browser: done in base R, as
-## the package has no dependency that offers it.
-b64_raw <- function(r) {
-  r <- as.integer(r); n <- length(r)
-  if (!n) return("")
-  pad <- (3 - n %% 3) %% 3
-  m <- matrix(c(r, integer(pad)), nrow = 3)
-  v <- m[1, ] * 65536L + m[2, ] * 256L + m[3, ]
-  idx <- rbind(v %/% 262144L, (v %/% 4096L) %% 64L, (v %/% 64L) %% 64L, v %% 64L) + 1L
-  s <- c(LETTERS, letters, 0:9, "+", "/")[idx]
-  if (pad) s[(length(s) - pad + 1L):length(s)] <- "="
-  paste(s, collapse = "")
-}
-
-## Save plot `p` to `file` as a PNG at 300 dpi or as an SVG, `w` by `h` inches.
-## The PNG goes through the device Shiny itself draws plots with, so it works
-## wherever the plots on screen do.
-save_plot_file <- function(p, file, fmt = "png", w = 8, h = 5) {
-  if (identical(fmt, "svg")) {
-    grDevices::svg(file, width = w, height = h)
-    on.exit(grDevices::dev.off(), add = TRUE)
-    print(p)
-  } else {
-    shiny::plotPNG(function() print(p), filename = file, width = round(w * 300), height = round(h * 300), res = 300)
-  }
-  invisible(file)
-}
-
 #' The DOEpro server logic
 #'
 #' The Shiny server function. Called by \code{\link{run_DOEpro}}; you should not
@@ -495,12 +467,13 @@ doepro_server <- function(input, output, session) {
   })
 
   ## ---------------------------------------------------------- the graphs --
-  ## Every graph is drawn by a function kept here as well, so its download
-  ## button can draw it again for the file: the same plot, at print size.
-  plots <- new.env(parent = emptyenv())
+  ## Every graph is a ggplot made here, sent to the browser as a chart
+  ## description (chart_spec()) and drawn there; its download menu saves it
+  ## in the browser as it is shown. `what` and `resp` name the saved file.
+  plots <- character(0)
   plot_out <- function(id, fun, what, resp = NULL) {
-    plots[[id]] <- list(fun = fun, what = what, resp = resp)
-    output[[id]] <- renderPlot(fun())
+    plots <<- c(plots, id)
+    output[[id]] <- render_chart(fun, what, resp)
   }
 
   plot_out("bcPlot", function() {
@@ -515,8 +488,8 @@ doepro_server <- function(input, output, session) {
     p <- plot_meanvar(a)
     validate(need(!is.null(p), "Too few cells with a positive mean and variance to estimate the mean-variance slope."))
     p }, "mean-variance", function() aFit()$resp)
-  ## plot_diag() returns four plots; a single renderPlot() would print each in
-  ## turn and show only the last, so each gets its own output. An exact fit has
+  ## plot_diag() returns four plots; one output would show only one of them,
+  ## so each gets its own output. An exact fit has
   ## only rounding residue for residuals, which is not drawn as if it were data.
   diag_plots <- reactive({
     f <- aFit()
@@ -1365,43 +1338,6 @@ doepro_server <- function(input, output, session) {
     })
 
   ## -------------------------------------------------------------- downloads --
-  ## a saved graph: the plot as drawn, at print size, with the platform named
-  ## at its foot; PNG at 300 dpi, or SVG where the device is available
-  observeEvent(input$plot_dl, {
-    q <- input$plot_dl
-    reg <- plots[[q$id %||% ""]]
-    if (is.null(reg)) return()
-    p <- tryCatch(isolate(reg$fun()), error = function(e) e)
-    if (inherits(p, "error") || !inherits(p, "ggplot")) {
-      showNotification(paste("This graph cannot be saved:",
-                             if (inherits(p, "error") && nzchar(conditionMessage(p))) conditionMessage(p) else "it is not drawn yet."),
-                       type = "warning")
-      return()
-    }
-    what <- if (is.function(reg$what)) isolate(reg$what()) else reg$what
-    resp <- if (is.function(reg$resp)) tryCatch(isolate(reg$resp()), error = function(e) NULL) else NULL
-    w <- suppressWarnings(as.numeric(q$w)); h <- suppressWarnings(as.numeric(q$h))
-    ratio <- if (length(w) && length(h) && isTRUE(w > 0 && h > 0)) h / w else 0.62
-    win <- 8; hin <- max(3.5, min(11, win * ratio))
-    fmt <- if (identical(q$fmt, "svg")) "svg" else "png"
-    f <- tempfile(fileext = paste0(".", fmt))
-    made <- tryCatch({ save_plot_file(plot_brand(p), f, fmt, win, hin); TRUE }, error = function(e) e)
-    if (!isTRUE(made) && fmt == "svg") {
-      showNotification("SVG cannot be made here, so the graph is saved as a PNG instead.", type = "warning")
-      fmt <- "png"; f <- tempfile(fileext = ".png")
-      made <- tryCatch({ save_plot_file(plot_brand(p), f, fmt, win, hin); TRUE }, error = function(e) e)
-    }
-    if (!isTRUE(made)) {
-      showNotification(paste("The graph could not be saved:", conditionMessage(made)), type = "error")
-      return()
-    }
-    on.exit(unlink(f), add = TRUE)
-    bytes <- readBin(f, "raw", file.info(f)$size)
-    session$sendCustomMessage("doepro_save_b64", list(
-      filename = plot_file(what, resp, fmt), b64 = b64_raw(bytes),
-      mime = if (fmt == "svg") "image/svg+xml" else "image/png"))
-  })
-
   observeEvent(input$dl_anova, {
     r <- ok()
     out <- do.call(rbind, lapply(names(r$fits), function(nm) {

@@ -560,7 +560,7 @@ plot_cor_heat <- function(tab, vars) {
   g <- cor_square(tab, vars)
   g$fill <- ifelse(g$diag, NA_real_, g$coef)
   ## dark tiles take white text, so every label can be read
-  g$ink <- ifelse(!g$diag & !is.na(g$coef) & abs(g$coef) >= 0.6, "white", "black")
+  g$ink <- ifelse(!g$diag & !is.na(g$coef) & abs(g$coef) >= 0.8, "white", "black")
   n <- length(vars)
   ## the diagonal (each variable with itself) is drawn in white with an
   ## outline, so the grey of pairs that cannot be worked out means only that
@@ -568,8 +568,7 @@ plot_cor_heat <- function(tab, vars) {
   p <- ggplot(g, aes(x = .data$Col, y = .data$Row)) +
     geom_tile(aes(fill = .data$fill), colour = "white", linewidth = 0.8) +
     geom_tile(data = one, fill = "white", colour = "#B9C6D6", linewidth = 0.5) +
-    scale_fill_gradient2(low = "#C0392B", mid = "#F7F7F7", high = "#1B4F9C", midpoint = 0,
-                         limits = c(-1, 1), na.value = "#E3E3E3", name = COR_SYMBOL[[method]]) +
+    scale_fill_diverge(c(-1, 1), COR_SYMBOL[[method]], na.value = "#E3E3E3") +
     labs(title = sprintf("Correlation heat map (%s)", COR_NAMES[[method]]), x = NULL, y = NULL,
          caption = "Blue: positive. Red: negative. Deeper colour: further from 0. White: each variable with itself. Grey: cannot be worked out.") +
     theme_doe() + theme(axis.text.x = element_text(angle = 30, hjust = 1, size = if (n > 12) 7 else 9),
